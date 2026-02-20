@@ -43,6 +43,12 @@ fn main() {
 
     match &cli.command {
         Commands::Analyze { path, format, limit } => {
+            if !is_soroban_project(path) {
+                eprintln!("{} Error: {:?} is not a valid Soroban project. (Missing Cargo.toml with 'soroban-sdk' dependency)", "❌".red(), path);
+                std::process::exit(1);
+            }
+
+            println!("{} Sanctifier: Valid Soroban project found at {:?}", "✨".green(), path);
             println!("{} Analyzing contract at {:?}...", "🔍".blue(), path);
             
             let mut analyzer = Analyzer::new(false);
@@ -50,15 +56,24 @@ fn main() {
             
             let mut all_warnings = Vec::new();
             let mut all_auth_gaps = Vec::new();
+            let mut all_panic_issues = Vec::new();
 
             if path.is_dir() {
-                analyze_directory(path, &analyzer, &mut all_warnings, &mut all_auth_gaps);
+                analyze_directory(path, &analyzer, &mut all_warnings, &mut all_auth_gaps, &mut all_panic_issues);
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 if let Ok(content) = fs::read_to_string(path) {
                     all_warnings.extend(analyzer.analyze_ledger_size(&content));
+                    
                     let gaps = analyzer.scan_auth_gaps(&content);
                     for g in gaps {
                         all_auth_gaps.push(format!("{}: {}", path.display(), g));
+                    }
+
+                    let panics = analyzer.scan_panics(&content);
+                    for p in panics {
+                        let mut p_mod = p.clone();
+                        p_mod.location = format!("{}: {}", path.display(), p.location);
+                        all_panic_issues.push(p_mod);
                     }
                 }
             }
@@ -94,6 +109,22 @@ fn main() {
                 } else {
                     println!("\nNo authentication gaps found.");
                 }
+
+                if !all_panic_issues.is_empty() {
+                    println!("\n{} Found explicit Panics/Unwraps!", "🛑".red());
+                    for issue in all_panic_issues {
+                        println!(
+                            "   {} Function {}: Using {} (Location: {})",
+                            "->".red(),
+                            issue.function_name.bold(),
+                            issue.issue_type.yellow().bold(),
+                            issue.location
+                        );
+                    }
+                    println!("   {} Tip: Prefer returning Result or Error types for better contract safety.", "💡".blue());
+                } else {
+                    println!("\nNo panic/unwrap issues found.");
+                }
             }
         },
         Commands::Report { output } => {
@@ -111,12 +142,52 @@ fn main() {
     }
 }
 
-fn analyze_directory(dir: &Path, analyzer: &Analyzer, all_warnings: &mut Vec<sanctifier_core::SizeWarning>, all_auth_gaps: &mut Vec<String>) {
+fn is_soroban_project(path: &Path) -> bool {
+    let cargo_toml_path = if path.is_dir() {
+        path.join("Cargo.toml")
+    } else if path.file_name().and_then(|s| s.to_str()) == Some("Cargo.toml") {
+        path.to_path_buf()
+    } else {
+        // If it's a .rs file, look for Cargo.toml in parent directories
+        let mut current = path.parent();
+        let mut found = None;
+        while let Some(p) = current {
+            let cargo = p.join("Cargo.toml");
+            if cargo.exists() {
+                found = Some(cargo);
+                break;
+            }
+            current = p.parent();
+        }
+        match found {
+            Some(f) => f,
+            None => return false,
+        }
+    };
+
+    if !cargo_toml_path.exists() {
+        return false;
+    }
+
+    if let Ok(content) = fs::read_to_string(cargo_toml_path) {
+        content.contains("soroban-sdk")
+    } else {
+        false
+    }
+}
+
+fn analyze_directory(
+    dir: &Path, 
+    analyzer: &Analyzer, 
+    all_warnings: &mut Vec<sanctifier_core::SizeWarning>, 
+    all_auth_gaps: &mut Vec<String>,
+    all_panic_issues: &mut Vec<sanctifier_core::PanicIssue>
+) {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                analyze_directory(&path, analyzer, all_warnings, all_auth_gaps);
+                analyze_directory(&path, analyzer, all_warnings, all_auth_gaps, all_panic_issues);
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 if let Ok(content) = fs::read_to_string(&path) {
                     let warnings = analyzer.analyze_ledger_size(&content);
@@ -128,6 +199,13 @@ fn analyze_directory(dir: &Path, analyzer: &Analyzer, all_warnings: &mut Vec<san
                     let gaps = analyzer.scan_auth_gaps(&content);
                     for g in gaps {
                         all_auth_gaps.push(format!("{}: {}", path.display(), g));
+                    }
+
+                    let panics = analyzer.scan_panics(&content);
+                    for p in panics {
+                        let mut p_mod = p.clone();
+                        p_mod.location = format!("{}: {}", path.display(), p.location);
+                        all_panic_issues.push(p_mod);
                     }
                 }
             }

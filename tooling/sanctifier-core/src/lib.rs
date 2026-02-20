@@ -9,6 +9,13 @@ pub struct SizeWarning {
     pub limit: usize,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct PanicIssue {
+    pub function_name: String,
+    pub issue_type: String, // "panic!", "unwrap", "expect"
+    pub location: String, // e.g. "struct_name:line" or similar context
+}
+
 pub struct Analyzer {
     pub strict_mode: bool,
     pub ledger_limit: usize,
@@ -22,34 +29,94 @@ impl Analyzer {
         }
     }
 
-    pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
+        gaps
+    }
+
+    pub fn scan_panics(&self, source: &str) -> Vec<PanicIssue> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
         };
 
-        let mut gaps = Vec::new();
+        let mut issues = Vec::new();
 
         for item in file.items {
             if let Item::Impl(i) = item {
-                // Check if this impl block is for a contract (optional check for #[contractimpl] can be added)
                 for impl_item in &i.items {
                     if let syn::ImplItem::Fn(f) = impl_item {
                         let fn_name = f.sig.ident.to_string();
-                        let mut has_mutation = false;
-                        let mut has_auth = false;
-
-                        // Simple recursive traversal of function body
-                        self.check_fn_body(&f.block, &mut has_mutation, &mut has_auth);
-
-                        if has_mutation && !has_auth {
-                            gaps.push(fn_name);
-                        }
+                        self.check_fn_panics(&f.block, &fn_name, &mut issues);
                     }
                 }
             }
         }
-        gaps
+        issues
+    }
+
+    fn check_fn_panics(&self, block: &syn::Block, fn_name: &str, issues: &mut Vec<PanicIssue>) {
+        for stmt in &block.stmts {
+            match stmt {
+                syn::Stmt::Expr(expr, _) => {
+                    self.check_expr_panics(expr, fn_name, issues);
+                }
+                syn::Stmt::Local(local) => {
+                    if let Some(init) = &local.init {
+                        self.check_expr_panics(&init.expr, fn_name, issues);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn check_expr_panics(&self, expr: &syn::Expr, fn_name: &str, issues: &mut Vec<PanicIssue>) {
+        match expr {
+            syn::Expr::Macro(m) => {
+                if m.mac.path.is_ident("panic") {
+                    issues.push(PanicIssue {
+                        function_name: fn_name.to_string(),
+                        issue_type: "panic!".to_string(),
+                        location: fn_name.to_string(),
+                    });
+                }
+            }
+            syn::Expr::MethodCall(m) => {
+                let method_name = m.method.to_string();
+                if method_name == "unwrap" || method_name == "expect" {
+                    issues.push(PanicIssue {
+                        function_name: fn_name.to_string(),
+                        issue_type: method_name,
+                        location: fn_name.to_string(),
+                    });
+                }
+                self.check_expr_panics(&m.receiver, fn_name, issues);
+                for arg in &m.args {
+                    self.check_expr_panics(arg, fn_name, issues);
+                }
+            }
+            syn::Expr::Call(c) => {
+                for arg in &c.args {
+                    self.check_expr_panics(arg, fn_name, issues);
+                }
+            }
+            syn::Expr::Block(b) => {
+                self.check_fn_panics(&b.block, fn_name, issues);
+            }
+            syn::Expr::If(i) => {
+                self.check_expr_panics(&i.cond, fn_name, issues);
+                self.check_fn_panics(&i.then_branch, fn_name, issues);
+                if let Some((_, else_expr)) = &i.else_branch {
+                    self.check_expr_panics(else_expr, fn_name, issues);
+                }
+            }
+            syn::Expr::Match(m) => {
+                self.check_expr_panics(&m.expr, fn_name, issues);
+                for arm in &m.arms {
+                    self.check_expr_panics(&arm.body, fn_name, issues);
+                }
+            }
+            _ => {}
+        }
     }
 
     fn check_fn_body(&self, block: &syn::Block, has_mutation: &mut bool, has_auth: &mut bool) {
@@ -327,5 +394,39 @@ mod tests {
         let gaps = analyzer.scan_auth_gaps(source);
         assert_eq!(gaps.len(), 1);
         assert_eq!(gaps[0], "set_data");
+    }
+
+    #[test]
+    fn test_scan_panics() {
+        let analyzer = Analyzer::new(false);
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn unsafe_fn(env: Env) {
+                    panic!("Something went wrong");
+                }
+
+                pub fn unsafe_unwrap(env: Env) {
+                    let x: Option<u32> = None;
+                    let y = x.unwrap();
+                }
+
+                pub fn unsafe_expect(env: Env) {
+                    let x: Option<u32> = None;
+                    let y = x.expect("Failed to get x");
+                }
+
+                pub fn safe_fn(env: Env) -> Result<(), u32> {
+                    Ok(())
+                }
+            }
+        "#;
+        let issues = analyzer.scan_panics(source);
+        assert_eq!(issues.len(), 3);
+        
+        let types: Vec<String> = issues.iter().map(|i| i.issue_type.clone()).collect();
+        assert!(types.contains(&"panic!".to_string()));
+        assert!(types.contains(&"unwrap".to_string()));
+        assert!(types.contains(&"expect".to_string()));
     }
 }
