@@ -22,9 +22,104 @@ impl Analyzer {
         }
     }
 
-    pub fn scan_auth_gaps(&self, _code: &str) -> Vec<String> {
-        // Placeholder for AST analysis logic
-        vec![]
+    pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+
+        let mut gaps = Vec::new();
+
+        for item in file.items {
+            if let Item::Impl(i) = item {
+                // Check if this impl block is for a contract (optional check for #[contractimpl] can be added)
+                for impl_item in &i.items {
+                    if let syn::ImplItem::Fn(f) = impl_item {
+                        let fn_name = f.sig.ident.to_string();
+                        let mut has_mutation = false;
+                        let mut has_auth = false;
+
+                        // Simple recursive traversal of function body
+                        self.check_fn_body(&f.block, &mut has_mutation, &mut has_auth);
+
+                        if has_mutation && !has_auth {
+                            gaps.push(fn_name);
+                        }
+                    }
+                }
+            }
+        }
+        gaps
+    }
+
+    fn check_fn_body(&self, block: &syn::Block, has_mutation: &mut bool, has_auth: &mut bool) {
+        for stmt in &block.stmts {
+            match stmt {
+                syn::Stmt::Expr(expr, _) => {
+                    self.check_expr(expr, has_mutation, has_auth);
+                }
+                syn::Stmt::Local(local) => {
+                    if let Some(init) = &local.init {
+                        self.check_expr(&init.expr, has_mutation, has_auth);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn check_expr(&self, expr: &syn::Expr, has_mutation: &mut bool, has_auth: &mut bool) {
+        match expr {
+            syn::Expr::Call(c) => {
+                // Check for require_auth calls
+                if let syn::Expr::Path(p) = &*c.func {
+                    if let Some(segment) = p.path.segments.last() {
+                        let ident = segment.ident.to_string();
+                        if ident == "require_auth" || ident == "require_auth_for_args" {
+                            *has_auth = true;
+                        }
+                    }
+                }
+                for arg in &c.args {
+                    self.check_expr(arg, has_mutation, has_auth);
+                }
+            }
+            syn::Expr::MethodCall(m) => {
+                let method_name = m.method.to_string();
+                if method_name == "set" || method_name == "update" || method_name == "remove" {
+                    // Check if it's acting on storage (heuristic: receiver contains "storage")
+                    let receiver_str = quote::quote!(#m.receiver).to_string();
+                    if receiver_str.contains("storage") {
+                        *has_mutation = true;
+                    }
+                }
+                if method_name == "require_auth" || method_name == "require_auth_for_args" {
+                    *has_auth = true;
+                }
+                self.check_expr(&m.receiver, has_mutation, has_auth);
+                for arg in &m.args {
+                    self.check_expr(arg, has_mutation, has_auth);
+                }
+            }
+            syn::Expr::Block(b) => {
+                self.check_fn_body(&b.block, has_mutation, has_auth);
+            }
+            syn::Expr::If(i) => {
+                self.check_expr(&i.cond, has_mutation, has_auth);
+                self.check_fn_body(&i.then_branch, has_mutation, has_auth);
+                if let Some((_, else_expr)) = &i.else_branch {
+                    self.check_expr(else_expr, has_mutation, has_auth);
+                }
+            }
+            syn::Expr::Match(m) => {
+                self.check_expr(&m.expr, has_mutation, has_auth);
+                for arm in &m.arms {
+                    self.check_expr(&arm.body, has_mutation, has_auth);
+                }
+            }
+            // Add more expr types if needed for deep traversal
+            _ => {}
+        }
     }
 
     pub fn check_storage_collisions(&self, _keys: Vec<String>) -> bool {
@@ -179,7 +274,6 @@ mod tests {
         assert_eq!(warnings[0].struct_name, "ExceedsLimit");
         assert_eq!(warnings[0].estimated_size, 64);
     }
-
     #[test]
     fn test_complex_macro_no_panic() {
         let analyzer = Analyzer::new(false);
@@ -204,5 +298,34 @@ mod tests {
         "#;
         // Should not panic
         let _ = analyzer.analyze_ledger_size(source);
+    }
+
+    #[test]
+    fn test_scan_auth_gaps() {
+        let analyzer = Analyzer::new(false);
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn set_data(env: Env, val: u32) {
+                    env.storage().instance().set(&DataKey::Val, &val);
+                }
+
+                pub fn set_data_secure(env: Env, val: u32) {
+                    env.require_auth();
+                    env.storage().instance().set(&DataKey::Val, &val);
+                }
+
+                pub fn get_data(env: Env) -> u32 {
+                    env.storage().instance().get(&DataKey::Val).unwrap_or(0)
+                }
+
+                pub fn no_storage(env: Env) {
+                    let x = 1 + 1;
+                }
+            }
+        "#;
+        let gaps = analyzer.scan_auth_gaps(source);
+        assert_eq!(gaps.len(), 1);
+        assert_eq!(gaps[0], "set_data");
     }
 }

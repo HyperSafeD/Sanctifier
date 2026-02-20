@@ -49,12 +49,17 @@ fn main() {
             analyzer.ledger_limit = *limit;
             
             let mut all_warnings = Vec::new();
+            let mut all_auth_gaps = Vec::new();
 
             if path.is_dir() {
-                analyze_directory(path, &analyzer, &mut all_warnings);
+                analyze_directory(path, &analyzer, &mut all_warnings, &mut all_auth_gaps);
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 if let Ok(content) = fs::read_to_string(path) {
                     all_warnings.extend(analyzer.analyze_ledger_size(&content));
+                    let gaps = analyzer.scan_auth_gaps(&content);
+                    for g in gaps {
+                        all_auth_gaps.push(format!("{}: {}", path.display(), g));
+                    }
                 }
             }
 
@@ -80,6 +85,15 @@ fn main() {
                         );
                     }
                 }
+
+                if !all_auth_gaps.is_empty() {
+                    println!("\n{} Found potential Authentication Gaps!", "🛑".red());
+                    for gap in all_auth_gaps {
+                        println!("   {} Function {} is modifying state without require_auth()", "->".red(), gap.bold());
+                    }
+                } else {
+                    println!("\nNo authentication gaps found.");
+                }
             }
         },
         Commands::Report { output } => {
@@ -97,18 +111,23 @@ fn main() {
     }
 }
 
-fn analyze_directory(dir: &Path, analyzer: &Analyzer, all_warnings: &mut Vec<sanctifier_core::SizeWarning>) {
+fn analyze_directory(dir: &Path, analyzer: &Analyzer, all_warnings: &mut Vec<sanctifier_core::SizeWarning>, all_auth_gaps: &mut Vec<String>) {
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                analyze_directory(&path, analyzer, all_warnings);
+                analyze_directory(&path, analyzer, all_warnings, all_auth_gaps);
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 if let Ok(content) = fs::read_to_string(&path) {
                     let warnings = analyzer.analyze_ledger_size(&content);
                     for mut w in warnings {
                         w.struct_name = format!("{}: {}", path.display(), w.struct_name);
                         all_warnings.push(w);
+                    }
+
+                    let gaps = analyzer.scan_auth_gaps(&content);
+                    for g in gaps {
+                        all_auth_gaps.push(format!("{}: {}", path.display(), g));
                     }
                 }
             }
