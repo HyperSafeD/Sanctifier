@@ -1,6 +1,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::panic::{self, AssertUnwindSafe};
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{parse_str, Fields, File, Item, Meta, Type};
@@ -126,6 +127,10 @@ impl Analyzer {
     }
 
     pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
+        with_panic_guard(|| self.scan_auth_gaps_impl(source))
+    }
+
+    fn scan_auth_gaps_impl(&self, source: &str) -> Vec<String> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
@@ -158,14 +163,17 @@ impl Analyzer {
     /// Returns all `panic!`, `.unwrap()`, and `.expect()` calls found inside
     /// contract impl functions. Prefer returning `Result` instead.
     pub fn scan_panics(&self, source: &str) -> Vec<PanicIssue> {
+        with_panic_guard(|| self.scan_panics_impl(source))
+    }
+
+    fn scan_panics_impl(&self, source: &str) -> Vec<PanicIssue> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
         };
 
         let mut issues = Vec::new();
-
-        for item in file.items {
+        for item in &file.items {
             if let Item::Impl(i) = item {
                 for impl_item in &i.items {
                     if let syn::ImplItem::Fn(f) = impl_item {
@@ -334,14 +342,17 @@ impl Analyzer {
     /// Warns about `#[contracttype]` structs whose estimated size exceeds the
     /// ledger entry limit.
     pub fn analyze_ledger_size(&self, source: &str) -> Vec<SizeWarning> {
+        with_panic_guard(|| self.analyze_ledger_size_impl(source))
+    }
+
+    fn analyze_ledger_size_impl(&self, source: &str) -> Vec<SizeWarning> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
         };
 
         let mut warnings = Vec::new();
-
-        for item in file.items {
+        for item in &file.items {
             match item {
                 Item::Struct(s) => {
                     let has_contracttype = s.attrs.iter().any(|attr| {
@@ -378,6 +389,10 @@ impl Analyzer {
     /// Visitor-based scan for `panic!`, `.unwrap()`, `.expect()` with line
     /// numbers derived from proc-macro2 span locations.
     pub fn analyze_unsafe_patterns(&self, source: &str) -> Vec<UnsafePattern> {
+        with_panic_guard(|| self.analyze_unsafe_patterns_impl(source))
+    }
+
+    fn analyze_unsafe_patterns_impl(&self, source: &str) -> Vec<UnsafePattern> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
@@ -400,6 +415,10 @@ impl Analyzer {
     /// actionable. Line numbers are included when span-location info is
     /// available (requires `proc-macro2` with `span-locations` feature).
     pub fn scan_arithmetic_overflow(&self, source: &str) -> Vec<ArithmeticIssue> {
+        with_panic_guard(|| self.scan_arithmetic_overflow_impl(source))
+    }
+
+    fn scan_arithmetic_overflow_impl(&self, source: &str) -> Vec<ArithmeticIssue> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
@@ -706,8 +725,30 @@ mod tests {
                 }
             }
         "#;
-        // Should not panic during parsing
         let _ = analyzer.analyze_ledger_size(source);
+    }
+
+    #[test]
+    fn test_heavy_macro_usage_graceful() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            use soroban_sdk::{contract, contractimpl, Env};
+
+            #[contract]
+            pub struct Token;
+
+            #[contractimpl]
+            impl Token {
+                pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+                    // Heavy macro expansion - analyzer must not panic
+                }
+            }
+        "#;
+        let _ = analyzer.scan_auth_gaps(source);
+        let _ = analyzer.scan_panics(source);
+        let _ = analyzer.analyze_unsafe_patterns(source);
+        let _ = analyzer.analyze_ledger_size(source);
+        let _ = analyzer.scan_arithmetic_overflow(source);
     }
 
     #[test]
