@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use colored::*;
 use serde::Deserialize;
+use sanctifier_core::{Analyzer, ArithmeticIssue, CustomRuleMatch, SanctifyConfig, SizeWarning, UnsafePattern};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -38,11 +39,6 @@ enum Commands {
     Init,
 }
 
-#[derive(Deserialize)]
-struct Config {
-    rules: Vec<CustomRule>,
-}
-
 fn main() {
     let cli = Cli::parse();
 
@@ -76,10 +72,15 @@ fn main() {
                 println!("{} Analyzing contract at {:?}...", "🔍".blue(), path);
             }
 
+            let mut config = load_config(path);
+            config.ledger_limit = *limit;
+
+            let analyzer = Analyzer::new(config.clone());
+
             let mut all_size_warnings: Vec<SizeWarning> = Vec::new();
             let mut all_unsafe_patterns: Vec<UnsafePattern> = Vec::new();
             let mut all_auth_gaps: Vec<String> = Vec::new();
-            let mut all_panic_issues = Vec::new();
+            let mut all_panic_issues: Vec<sanctifier_core::PanicIssue> = Vec::new();
             let mut all_arithmetic_issues: Vec<ArithmeticIssue> = Vec::new();
             let mut all_custom_rule_matches: Vec<CustomRuleMatch> = Vec::new();
 
@@ -88,6 +89,7 @@ fn main() {
                     path,
                     &analyzer,
                     &config.rules,
+                    &config,
                     &mut all_size_warnings,
                     &mut all_unsafe_patterns,
                     &mut all_auth_gaps,
@@ -123,8 +125,11 @@ fn main() {
                         all_arithmetic_issues.push(a);
                     }
 
-                    let custom_matches = analyzer.analyze_custom_rules(&content, &config.rules);
-                    all_custom_rule_matches.extend(custom_matches);
+                    let custom_matches = analyzer.analyze_custom_rules(&content, &config.custom_rules);
+                    for mut m in custom_matches {
+                        m.snippet = format!("{}: {}", path.display(), m.snippet);
+                        all_custom_rule_matches.push(m);
+                    }
                 }
             }
 
@@ -151,6 +156,10 @@ fn main() {
                 if !all_size_warnings.is_empty() {
                     println!("\n{} Found Ledger Size Warnings!", "⚠️".yellow());
                     for warning in &all_size_warnings {
+                if all_size_warnings.is_empty() {
+                    println!("\nNo ledger size issues found.");
+                } else {
+                    for warning in all_size_warnings {
                         println!(
                             "   {} Warning: Struct {} is approaching ledger entry size limit!",
                             "⚠️".yellow(),
@@ -162,8 +171,6 @@ fn main() {
                             warning.limit
                         );
                     }
-                } else {
-                    println!("\nNo ledger size issues found.");
                 }
 
                 if !all_auth_gaps.is_empty() {
@@ -276,7 +283,7 @@ fn is_soroban_project(path: &Path) -> bool {
 fn analyze_directory(
     dir: &Path,
     analyzer: &Analyzer,
-    rules: &[CustomRule],
+    config: &SanctifyConfig,
     all_size_warnings: &mut Vec<SizeWarning>,
     all_unsafe_patterns: &mut Vec<UnsafePattern>,
     all_auth_gaps: &mut Vec<String>,
@@ -287,11 +294,16 @@ fn analyze_directory(
     if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             if path.is_dir() {
+                if config.ignore_paths.iter().any(|p| name.contains(p)) {
+                    continue;
+                }
                 analyze_directory(
                     &path,
                     analyzer,
                     rules,
+                    config,
                     all_size_warnings,
                     all_unsafe_patterns,
                     all_auth_gaps,
@@ -302,6 +314,16 @@ fn analyze_directory(
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 if let Ok(content) = fs::read_to_string(&path) {
                     let warnings = analyzer.analyze_ledger_size(&content);
+                    for mut w in warnings {
+                        w.struct_name = format!("{}: {}", path.display(), w.struct_name);
+                        all_size_warnings.push(w);
+                    }
+
+                    let patterns = analyzer.analyze_unsafe_patterns(&content);
+                    for mut p in patterns {
+                        p.snippet = format!("{}: {}", path.display(), p.snippet);
+                        all_unsafe_patterns.push(p);
+                    }
 
                     let gaps = analyzer.scan_auth_gaps(&content);
                     for g in gaps {
@@ -321,19 +343,22 @@ fn analyze_directory(
                         all_arithmetic_issues.push(a);
                     }
 
-                    let custom_matches = analyzer.analyze_custom_rules(&content, rules);
-                    all_custom_rule_matches.extend(custom_matches);
+                    let custom_matches = analyzer.analyze_custom_rules(&content, &config.custom_rules);
+                    for mut m in custom_matches {
+                        m.snippet = format!("{}: {}", path.display(), m.snippet);
+                        all_custom_rule_matches.push(m);
+                    }
                 }
             }
         }
     }
 }
 
-fn load_config(path: &Path) -> Config {
+fn load_config(path: &Path) -> SanctifyConfig {
     find_config_path(path)
         .and_then(|p| fs::read_to_string(p).ok())
         .and_then(|content| toml::from_str(&content).ok())
-        .unwrap_or(Config { rules: vec![] })
+        .unwrap_or_default()
 }
 
 fn find_config_path(start_path: &Path) -> Option<PathBuf> {

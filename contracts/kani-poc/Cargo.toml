@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 soroban-sdk = "20.0.0"
 
-[dev-dependencies]
-# kani = "0.54.0" # Kani dependency is required for verification but removed here to allow cargo check to pass
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
