@@ -1,5 +1,6 @@
 use soroban_sdk::Env;
-use syn::{parse_str, File, Item, Type, Fields, Meta};
+use syn::{parse_str, File, Item, Type, Fields, Meta, ExprMacro, ExprMethodCall, Macro};
+use syn::visit::{self, Visit};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -7,6 +8,49 @@ pub struct SizeWarning {
     pub struct_name: String,
     pub estimated_size: usize,
     pub limit: usize,
+}
+
+#[derive(Debug, Serialize, Clone, Copy)]
+pub enum PatternType {
+    Panic,
+    Unwrap,
+    Expect,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UnsafePattern {
+    pub pattern_type: PatternType,
+    pub line: usize,
+    pub snippet: String,
+}
+
+struct UnsafeVisitor {
+    patterns: Vec<UnsafePattern>,
+}
+
+impl<'ast> Visit<'ast> for UnsafeVisitor {
+    fn visit_macro(&mut self, i: &'ast Macro) {
+        if i.path.is_ident("panic") {
+            self.patterns.push(UnsafePattern {
+                pattern_type: PatternType::Panic,
+                line: i.path.segments[0].ident.span().start().line,
+                snippet: "panic!".to_string(),
+            });
+        }
+        visit::visit_macro(self, i);
+    }
+
+    fn visit_expr_method_call(&mut self, i: &'ast ExprMethodCall) {
+        let method_name = i.method.to_string();
+        if method_name == "unwrap" || method_name == "expect" {
+            self.patterns.push(UnsafePattern {
+                pattern_type: if method_name == "unwrap" { PatternType::Unwrap } else { PatternType::Expect },
+                line: i.method.span().start().line,
+                snippet: method_name,
+            });
+        }
+        visit::visit_expr_method_call(self, i);
+    }
 }
 
 pub struct Analyzer {
@@ -64,6 +108,17 @@ impl Analyzer {
         warnings
     }
 
+    pub fn analyze_unsafe_patterns(&self, source: &str) -> Vec<UnsafePattern> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+        
+        let mut visitor = UnsafeVisitor { patterns: Vec::new() };
+        visitor.visit_file(&file);
+        visitor.patterns
+    }
+
     fn estimate_struct_size(&self, s: &syn::ItemStruct) -> usize {
         let mut total_size = 0;
         match &s.fields {
@@ -107,4 +162,36 @@ impl Analyzer {
 
 pub trait SanctifiedGuard {
     fn check_invariant(&self, env: &Env) -> Result<(), String>;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_find_panic() {
+        let source = r#"
+            pub fn test() {
+                panic!("error");
+            }
+        "#;
+        let analyzer = Analyzer::new(false);
+        let patterns = analyzer.analyze_unsafe_patterns(source);
+        assert_eq!(patterns.len(), 1);
+        assert_eq!(patterns[0].snippet, "panic!");
+    }
+
+    #[test]
+    fn test_find_unwrap_expect() {
+        let source = r#"
+            pub fn test() {
+                let x: Option<i32> = None;
+                x.unwrap();
+                x.expect("msg");
+            }
+        "#;
+        let analyzer = Analyzer::new(false);
+        let patterns = analyzer.analyze_unsafe_patterns(source);
+        assert_eq!(patterns.len(), 2);
+    }
 }
