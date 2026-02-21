@@ -1,6 +1,4 @@
 #![no_std]
-#![allow(unexpected_cfgs)]
-
 use soroban_sdk::{contract, contractimpl, symbol_short, Env, Symbol};
 
 #[contract]
@@ -18,7 +16,7 @@ impl VulnerableContract {
 
     // ✅ Secure version
     pub fn set_admin_secure(env: Env, new_admin: Symbol) {
-        let _admin: Symbol = env
+        let admin: Symbol = env
             .storage()
             .instance()
             .get(&symbol_short!("admin"))

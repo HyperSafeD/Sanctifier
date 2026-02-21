@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use colored::*;
+use serde::Deserialize;
 use sanctifier_core::{Analyzer, ArithmeticIssue, CustomRuleMatch, SanctifyConfig, SizeWarning, UnsafePattern};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -87,6 +88,7 @@ fn main() {
                 analyze_directory(
                     path,
                     &analyzer,
+                    &config.rules,
                     &config,
                     &mut all_size_warnings,
                     &mut all_unsafe_patterns,
@@ -151,6 +153,9 @@ fn main() {
                     serde_json::to_string_pretty(&output).unwrap_or_else(|_| "{}".to_string())
                 );
             } else {
+                if !all_size_warnings.is_empty() {
+                    println!("\n{} Found Ledger Size Warnings!", "⚠️".yellow());
+                    for warning in &all_size_warnings {
                 if all_size_warnings.is_empty() {
                     println!("\nNo ledger size issues found.");
                 } else {
@@ -297,6 +302,7 @@ fn analyze_directory(
                 analyze_directory(
                     &path,
                     analyzer,
+                    rules,
                     config,
                     all_size_warnings,
                     all_unsafe_patterns,
