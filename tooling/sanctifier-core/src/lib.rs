@@ -852,3 +852,4 @@ mod tests {
         assert!(issues[0].location.starts_with("risky:"));
     }
 }
+pub mod gas_estimator;\npub mod gas_report;
