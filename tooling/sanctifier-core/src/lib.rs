@@ -1,6 +1,5 @@
 use soroban_sdk::Env;
-use syn::{parse_str, File, Item, Type, Fields, Meta, ExprMacro, ExprMethodCall, Macro};
-use syn::visit::{self, Visit};
+use syn::{parse_str, File, Item, Type, Fields, Meta};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -17,6 +16,15 @@ pub struct PanicIssue {
     pub location: String, // e.g. "struct_name:line" or similar context
 }
 
+/// Unified finding for machine-readable (JSON) output.
+#[derive(Debug, Serialize, Clone)]
+pub struct Finding {
+    pub severity: String,
+    pub file: String,
+    pub line: usize,
+    pub message: String,
+}
+
 pub struct Analyzer {
     pub strict_mode: bool,
     pub ledger_limit: usize,
@@ -29,6 +37,30 @@ impl Analyzer {
             ledger_limit: 64000, // Default 64KB warning threshold
         }
     }
+
+    pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+
+        let mut gaps = Vec::new();
+
+        for item in file.items {
+            if let Item::Impl(i) = item {
+                for impl_item in &i.items {
+                    if let syn::ImplItem::Fn(f) = impl_item {
+                        let fn_name = f.sig.ident.to_string();
+                        let mut has_mutation = false;
+                        let mut has_auth = false;
+                        self.check_fn_body(&f.block, &mut has_mutation, &mut has_auth);
+                        if has_mutation && !has_auth {
+                            gaps.push(fn_name);
+                        }
+                    }
+                }
+            }
+        }
 
         gaps
     }
@@ -63,6 +95,15 @@ impl Analyzer {
                 syn::Stmt::Local(local) => {
                     if let Some(init) = &local.init {
                         self.check_expr_panics(&init.expr, fn_name, issues);
+                    }
+                }
+                syn::Stmt::Macro(stmt_macro) => {
+                    if stmt_macro.mac.path.is_ident("panic") {
+                        issues.push(PanicIssue {
+                            function_name: fn_name.to_string(),
+                            issue_type: "panic!".to_string(),
+                            location: fn_name.to_string(),
+                        });
                     }
                 }
                 _ => {}
@@ -244,17 +285,6 @@ impl Analyzer {
             }
         }
         warnings
-    }
-
-    pub fn analyze_unsafe_patterns(&self, source: &str) -> Vec<UnsafePattern> {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return vec![],
-        };
-        
-        let mut visitor = UnsafeVisitor { patterns: Vec::new() };
-        visitor.visit_file(&file);
-        visitor.patterns
     }
 
     fn estimate_struct_size(&self, s: &syn::ItemStruct) -> usize {
