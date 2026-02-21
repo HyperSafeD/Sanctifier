@@ -1,6 +1,5 @@
 use soroban_sdk::Env;
-use syn::{parse_str, File, Item, Type, Fields, Meta, ExprMacro, ExprMethodCall, Macro};
-use syn::visit::{self, Visit};
+use syn::{parse_str, File, Item, Type, Fields, Meta};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -15,6 +14,15 @@ pub struct PanicIssue {
     pub function_name: String,
     pub issue_type: String, // "panic!", "unwrap", "expect"
     pub location: String, // e.g. "struct_name:line" or similar context
+}
+
+/// Unified finding for machine-readable (JSON) output.
+#[derive(Debug, Serialize, Clone)]
+pub struct Finding {
+    pub severity: String,
+    pub file: String,
+    pub line: usize,
+    pub message: String,
 }
 
 pub struct Analyzer {
@@ -277,17 +285,6 @@ impl Analyzer {
             }
         }
         warnings
-    }
-
-    pub fn analyze_unsafe_patterns(&self, source: &str) -> Vec<UnsafePattern> {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return vec![],
-        };
-        
-        let mut visitor = UnsafeVisitor { patterns: Vec::new() };
-        visitor.visit_file(&file);
-        visitor.patterns
     }
 
     fn estimate_struct_size(&self, s: &syn::ItemStruct) -> usize {
