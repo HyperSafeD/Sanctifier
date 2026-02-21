@@ -27,7 +27,7 @@ impl VulnerableContract {
             .set(&symbol_short!("admin"), &new_admin);
     }
 
-    pub fn fail_explicitly(env: Env) {
+    pub fn fail_explicitly(_env: Env) {
         panic!("Something went wrong");
     }
 }
