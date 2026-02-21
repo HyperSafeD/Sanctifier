@@ -89,6 +89,15 @@ impl Analyzer {
                         self.check_expr_panics(&init.expr, fn_name, issues);
                     }
                 }
+                syn::Stmt::Macro(stmt_macro) => {
+                    if stmt_macro.mac.path.is_ident("panic") {
+                        issues.push(PanicIssue {
+                            function_name: fn_name.to_string(),
+                            issue_type: "panic!".to_string(),
+                            location: fn_name.to_string(),
+                        });
+                    }
+                }
                 _ => {}
             }
         }
