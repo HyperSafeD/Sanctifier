@@ -30,6 +30,30 @@ impl Analyzer {
         }
     }
 
+    pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+
+        let mut gaps = Vec::new();
+
+        for item in file.items {
+            if let Item::Impl(i) = item {
+                for impl_item in &i.items {
+                    if let syn::ImplItem::Fn(f) = impl_item {
+                        let fn_name = f.sig.ident.to_string();
+                        let mut has_mutation = false;
+                        let mut has_auth = false;
+                        self.check_fn_body(&f.block, &mut has_mutation, &mut has_auth);
+                        if has_mutation && !has_auth {
+                            gaps.push(fn_name);
+                        }
+                    }
+                }
+            }
+        }
+
         gaps
     }
 
