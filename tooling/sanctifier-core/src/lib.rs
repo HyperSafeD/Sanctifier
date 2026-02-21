@@ -11,11 +11,21 @@ use thiserror::Error;
 
 // ── Existing types ────────────────────────────────────────────────────────────
 
+/// Severity of a ledger size warning.
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub enum SizeWarningLevel {
+    /// Size exceeds the ledger entry limit (e.g. 64KB).
+    ExceedsLimit,
+    /// Size is approaching the limit (configurable threshold, e.g. 80%).
+    ApproachingLimit,
+}
+
 #[derive(Debug, Serialize, Clone)]
 pub struct SizeWarning {
     pub struct_name: String,
     pub estimated_size: usize,
     pub limit: usize,
+    pub level: SizeWarningLevel,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -176,6 +186,10 @@ fn default_ledger_limit() -> usize {
     64000
 }
 
+fn default_approaching_threshold() -> f64 {
+    DEFAULT_APPROACHING_THRESHOLD
+}
+
 impl Default for SanctifyConfig {
     fn default() -> Self {
         Self {
@@ -185,6 +199,34 @@ impl Default for SanctifyConfig {
             strict_mode: false,
             custom_rules: vec![],
         }
+    }
+}
+
+fn has_contracttype(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        if let Meta::Path(path) = &attr.meta {
+            path.is_ident("contracttype") || path.segments.iter().any(|s| s.ident == "contracttype")
+        } else {
+            false
+        }
+    })
+}
+
+fn classify_size(
+    size: usize,
+    limit: usize,
+    approaching: usize,
+    strict: bool,
+    strict_threshold: usize,
+) -> Option<SizeWarningLevel> {
+    if size > limit {
+        Some(SizeWarningLevel::ExceedsLimit)
+    } else if size > approaching {
+        Some(SizeWarningLevel::ApproachingLimit)
+    } else if strict && size > strict_threshold {
+        Some(SizeWarningLevel::ApproachingLimit)
+    } else {
+        None
     }
 }
 
@@ -412,8 +454,8 @@ impl Analyzer {
 
     // ── Ledger size analysis ──────────────────────────────────────────────────
 
-    /// Warns about `#[contracttype]` structs whose estimated size exceeds the
-    /// ledger entry limit.
+    /// Analyzes `#[contracttype]` structs and enums, estimates serialized size,
+    /// and warns when approaching or exceeding the ledger entry limit (e.g. 64KB).
     pub fn analyze_ledger_size(&self, source: &str) -> Vec<SizeWarning> {
         with_panic_guard(|| self.analyze_ledger_size_impl(source))
     }
@@ -428,28 +470,32 @@ impl Analyzer {
         for item in &file.items {
             match item {
                 Item::Struct(s) => {
-                    let has_contracttype = s.attrs.iter().any(|attr| {
-                        if let Meta::Path(path) = &attr.meta {
-                            path.is_ident("contracttype") || path.segments.iter().any(|s| s.ident == "contracttype")
-                        } else {
-                            false
-                        }
-                    });
-
-                    if has_contracttype {
-                        let size = self.estimate_struct_size(&s);
-                        if size > self.config.ledger_limit
-                            || (self.config.strict_mode && size > self.config.ledger_limit / 2)
-                        {
+                    if has_contracttype(&s.attrs) {
+                        let size = self.estimate_struct_size(s);
+                        if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
                             warnings.push(SizeWarning {
                                 struct_name: s.ident.to_string(),
                                 estimated_size: size,
-                                limit: self.config.ledger_limit,
+                                limit,
+                                level,
                             });
                         }
                     }
                 }
-                Item::Impl(_) | Item::Macro(_) => {} // skip gracefully
+                Item::Enum(e) => {
+                    if has_contracttype(&e.attrs) {
+                        let size = self.estimate_enum_size(e);
+                        if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
+                            warnings.push(SizeWarning {
+                                struct_name: e.ident.to_string(),
+                                estimated_size: size,
+                                limit,
+                                level,
+                            });
+                        }
+                    }
+                }
+                Item::Impl(_) | Item::Macro(_) => {}
                 _ => {}
             }
         }
@@ -532,6 +578,29 @@ impl Analyzer {
 
     // ── Size estimation helpers ───────────────────────────────────────────────
 
+    fn estimate_enum_size(&self, e: &syn::ItemEnum) -> usize {
+        const DISCRIMINANT_SIZE: usize = 4;
+        let mut max_variant = 0usize;
+        for v in &e.variants {
+            let mut variant_size = 0;
+            match &v.fields {
+                syn::Fields::Named(fields) => {
+                    for f in &fields.named {
+                        variant_size += self.estimate_type_size(&f.ty);
+                    }
+                }
+                syn::Fields::Unnamed(fields) => {
+                    for f in &fields.unnamed {
+                        variant_size += self.estimate_type_size(&f.ty);
+                    }
+                }
+                syn::Fields::Unit => {}
+            }
+            max_variant = max_variant.max(variant_size);
+        }
+        DISCRIMINANT_SIZE + max_variant
+    }
+
     fn estimate_struct_size(&self, s: &syn::ItemStruct) -> usize {
         let mut total = 0;
         match &s.fields {
@@ -554,18 +623,59 @@ impl Analyzer {
         match ty {
             Type::Path(tp) => {
                 if let Some(seg) = tp.path.segments.last() {
-                    match seg.ident.to_string().as_str() {
+                    let base = match seg.ident.to_string().as_str() {
                         "u32" | "i32" | "bool" => 4,
                         "u64" | "i64" => 8,
                         "u128" | "i128" | "I128" | "U128" => 16,
                         "Address" => 32,
                         "Bytes" | "BytesN" | "String" | "Symbol" => 64,
-                        "Vec" | "Map" => 128,
+                        "Vec" => {
+                            if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                                if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                                    return 8 + self.estimate_type_size(inner);
+                                }
+                            }
+                            128
+                        }
+                        "Map" => {
+                            if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                                let inner: usize = args.args.iter().filter_map(|a| {
+                                    if let syn::GenericArgument::Type(t) = a {
+                                        Some(self.estimate_type_size(t))
+                                    } else {
+                                        None
+                                    }
+                                }).sum();
+                                if inner > 0 {
+                                    return 16 + inner * 2;
+                                }
+                            }
+                            128
+                        }
+                        "Option" => {
+                            if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                                if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                                    return 1 + self.estimate_type_size(inner);
+                                }
+                            }
+                            32
+                        }
                         _ => 32,
-                    }
+                    };
+                    base
                 } else {
                     8
                 }
+            }
+            Type::Array(arr) => {
+                if let syn::Expr::Lit(expr_lit) = &arr.len {
+                    if let syn::Lit::Int(lit) = &expr_lit.lit {
+                        if let Ok(n) = lit.base10_parse::<usize>() {
+                            return n * self.estimate_type_size(&arr.elem);
+                        }
+                    }
+                }
+                64
             }
             _ => 8,
         }
@@ -775,6 +885,33 @@ mod tests {
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].struct_name, "ExceedsLimit");
         assert_eq!(warnings[0].estimated_size, 64);
+        assert_eq!(warnings[0].level, SizeWarningLevel::ExceedsLimit);
+    }
+
+    #[test]
+    fn test_ledger_size_enum_and_approaching() {
+        let mut config = SanctifyConfig::default();
+        config.ledger_limit = 100;
+        config.approaching_threshold = 0.5;
+        let analyzer = Analyzer::new(config);
+        let source = r#"
+            #[contracttype]
+            pub enum DataKey {
+                Balance(Address),
+                Admin,
+            }
+
+            #[contracttype]
+            pub struct NearLimit {
+                pub a: u128,
+                pub b: u128,
+                pub c: u128,
+                pub d: u128,
+            }
+        "#;
+        let warnings = analyzer.analyze_ledger_size(source);
+        assert!(warnings.iter().any(|w| w.struct_name == "NearLimit"), "NearLimit (64 bytes) should exceed 50% of 100");
+        assert!(warnings.iter().any(|w| w.level == SizeWarningLevel::ApproachingLimit));
     }
 
     #[test]

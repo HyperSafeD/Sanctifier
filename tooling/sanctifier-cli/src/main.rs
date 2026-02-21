@@ -163,9 +163,10 @@ fn main() {
                 } else {
                     for warning in all_size_warnings {
                         println!(
-                            "   {} Warning: Struct {} is approaching ledger entry size limit!",
-                            "⚠️".yellow(),
-                            warning.struct_name.bold()
+                            "   {} {} {} the ledger entry size limit!",
+                            icon,
+                            warning.struct_name.bold(),
+                            msg
                         );
                         println!(
                             "      Estimated size: {} bytes (Limit: {} bytes)",
