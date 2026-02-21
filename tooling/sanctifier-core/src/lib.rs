@@ -1,15 +1,9 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{parse_str, Fields, File, Item, Meta, Type};
 use soroban_sdk::Env;
-use syn::{parse_str, File, Item, Type, Fields, Meta, ExprMethodCall, Macro};
-use syn::visit::{self, Visit};
-use syn::spanned::Spanned;
-use serde::{Serialize, Deserialize};
-use serde::Serialize;
-use std::collections::HashSet;
 use thiserror::Error;
 
 // ── Existing types ────────────────────────────────────────────────────────────
@@ -104,32 +98,17 @@ impl Analyzer {
 
         let mut gaps = Vec::new();
 
-        for item in file.items {
-            if let Item::Impl(i) = item {
-                for impl_item in &i.items {
-                    if let syn::ImplItem::Fn(f) = impl_item {
-                        let fn_name = f.sig.ident.to_string();
-                        let mut has_mutation = false;
-                        let mut has_auth = false;
-                        self.check_fn_body(&f.block, &mut has_mutation, &mut has_auth);
-                        if has_mutation && !has_auth {
-                            gaps.push(fn_name);
-                        }
-                    }
-                }
-            }
-        }
-
-        for item in file.items {
+        for item in &file.items {
             if let Item::Impl(i) = item {
                 for impl_item in &i.items {
                     if let syn::ImplItem::Fn(f) = impl_item {
                         if let syn::Visibility::Public(_) = f.vis {
+                            let fn_name = f.sig.ident.to_string();
                             let mut has_mutation = false;
                             let mut has_auth = false;
                             self.check_fn_body(&f.block, &mut has_mutation, &mut has_auth);
                             if has_mutation && !has_auth {
-                                gaps.push(f.sig.ident.to_string());
+                                gaps.push(fn_name);
                             }
                         }
                     }
@@ -478,47 +457,21 @@ impl<'ast> Visit<'ast> for UnsafeVisitor {
     }
 }
 
-pub trait SanctifiedGuard {
-    fn check_invariant(&self, env: &Env) -> Result<(), String>;
-    fn visit_macro(&mut self, node: &'ast syn::Macro) {
-        if node.path.is_ident("panic") {
-            let line = node
-                .path
-                .get_ident()
-                .map(|i| i.span().start().line)
-                .unwrap_or(0);
-            self.patterns.push(UnsafePattern {
-                pattern_type: PatternType::Panic,
-                line,
-                snippet: "panic!()".to_string(),
-            });
-        }
-        visit::visit_macro(self, node);
-    }
+// ── SanctifiedGuard (runtime monitoring) ───────────────────────────────────────
 
-    fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
-        let method = node.method.to_string();
-        match method.as_str() {
-            "unwrap" => {
-                let line = node.method.span().start().line;
-                self.patterns.push(UnsafePattern {
-                    pattern_type: PatternType::Unwrap,
-                    line,
-                    snippet: ".unwrap()".to_string(),
-                });
-            }
-            "expect" => {
-                let line = node.method.span().start().line;
-                self.patterns.push(UnsafePattern {
-                    pattern_type: PatternType::Expect,
-                    line,
-                    snippet: ".expect()".to_string(),
-                });
-            }
-            _ => {}
-        }
-        visit::visit_expr_method_call(self, node);
-    }
+/// Error type for SanctifiedGuard runtime invariant violations.
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("invariant violation: {0}")]
+    InvariantViolation(String),
+}
+
+/// Trait for runtime monitoring. Implement this to enforce invariants
+/// on your contract state. The foundation for runtime monitoring.
+pub trait SanctifiedGuard {
+    /// Verifies that contract invariants hold in the current environment.
+    /// Returns `Ok(())` if all invariants hold, or `Err` with a violation message.
+    fn check_invariant(&self, env: &Env) -> Result<(), Error>;
 }
 
 // ── ArithVisitor ──────────────────────────────────────────────────────────────
