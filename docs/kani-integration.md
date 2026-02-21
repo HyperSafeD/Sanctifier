@@ -1,22 +1,36 @@
 # Kani Rust Verifier Integration with Soroban
 
-This document outlines the limitations and challenges encountered when integrating Kani Rust Verifier with Soroban smart contracts.
+This document outlines the limitations and challenges encountered when integrating Kani Rust Verifier with Soroban smart contracts, and describes the proof-of-concept harness for a standard token contract.
 
 ## Overview
 
 Kani is a formal verification tool for Rust that can prove properties about code by symbolically executing it. It works best on pure Rust code with minimal external dependencies or FFI calls.
 
-## Limitations with Soroban SDK
+## Limitations with Soroban SDK Host Types
 
 ### 1. Host Functions and FFI
-Soroban contracts interact with the blockchain environment via `soroban_sdk::Env`. The `Env` trait methods (like storage, events, crypto) eventually call `extern "C"` functions provided by the host environment. Kani cannot verify these calls directly because:
-- They are external functions without a visible implementation during compilation of the contract crate.
-- Kani requires the source code or a verified model of all dependencies to reason about them.
 
-### 2. Host Types (Val, Object, Symbol)
-Soroban SDK types like `Val`, `Object`, `Symbol`, and `Address` are often opaque handles (u64 wrappers) that have meaning only within the context of the host environment. Operations on these types (e.g., converting a `Symbol` to a string, checking an `Address`) require host calls.
-- Verifying logic that depends on the *content* of these types is difficult without a full host implementation.
-- Symbolic execution of these types as simple integers (u64) is possible but doesn't capture their semantic meaning or constraints enforced by the host.
+Soroban contracts interact with the blockchain environment via `soroban_sdk::Env`. The `Env` trait methods (storage, events, crypto, auth) eventually call `extern "C"` functions provided by the host. Kani **cannot verify** these calls because:
+
+- They are external functions with no implementation visible during contract compilation
+- Kani requires source code or a verified model of all called code to reason symbolically
+- The host ABI is defined at the Stellar VM layer, not in Rust
+
+### 2. Host Types (Val, Object, Symbol, Address)
+
+| Type    | Limitation for Kani                                                                 |
+|---------|-------------------------------------------------------------------------------------|
+| `Env`   | Opaque handle; all operations (storage get/set, `require_auth`, events) are FFI     |
+| `Val`   | Runtime value type; conversion and comparison require host calls                    |
+| `Symbol`| Opaque (u32) handle; `symbol_short!`, comparison, and display need host             |
+| `Address`| Opaque handle; `require_auth`, comparison, and display require host                |
+| `String`, `Bytes`, `Map`, `Vec` | Host-backed types; operations delegate to env FFI                   |
+
+**Implications:**
+
+- Logic that depends on the *content* of these types cannot be verified without a full host model
+- Treating them as integers (e.g. u64) loses semantic meaning and host-enforced invariants
+- Authentication flows (`require_auth`) cannot be modelled by Kani
 
 ### 3. `soroban-env-host` Complexity
 While `soroban-env-host` provides a Rust implementation of the host environment (used for local testing), verifying contracts linked against it is challenging:
@@ -32,28 +46,46 @@ To leverage Kani effectively, we recommend a **"Core Logic Separation"** pattern
 2.  **Verify Pure Functions**: Use Kani to verify these pure functions against properties (e.g., no overflow, invariant preservation).
 3.  **Thin Contract Layer**: Keep the actual contract implementation (the `#[contractimpl]` block) as a thin layer that only marshals data between the host environment and the verified pure logic.
 
-### Example
+### Example: Standard Token Contract
 
-In `contracts/kani-poc/src/lib.rs`, we demonstrate this by verifying a `transfer_pure` function that operates on `i128` balances:
+In `contracts/kani-poc/src/lib.rs`, we extract pure balance logic from a standard Soroban token:
 
 ```rust
-// Verified with Kani
-pub fn transfer_pure(balance_from: i128, balance_to: i128, amount: i128) -> (i128, i128) { ... }
+// Verified with Kani — pure primitives only
+pub fn transfer_pure(balance_from: i128, balance_to: i128, amount: i128) -> Result<(i128, i128), &'static str> { ... }
+pub fn mint_pure(balance: i128, amount: i128) -> Result<i128, &'static str> { ... }
+pub fn burn_pure(balance: i128, amount: i128) -> Result<i128, &'static str> { ... }
 
-// Not verified (Thin layer)
-pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
-    // Get balances from storage
-    // Call transfer_pure
-    // Set new balances to storage
+// Not verified — Host types, FFI
+pub fn set_admin(env: Env, new_admin: Symbol) {
+    env.storage().instance().set(...);  // Requires Env, Symbol
 }
 ```
 
+A production contract would keep the `#[contractimpl]` layer thin: load balances from `env.storage()`, call the pure functions, then write back.
+
+## PoC Harnesses
+
+The Kani harnesses in `contracts/kani-poc` prove:
+
+| Harness                         | Property                                                  |
+|---------------------------------|-----------------------------------------------------------|
+| `verify_transfer_pure_conservation` | Transfer preserves total supply: `new_from + new_to == balance_from + balance_to` |
+| `verify_transfer_pure_insufficient_balance` | Transfer fails with `Err` when `balance_from < amount`     |
+| `verify_mint_pure`              | Mint correctly adds `amount` to `balance`                 |
+| `verify_burn_pure`              | Burn correctly subtracts `amount` from `balance`          |
+
 ## Running the PoC
 
-To run the Kani verification on the PoC contract (requires Kani to be installed):
+Requires [Kani](https://model-checking.github.io/kani/install-guide.html) to be installed:
+
+```bash
+cargo install --locked kani-verifier
+cargo kani setup
+```
+
+Then run:
 
 ```bash
 cargo kani --package kani-poc-contract
 ```
-
-This will run the harnesses defined in `contracts/kani-poc/src/lib.rs`.
