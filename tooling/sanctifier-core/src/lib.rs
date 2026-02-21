@@ -55,26 +55,60 @@ pub struct ArithmeticIssue {
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
+/// User-defined regex-based rule. Defined in .sanctify.toml under [[custom_rules]].
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CustomRule {
+    pub name: String,
+    pub pattern: String,
+}
+
+/// A match from a custom regex rule.
+#[derive(Debug, Serialize, Clone)]
+pub struct CustomRuleMatch {
+    pub rule_name: String,
+    pub line: usize,
+    pub snippet: String,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SanctifyConfig {
+    #[serde(default = "default_ignore_paths")]
     pub ignore_paths: Vec<String>,
+    #[serde(default = "default_enabled_rules")]
     pub enabled_rules: Vec<String>,
+    #[serde(default = "default_ledger_limit")]
     pub ledger_limit: usize,
+    #[serde(default)]
     pub strict_mode: bool,
+    #[serde(default)]
+    pub custom_rules: Vec<CustomRule>,
+}
+
+fn default_ignore_paths() -> Vec<String> {
+    vec!["target".to_string(), ".git".to_string()]
+}
+
+fn default_enabled_rules() -> Vec<String> {
+    vec![
+        "auth_gaps".to_string(),
+        "panics".to_string(),
+        "arithmetic".to_string(),
+        "ledger_size".to_string(),
+    ]
+}
+
+fn default_ledger_limit() -> usize {
+    64000
 }
 
 impl Default for SanctifyConfig {
     fn default() -> Self {
         Self {
-            ignore_paths: vec!["target".to_string(), ".git".to_string()],
-            enabled_rules: vec![
-                "auth_gaps".to_string(),
-                "panics".to_string(),
-                "arithmetic".to_string(),
-                "ledger_size".to_string(),
-            ],
-            ledger_limit: 64000,
+            ignore_paths: default_ignore_paths(),
+            enabled_rules: default_enabled_rules(),
+            ledger_limit: default_ledger_limit(),
             strict_mode: false,
+            custom_rules: vec![],
         }
     }
 }
@@ -377,6 +411,30 @@ impl Analyzer {
         };
         visitor.visit_file(&file);
         visitor.issues
+    }
+
+    /// Run regex-based custom rules from config. Returns matches with line and snippet.
+    pub fn analyze_custom_rules(&self, source: &str, rules: &[CustomRule]) -> Vec<CustomRuleMatch> {
+        use regex::Regex;
+
+        let mut matches = Vec::new();
+        for rule in rules {
+            let re = match Regex::new(&rule.pattern) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            for (line_no, line) in source.lines().enumerate() {
+                let line_num = line_no + 1;
+                if re.find(line).is_some() {
+                    matches.push(CustomRuleMatch {
+                        rule_name: rule.name.clone(),
+                        line: line_num,
+                        snippet: line.trim().to_string(),
+                    });
+                }
+            }
+        }
+        matches
     }
 
     // ── Size estimation helpers ───────────────────────────────────────────────
