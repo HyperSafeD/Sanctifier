@@ -1,9 +1,13 @@
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::panic::{self, AssertUnwindSafe};
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{parse_str, Fields, File, Item, Meta, Type};
+
 use soroban_sdk::Env;
+use thiserror::Error;
 
 // ── Existing types ────────────────────────────────────────────────────────────
 
@@ -47,6 +51,78 @@ pub struct UnsafePattern {
     pub snippet: String,
 }
 
+// ── Upgrade analysis types ────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+pub struct UpgradeFinding {
+    pub category: UpgradeCategory,
+    pub function_name: Option<String>,
+    pub location: String,
+    pub message: String,
+    pub suggestion: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub enum UpgradeCategory {
+    AdminControl,
+    Timelock,
+    InitPattern,
+    StorageLayout,
+    Governance,
+}
+
+/// Upgrade safety report.
+#[derive(Debug, Serialize, Clone)]
+pub struct UpgradeReport {
+    pub findings: Vec<UpgradeFinding>,
+    pub upgrade_mechanisms: Vec<String>,
+    pub init_functions: Vec<String>,
+    pub storage_types: Vec<String>,
+    pub suggestions: Vec<String>,
+}
+
+impl UpgradeReport {
+    pub fn empty() -> Self {
+        Self {
+            findings: vec![],
+            upgrade_mechanisms: vec![],
+            init_functions: vec![],
+            storage_types: vec![],
+            suggestions: vec![],
+        }
+    }
+}
+
+fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
+    attrs.iter().any(|attr| {
+        if let Meta::Path(path) = &attr.meta {
+            path.is_ident(name) || path.segments.iter().any(|s| s.ident == name)
+        } else {
+            false
+        }
+    })
+}
+
+fn is_upgrade_or_admin_fn(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    matches!(
+        lower.as_str(),
+        "set_admin"
+            | "upgrade"
+            | "set_authorized"
+            | "deploy"
+            | "update_admin"
+            | "transfer_admin"
+            | "change_admin"
+    ) || (lower.contains("upgrade") && (lower.contains("contract") || lower.contains("wasm")))
+}
+
+fn is_init_fn(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower == "initialize" || lower == "init" || lower == "initialise"
+}
+
 // ── ArithmeticIssue (NEW) ─────────────────────────────────────────────────────
 
 /// Represents an unchecked arithmetic operation that could overflow or underflow.
@@ -64,22 +140,50 @@ pub struct ArithmeticIssue {
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
-/// Default Soroban ledger entry size limit (64KB). Check network config for current value.
-pub const DEFAULT_LEDGER_ENTRY_LIMIT: usize = 64 * 1024;
+/// User-defined regex-based rule. Defined in .sanctify.toml under [[custom_rules]].
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CustomRule {
+    pub name: String,
+    pub pattern: String,
+}
 
-/// Default threshold (0.8) for "approaching" warnings: warn when size > 80% of limit.
-pub const DEFAULT_APPROACHING_THRESHOLD: f64 = 0.8;
+/// A match from a custom regex rule.
+#[derive(Debug, Serialize, Clone)]
+pub struct CustomRuleMatch {
+    pub rule_name: String,
+    pub line: usize,
+    pub snippet: String,
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SanctifyConfig {
+    #[serde(default = "default_ignore_paths")]
     pub ignore_paths: Vec<String>,
+    #[serde(default = "default_enabled_rules")]
     pub enabled_rules: Vec<String>,
-    /// Ledger entry size limit in bytes (e.g. 64KB). Soroban has limits on stored data.
+    #[serde(default = "default_ledger_limit")]
     pub ledger_limit: usize,
-    /// Ratio (0.0–1.0) at which to warn "approaching limit". Default 0.8 = warn at 80%.
-    #[serde(default = "default_approaching_threshold")]
-    pub approaching_threshold: f64,
+    #[serde(default)]
     pub strict_mode: bool,
+    #[serde(default)]
+    pub custom_rules: Vec<CustomRule>,
+}
+
+fn default_ignore_paths() -> Vec<String> {
+    vec!["target".to_string(), ".git".to_string()]
+}
+
+fn default_enabled_rules() -> Vec<String> {
+    vec![
+        "auth_gaps".to_string(),
+        "panics".to_string(),
+        "arithmetic".to_string(),
+        "ledger_size".to_string(),
+    ]
+}
+
+fn default_ledger_limit() -> usize {
+    64000
 }
 
 fn default_approaching_threshold() -> f64 {
@@ -89,16 +193,11 @@ fn default_approaching_threshold() -> f64 {
 impl Default for SanctifyConfig {
     fn default() -> Self {
         Self {
-            ignore_paths: vec!["target".to_string(), ".git".to_string()],
-            enabled_rules: vec![
-                "auth_gaps".to_string(),
-                "panics".to_string(),
-                "arithmetic".to_string(),
-                "ledger_size".to_string(),
-            ],
-            ledger_limit: DEFAULT_LEDGER_ENTRY_LIMIT,
-            approaching_threshold: default_approaching_threshold(),
+            ignore_paths: default_ignore_paths(),
+            enabled_rules: default_enabled_rules(),
+            ledger_limit: default_ledger_limit(),
             strict_mode: false,
+            custom_rules: vec![],
         }
     }
 }
@@ -143,12 +242,17 @@ impl Analyzer {
     }
 
     pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
+        with_panic_guard(|| self.scan_auth_gaps_impl(source))
+    }
+
+    fn scan_auth_gaps_impl(&self, source: &str) -> Vec<String> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
         };
 
         let mut gaps = Vec::new();
+
         for item in &file.items {
             if let Item::Impl(i) = item {
                 for impl_item in &i.items {
@@ -174,14 +278,17 @@ impl Analyzer {
     /// Returns all `panic!`, `.unwrap()`, and `.expect()` calls found inside
     /// contract impl functions. Prefer returning `Result` instead.
     pub fn scan_panics(&self, source: &str) -> Vec<PanicIssue> {
+        with_panic_guard(|| self.scan_panics_impl(source))
+    }
+
+    fn scan_panics_impl(&self, source: &str) -> Vec<PanicIssue> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
         };
 
         let mut issues = Vec::new();
-
-        for item in file.items {
+        for item in &file.items {
             if let Item::Impl(i) = item {
                 for impl_item in &i.items {
                     if let syn::ImplItem::Fn(f) = impl_item {
@@ -350,17 +457,16 @@ impl Analyzer {
     /// Analyzes `#[contracttype]` structs and enums, estimates serialized size,
     /// and warns when approaching or exceeding the ledger entry limit (e.g. 64KB).
     pub fn analyze_ledger_size(&self, source: &str) -> Vec<SizeWarning> {
+        with_panic_guard(|| self.analyze_ledger_size_impl(source))
+    }
+
+    fn analyze_ledger_size_impl(&self, source: &str) -> Vec<SizeWarning> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
         };
 
         let mut warnings = Vec::new();
-        let limit = self.config.ledger_limit;
-        let approaching = (limit as f64 * self.config.approaching_threshold) as usize;
-        let strict = self.config.strict_mode;
-        let strict_threshold = limit / 2;
-
         for item in &file.items {
             match item {
                 Item::Struct(s) => {
@@ -402,6 +508,10 @@ impl Analyzer {
     /// Visitor-based scan for `panic!`, `.unwrap()`, `.expect()` with line
     /// numbers derived from proc-macro2 span locations.
     pub fn analyze_unsafe_patterns(&self, source: &str) -> Vec<UnsafePattern> {
+        with_panic_guard(|| self.analyze_unsafe_patterns_impl(source))
+    }
+
+    fn analyze_unsafe_patterns_impl(&self, source: &str) -> Vec<UnsafePattern> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
@@ -424,6 +534,10 @@ impl Analyzer {
     /// actionable. Line numbers are included when span-location info is
     /// available (requires `proc-macro2` with `span-locations` feature).
     pub fn scan_arithmetic_overflow(&self, source: &str) -> Vec<ArithmeticIssue> {
+        with_panic_guard(|| self.scan_arithmetic_overflow_impl(source))
+    }
+
+    fn scan_arithmetic_overflow_impl(&self, source: &str) -> Vec<ArithmeticIssue> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
@@ -436,6 +550,30 @@ impl Analyzer {
         };
         visitor.visit_file(&file);
         visitor.issues
+    }
+
+    /// Run regex-based custom rules from config. Returns matches with line and snippet.
+    pub fn analyze_custom_rules(&self, source: &str, rules: &[CustomRule]) -> Vec<CustomRuleMatch> {
+        use regex::Regex;
+
+        let mut matches = Vec::new();
+        for rule in rules {
+            let re = match Regex::new(&rule.pattern) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            for (line_no, line) in source.lines().enumerate() {
+                let line_num = line_no + 1;
+                if re.find(line).is_some() {
+                    matches.push(CustomRuleMatch {
+                        rule_name: rule.name.clone(),
+                        line: line_num,
+                        snippet: line.trim().to_string(),
+                    });
+                }
+            }
+        }
+        matches
     }
 
     // ── Size estimation helpers ───────────────────────────────────────────────
@@ -580,9 +718,21 @@ impl<'ast> Visit<'ast> for UnsafeVisitor {
     }
 }
 
-/// Trait for runtime invariant checking. Implement to enforce contract invariants.
+// ── SanctifiedGuard (runtime monitoring) ───────────────────────────────────────
+
+/// Error type for SanctifiedGuard runtime invariant violations.
+#[derive(Debug, Error)]
+pub enum Error {
+    #[error("invariant violation: {0}")]
+    InvariantViolation(String),
+}
+
+/// Trait for runtime monitoring. Implement this to enforce invariants
+/// on your contract state. The foundation for runtime monitoring.
 pub trait SanctifiedGuard {
-    fn check_invariant(&self, env: &Env) -> Result<(), String>;
+    /// Verifies that contract invariants hold in the current environment.
+    /// Returns `Ok(())` if all invariants hold, or `Err` with a violation message.
+    fn check_invariant(&self, env: &Env) -> Result<(), Error>;
 }
 
 // ── ArithVisitor ──────────────────────────────────────────────────────────────
@@ -785,8 +935,30 @@ mod tests {
                 }
             }
         "#;
-        // Should not panic during parsing
         let _ = analyzer.analyze_ledger_size(source);
+    }
+
+    #[test]
+    fn test_heavy_macro_usage_graceful() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            use soroban_sdk::{contract, contractimpl, Env};
+
+            #[contract]
+            pub struct Token;
+
+            #[contractimpl]
+            impl Token {
+                pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+                    // Heavy macro expansion - analyzer must not panic
+                }
+            }
+        "#;
+        let _ = analyzer.scan_auth_gaps(source);
+        let _ = analyzer.scan_panics(source);
+        let _ = analyzer.analyze_unsafe_patterns(source);
+        let _ = analyzer.analyze_ledger_size(source);
+        let _ = analyzer.scan_arithmetic_overflow(source);
     }
 
     #[test]
@@ -972,6 +1144,33 @@ mod tests {
     }
 
     #[test]
+    fn test_analyze_upgrade_patterns() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contracttype]
+            pub enum DataKey { Admin, Balance }
+
+            #[contractimpl]
+            impl Token {
+                pub fn initialize(env: Env, admin: Address) {
+                    env.storage().instance().set(&DataKey::Admin, &admin);
+                }
+                pub fn set_admin(env: Env, new_admin: Address) {
+                    env.storage().instance().set(&DataKey::Admin, &new_admin);
+                }
+            }
+        "#;
+        let report = analyzer.analyze_upgrade_patterns(source);
+        assert_eq!(report.init_functions, vec!["initialize"]);
+        assert_eq!(report.upgrade_mechanisms, vec!["set_admin"]);
+        assert!(report.storage_types.contains(&"DataKey".to_string()));
+        assert!(report
+            .findings
+            .iter()
+            .any(|f| matches!(f.category, UpgradeCategory::Governance)));
+    }
+
+    #[test]
     fn test_scan_arithmetic_overflow_suggestion_content() {
         let analyzer = Analyzer::new(SanctifyConfig::default());
         let source = r#"
@@ -990,3 +1189,4 @@ mod tests {
         assert!(issues[0].location.starts_with("risky:"));
     }
 }
+pub mod gas_estimator;\npub mod gas_report;

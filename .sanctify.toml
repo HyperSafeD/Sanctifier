@@ -1,13 +1,5 @@
-ignore_paths = [
-    "target",
-    ".git",
-]
-enabled_rules = [
-    "auth_gaps",
-    "panics",
-    "arithmetic",
-    "ledger_size",
-]
+ignore_paths = ["target", ".git"]
+enabled_rules = ["auth_gaps", "panics", "arithmetic", "ledger_size"]
 ledger_limit = 64000
 strict_mode = false
 
