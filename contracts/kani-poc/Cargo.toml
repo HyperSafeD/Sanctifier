@@ -1,0 +1,18 @@
+[package]
+name = "kani-poc-contract"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+soroban-sdk = "20.0.0"
+
+[dev-dependencies]
+# kani = "0.54.0" # Kani dependency is required for verification but removed here to allow cargo check to pass
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1

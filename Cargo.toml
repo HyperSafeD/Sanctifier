@@ -3,6 +3,7 @@ members = [
     "tooling/sanctifier-cli",
     "tooling/sanctifier-core",
     "contracts/vulnerable-contract",
+    "contracts/kani-poc",
 ]
 resolver = "2"
 
