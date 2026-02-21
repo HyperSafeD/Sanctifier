@@ -67,6 +67,10 @@ fn main() {
             
 
             
+            let mut all_size_warnings = Vec::new();
+            let mut all_auth_gaps = Vec::new();
+            let mut all_panic_issues = Vec::new();
+            let mut all_unsafe_patterns = Vec::new();
             let mut all_size_warnings: Vec<SizeWarning> = Vec::new();
             let mut all_unsafe_patterns: Vec<UnsafePattern> = Vec::new();
             let mut all_auth_gaps: Vec<String> = Vec::new();
