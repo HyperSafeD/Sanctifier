@@ -1,7 +1,10 @@
 use clap::{Parser, Subcommand};
 use colored::*;
 use serde::Deserialize;
-use sanctifier_core::{Analyzer, ArithmeticIssue, CustomRuleMatch, SanctifyConfig, SizeWarning, UnsafePattern};
+use sanctifier_core::{
+    Analyzer, ArithmeticIssue, CustomRuleMatch, EventIssue, EventIssueType, SanctifyConfig,
+    SizeWarning, UnsafePattern, UpgradeCategory, UpgradeReport,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -82,6 +85,7 @@ fn main() {
             let mut all_auth_gaps: Vec<String> = Vec::new();
             let mut all_panic_issues: Vec<sanctifier_core::PanicIssue> = Vec::new();
             let mut all_arithmetic_issues: Vec<ArithmeticIssue> = Vec::new();
+            let mut all_event_issues: Vec<EventIssue> = Vec::new();
             let mut all_custom_rule_matches: Vec<CustomRuleMatch> = Vec::new();
             let mut upgrade_report = UpgradeReport::empty();
 
@@ -89,14 +93,15 @@ fn main() {
                 analyze_directory(
                     path,
                     &analyzer,
-                    &config.rules,
                     &config,
                     &mut all_size_warnings,
                     &mut all_unsafe_patterns,
                     &mut all_auth_gaps,
                     &mut all_panic_issues,
                     &mut all_arithmetic_issues,
+                    &mut all_event_issues,
                     &mut all_custom_rule_matches,
+                    &mut upgrade_report,
                 );
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 if let Ok(content) = fs::read_to_string(path) {
@@ -126,6 +131,12 @@ fn main() {
                         all_arithmetic_issues.push(a);
                     }
 
+                    let events = analyzer.scan_events(&content);
+                    for mut e in events {
+                        e.location = format!("{}: {}", path.display(), e.location);
+                        all_event_issues.push(e);
+                    }
+
                     let custom_matches = analyzer.analyze_custom_rules(&content, &config.custom_rules);
                     for mut m in custom_matches {
                         m.snippet = format!("{}: {}", path.display(), m.snippet);
@@ -147,6 +158,7 @@ fn main() {
                     "auth_gaps": all_auth_gaps,
                     "panic_issues": all_panic_issues,
                     "arithmetic_issues": all_arithmetic_issues,
+                    "event_issues": all_event_issues,
                     "custom_rule_matches": all_custom_rule_matches,
                     "upgrade_report": upgrade_report,
                 });
@@ -219,6 +231,25 @@ fn main() {
                     }
                 } else {
                     println!("\nNo arithmetic overflow risks found.");
+                }
+
+                if !all_event_issues.is_empty() {
+                    println!("\n{} Found Event Consistency Issues!", "🔔".blue());
+                    for issue in all_event_issues {
+                        let icon = match issue.issue_type {
+                            EventIssueType::InconsistentSchema => "⚠️".yellow(),
+                            EventIssueType::OptimizableTopic => "💡".blue(),
+                        };
+                        println!(
+                            "   {} Function {}: {} ({})",
+                            icon,
+                            issue.function_name.bold(),
+                            issue.message,
+                            issue.location
+                        );
+                    }
+                } else {
+                    println!("\nNo event consistency issues found.");
                 }
 
                 if !all_custom_rule_matches.is_empty() {
@@ -314,6 +345,7 @@ fn analyze_directory(
     all_auth_gaps: &mut Vec<String>,
     all_panic_issues: &mut Vec<sanctifier_core::PanicIssue>,
     all_arithmetic_issues: &mut Vec<ArithmeticIssue>,
+    all_event_issues: &mut Vec<EventIssue>,
     all_custom_rule_matches: &mut Vec<CustomRuleMatch>,
     upgrade_report: &mut UpgradeReport,
 ) {
@@ -327,15 +359,16 @@ fn analyze_directory(
                 }
                 analyze_directory(
                     &path,
-                    analyzer,
-                    rules,
+                    &analyzer,
                     config,
                     all_size_warnings,
                     all_unsafe_patterns,
                     all_auth_gaps,
                     all_panic_issues,
                     all_arithmetic_issues,
+                    all_event_issues,
                     all_custom_rule_matches,
+                    upgrade_report,
                 );
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 if let Ok(content) = fs::read_to_string(&path) {
@@ -367,6 +400,12 @@ fn analyze_directory(
                     for mut a in arith {
                         a.location = format!("{}: {}", path.display(), a.location);
                         all_arithmetic_issues.push(a);
+                    }
+
+                    let events = analyzer.scan_events(&content);
+                    for mut e in events {
+                        e.location = format!("{}: {}", path.display(), e.location);
+                        all_event_issues.push(e);
                     }
 
                     let custom_matches = analyzer.analyze_custom_rules(&content, &config.custom_rules);
