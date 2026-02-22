@@ -1,7 +1,7 @@
 use clap::{Parser, Subcommand};
 use colored::*;
 use serde::Deserialize;
-use sanctifier_core::{Analyzer, ArithmeticIssue, CustomRuleMatch, SanctifyConfig, SizeWarning, UnsafePattern};
+use sanctifier_core::{Analyzer, ArithmeticIssue, CustomRuleMatch, SanctifyConfig, SizeWarning, UnsafePattern, UpgradeReport};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -89,7 +89,6 @@ fn main() {
                 analyze_directory(
                     path,
                     &analyzer,
-                    &config.rules,
                     &config,
                     &mut all_size_warnings,
                     &mut all_unsafe_patterns,
@@ -97,6 +96,7 @@ fn main() {
                     &mut all_panic_issues,
                     &mut all_arithmetic_issues,
                     &mut all_custom_rule_matches,
+                    &mut upgrade_report,
                 );
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 if let Ok(content) = fs::read_to_string(path) {
@@ -158,10 +158,10 @@ fn main() {
                 if !all_size_warnings.is_empty() {
                     println!("\n{} Found Ledger Size Warnings!", "⚠️".yellow());
                     for warning in &all_size_warnings {
-                if all_size_warnings.is_empty() {
-                    println!("\nNo ledger size issues found.");
-                } else {
-                    for warning in all_size_warnings {
+                        let (icon, msg) = match warning.level {
+                            sanctifier_core::SizeWarningLevel::ExceedsLimit => ("🛑".red(), "exceeds"),
+                            sanctifier_core::SizeWarningLevel::ApproachingLimit => ("⚠️".yellow(), "is approaching"),
+                        };
                         println!(
                             "   {} {} {} the ledger entry size limit!",
                             icon,
@@ -174,6 +174,8 @@ fn main() {
                             warning.limit
                         );
                     }
+                } else {
+                    println!("\nNo ledger size issues found.");
                 }
 
                 if !all_auth_gaps.is_empty() {
@@ -328,7 +330,6 @@ fn analyze_directory(
                 analyze_directory(
                     &path,
                     analyzer,
-                    rules,
                     config,
                     all_size_warnings,
                     all_unsafe_patterns,
@@ -336,6 +337,7 @@ fn analyze_directory(
                     all_panic_issues,
                     all_arithmetic_issues,
                     all_custom_rule_matches,
+                    upgrade_report,
                 );
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
                 if let Ok(content) = fs::read_to_string(&path) {

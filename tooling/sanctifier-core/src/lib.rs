@@ -9,6 +9,9 @@ use syn::{parse_str, Fields, File, Item, Meta, Type};
 use soroban_sdk::Env;
 use thiserror::Error;
 
+const DEFAULT_APPROACHING_THRESHOLD: f64 = 0.8;
+const DEFAULT_STRICT_THRESHOLD: f64 = 0.9;
+
 // ── Existing types ────────────────────────────────────────────────────────────
 
 /// Severity of a ledger size warning.
@@ -163,6 +166,8 @@ pub struct SanctifyConfig {
     pub enabled_rules: Vec<String>,
     #[serde(default = "default_ledger_limit")]
     pub ledger_limit: usize,
+    #[serde(default = "default_approaching_threshold")]
+    pub approaching_threshold: f64,
     #[serde(default)]
     pub strict_mode: bool,
     #[serde(default)]
@@ -196,9 +201,20 @@ impl Default for SanctifyConfig {
             ignore_paths: default_ignore_paths(),
             enabled_rules: default_enabled_rules(),
             ledger_limit: default_ledger_limit(),
+            approaching_threshold: default_approaching_threshold(),
             strict_mode: false,
             custom_rules: vec![],
         }
+    }
+}
+
+fn with_panic_guard<T>(f: impl FnOnce() -> T) -> T
+where
+    T: Default,
+{
+    match panic::catch_unwind(AssertUnwindSafe(f)) {
+        Ok(v) => v,
+        Err(_) => T::default(),
     }
 }
 
@@ -466,6 +482,11 @@ impl Analyzer {
             Err(_) => return vec![],
         };
 
+        let limit = self.config.ledger_limit;
+        let approaching = ((limit as f64) * self.config.approaching_threshold) as usize;
+        let strict = self.config.strict_mode;
+        let strict_threshold = ((limit as f64) * DEFAULT_STRICT_THRESHOLD) as usize;
+
         let mut warnings = Vec::new();
         for item in &file.items {
             match item {
@@ -574,6 +595,35 @@ impl Analyzer {
             }
         }
         matches
+    }
+
+    pub fn scan_invoke_contract_calls(
+        &self,
+        source: &str,
+        caller: &str,
+        file_path: &str,
+    ) -> Vec<ContractCallEdge> {
+        with_panic_guard(|| self.scan_invoke_contract_calls_impl(source, caller, file_path))
+    }
+
+    fn scan_invoke_contract_calls_impl(
+        &self,
+        source: &str,
+        caller: &str,
+        file_path: &str,
+    ) -> Vec<ContractCallEdge> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+
+        let mut visitor = InvokeContractVisitor {
+            edges: Vec::new(),
+            caller: caller.to_string(),
+            file_path: file_path.to_string(),
+        };
+        visitor.visit_file(&file);
+        visitor.edges
     }
 
     // ── Size estimation helpers ───────────────────────────────────────────────
@@ -1189,4 +1239,5 @@ mod tests {
         assert!(issues[0].location.starts_with("risky:"));
     }
 }
-pub mod gas_estimator;\npub mod gas_report;
+pub mod gas_estimator;
+pub mod gas_report;
