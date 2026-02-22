@@ -1,5 +1,6 @@
 
 use serde::{Deserialize, Serialize};
+pub mod gas_estimator;
 use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use syn::spanned::Spanned;
@@ -268,16 +269,7 @@ fn classify_size(
     }
 }
 
-fn with_panic_guard<F, R>(f: F) -> R
-where
-    F: FnOnce() -> R + std::panic::UnwindSafe,
-    R: Default,
-{
-    match std::panic::catch_unwind(f) {
-        Ok(r) => r,
-        Err(_) => R::default(),
-    }
-}
+
 
 // ── Analyzer ──────────────────────────────────────────────────────────────────
 
