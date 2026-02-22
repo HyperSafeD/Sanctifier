@@ -3,8 +3,15 @@ use colored::*;
 use serde::Deserialize;
 use sanctifier_core::{Analyzer, ArithmeticIssue, CustomRuleMatch, SanctifyConfig, SizeWarning, UnsafePattern, UpgradeReport};
 use sanctifier_core::gas_estimator::GasEstimationReport;
+use sanctifier_core::{
+    Analyzer, ArithmeticIssue, CustomRuleMatch, EventIssue, EventIssueType, SanctifyConfig,
+    SizeWarning, UnsafePattern, UpgradeCategory, UpgradeReport,
+};
 use std::fs;
 use std::path::{Path, PathBuf};
+mod commands;
+
+use commands::analyze::AnalyzeArgs;
 
 #[derive(Parser)]
 #[command(name = "sanctifier")]
@@ -17,30 +24,10 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
-    Analyze {
-        /// Path to the contract directory or Cargo.toml
-        #[arg(default_value = ".")]
-        path: PathBuf,
-
-        /// Output format (text, json)
-        #[arg(short, long, default_value = "text")]
-        format: String,
-
-        /// Limit for ledger entry size in bytes
-        #[arg(short, long, default_value = "64000")]
-        limit: usize,
-    },
-    /// Generate a security report
-    Report {
-        /// Output file path
-        #[arg(short, long)]
-        output: Option<PathBuf>,
-    },
-    /// Initialize Sanctifier in a new project
-    Init,
+    Analyze(AnalyzeArgs),
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
@@ -83,6 +70,7 @@ fn main() {
             let mut all_auth_gaps: Vec<String> = Vec::new();
             let mut all_panic_issues: Vec<sanctifier_core::PanicIssue> = Vec::new();
             let mut all_arithmetic_issues: Vec<ArithmeticIssue> = Vec::new();
+            let mut all_event_issues: Vec<EventIssue> = Vec::new();
             let mut all_custom_rule_matches: Vec<CustomRuleMatch> = Vec::new();
             let mut all_gas_estimations: Vec<GasEstimationReport> = Vec::new();
             let mut upgrade_report = UpgradeReport::empty();
@@ -97,6 +85,7 @@ fn main() {
                     &mut all_auth_gaps,
                     &mut all_panic_issues,
                     &mut all_arithmetic_issues,
+                    &mut all_event_issues,
                     &mut all_custom_rule_matches,
                     &mut all_gas_estimations,
                     &mut upgrade_report,
@@ -129,6 +118,12 @@ fn main() {
                         all_arithmetic_issues.push(a);
                     }
 
+                    let events = analyzer.scan_events(&content);
+                    for mut e in events {
+                        e.location = format!("{}: {}", path.display(), e.location);
+                        all_event_issues.push(e);
+                    }
+
                     let custom_matches = analyzer.analyze_custom_rules(&content, &config.custom_rules);
                     for mut m in custom_matches {
                         m.snippet = format!("{}: {}", path.display(), m.snippet);
@@ -153,6 +148,7 @@ fn main() {
                     "auth_gaps": all_auth_gaps,
                     "panic_issues": all_panic_issues,
                     "arithmetic_issues": all_arithmetic_issues,
+                    "event_issues": all_event_issues,
                     "custom_rule_matches": all_custom_rule_matches,
                     "gas_estimations": all_gas_estimations,
                     "upgrade_report": upgrade_report,
@@ -228,6 +224,25 @@ fn main() {
                     }
                 } else {
                     println!("\nNo arithmetic overflow risks found.");
+                }
+
+                if !all_event_issues.is_empty() {
+                    println!("\n{} Found Event Consistency Issues!", "🔔".blue());
+                    for issue in all_event_issues {
+                        let icon = match issue.issue_type {
+                            EventIssueType::InconsistentSchema => "⚠️".yellow(),
+                            EventIssueType::OptimizableTopic => "💡".blue(),
+                        };
+                        println!(
+                            "   {} Function {}: {} ({})",
+                            icon,
+                            issue.function_name.bold(),
+                            issue.message,
+                            issue.location
+                        );
+                    }
+                } else {
+                    println!("\nNo event consistency issues found.");
                 }
 
                 if !all_custom_rule_matches.is_empty() {
@@ -310,21 +325,10 @@ fn is_soroban_project(path: &Path) -> bool {
                 break;
             }
             current = p.parent();
+    match cli.command {
+        Commands::Analyze(args) => {
+            commands::analyze::exec(args)?;
         }
-        match found {
-            Some(f) => f,
-            None => return false,
-        }
-    };
-
-    if !cargo_toml_path.exists() {
-        return false;
-    }
-
-    if let Ok(content) = fs::read_to_string(cargo_toml_path) {
-        content.contains("soroban-sdk")
-    } else {
-        false
     }
 }
 
@@ -337,6 +341,7 @@ fn analyze_directory(
     all_auth_gaps: &mut Vec<String>,
     all_panic_issues: &mut Vec<sanctifier_core::PanicIssue>,
     all_arithmetic_issues: &mut Vec<ArithmeticIssue>,
+    all_event_issues: &mut Vec<EventIssue>,
     all_custom_rule_matches: &mut Vec<CustomRuleMatch>,
     all_gas_estimations: &mut Vec<GasEstimationReport>,
     upgrade_report: &mut UpgradeReport,
@@ -351,13 +356,14 @@ fn analyze_directory(
                 }
                 analyze_directory(
                     &path,
-                    analyzer,
+                    &analyzer,
                     config,
                     all_size_warnings,
                     all_unsafe_patterns,
                     all_auth_gaps,
                     all_panic_issues,
                     all_arithmetic_issues,
+                    all_event_issues,
                     all_custom_rule_matches,
                     all_gas_estimations,
                     upgrade_report,
@@ -392,6 +398,12 @@ fn analyze_directory(
                     for mut a in arith {
                         a.location = format!("{}: {}", path.display(), a.location);
                         all_arithmetic_issues.push(a);
+                    }
+
+                    let events = analyzer.scan_events(&content);
+                    for mut e in events {
+                        e.location = format!("{}: {}", path.display(), e.location);
+                        all_event_issues.push(e);
                     }
 
                     let custom_matches = analyzer.analyze_custom_rules(&content, &config.custom_rules);
@@ -434,4 +446,6 @@ fn find_config_path(start_path: &Path) -> Option<PathBuf> {
         }
     }
     None
+
+    Ok(())
 }
