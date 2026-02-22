@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use colored::*;
 use serde::Deserialize;
+use sanctifier_core::{Analyzer, ArithmeticIssue, CustomRuleMatch, SanctifyConfig, SizeWarning, UnsafePattern, UpgradeReport};
+use sanctifier_core::gas_estimator::GasEstimationReport;
 use sanctifier_core::{
     Analyzer, ArithmeticIssue, CustomRuleMatch, EventIssue, EventIssueType, SanctifyConfig,
     SizeWarning, UnsafePattern, UpgradeCategory, UpgradeReport,
@@ -70,6 +72,7 @@ fn main() -> anyhow::Result<()> {
             let mut all_arithmetic_issues: Vec<ArithmeticIssue> = Vec::new();
             let mut all_event_issues: Vec<EventIssue> = Vec::new();
             let mut all_custom_rule_matches: Vec<CustomRuleMatch> = Vec::new();
+            let mut all_gas_estimations: Vec<GasEstimationReport> = Vec::new();
             let mut upgrade_report = UpgradeReport::empty();
 
             if path.is_dir() {
@@ -84,6 +87,7 @@ fn main() -> anyhow::Result<()> {
                     &mut all_arithmetic_issues,
                     &mut all_event_issues,
                     &mut all_custom_rule_matches,
+                    &mut all_gas_estimations,
                     &mut upgrade_report,
                 );
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
@@ -125,6 +129,9 @@ fn main() -> anyhow::Result<()> {
                         m.snippet = format!("{}: {}", path.display(), m.snippet);
                         all_custom_rule_matches.push(m);
                     }
+
+                    let gas_reports = analyzer.scan_gas_estimation(&content);
+                    all_gas_estimations.extend(gas_reports);
                 }
             }
 
@@ -143,6 +150,7 @@ fn main() -> anyhow::Result<()> {
                     "arithmetic_issues": all_arithmetic_issues,
                     "event_issues": all_event_issues,
                     "custom_rule_matches": all_custom_rule_matches,
+                    "gas_estimations": all_gas_estimations,
                     "upgrade_report": upgrade_report,
                 });
                 println!(
@@ -150,13 +158,15 @@ fn main() -> anyhow::Result<()> {
                     serde_json::to_string_pretty(&output).unwrap_or_else(|_| "{}".to_string())
                 );
             } else {
-                if !all_size_warnings.is_empty() {
-                    println!("\n{} Found Ledger Size Warnings!", "⚠️".yellow());
-                    for warning in &all_size_warnings {
                 if all_size_warnings.is_empty() {
                     println!("\nNo ledger size issues found.");
                 } else {
+                    println!("\n{} Found Ledger Size Warnings!", "⚠️".yellow());
                     for warning in all_size_warnings {
+                        let (icon, msg) = match warning.level {
+                            sanctifier_core::SizeWarningLevel::ExceedsLimit => ("🛑".red(), "EXCEEDS".red().bold()),
+                            sanctifier_core::SizeWarningLevel::ApproachingLimit => ("⚠️".yellow(), "is approaching".yellow()),
+                        };
                         println!(
                             "   {} {} {} the ledger entry size limit!",
                             icon,
@@ -271,6 +281,20 @@ fn main() -> anyhow::Result<()> {
                 } else {
                     println!("\nNo upgrade pattern issues found.");
                 }
+
+                if !all_gas_estimations.is_empty() {
+                    println!("\n{} Gas Estimation (Heuristics)", "⛽".cyan());
+                    println!("   Note: These are static estimations based on instruction counting and do not represent exact Soroban simulations.");
+                    for gas in all_gas_estimations {
+                        println!(
+                            "   {} Function {}: {} Instructions, {} Mem bytes",
+                            "->".cyan(),
+                            gas.function_name.bold(),
+                            gas.estimated_instructions,
+                            gas.estimated_memory_bytes
+                        );
+                    }
+                }
             }
         }
         Commands::Report { output } => {
@@ -319,6 +343,7 @@ fn analyze_directory(
     all_arithmetic_issues: &mut Vec<ArithmeticIssue>,
     all_event_issues: &mut Vec<EventIssue>,
     all_custom_rule_matches: &mut Vec<CustomRuleMatch>,
+    all_gas_estimations: &mut Vec<GasEstimationReport>,
     upgrade_report: &mut UpgradeReport,
 ) {
     if let Ok(entries) = fs::read_dir(dir) {
@@ -340,6 +365,7 @@ fn analyze_directory(
                     all_arithmetic_issues,
                     all_event_issues,
                     all_custom_rule_matches,
+                    all_gas_estimations,
                     upgrade_report,
                 );
             } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
@@ -385,6 +411,9 @@ fn analyze_directory(
                         m.snippet = format!("{}: {}", path.display(), m.snippet);
                         all_custom_rule_matches.push(m);
                     }
+
+                    let gas_reports = analyzer.scan_gas_estimation(&content);
+                    all_gas_estimations.extend(gas_reports);
                 }
             }
         }
