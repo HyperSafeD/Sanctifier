@@ -97,6 +97,12 @@ impl UpgradeReport {
     }
 }
 
+impl Default for UpgradeReport {
+    fn default() -> Self {
+        Self::empty()
+    }
+}
+
 fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| {
         if let Meta::Path(path) = &attr.meta {
@@ -255,6 +261,66 @@ pub struct Analyzer {
 impl Analyzer {
     pub fn new(config: SanctifyConfig) -> Self {
         Self { config }
+    }
+
+    pub fn analyze_upgrade_patterns(&self, source: &str) -> UpgradeReport {
+        with_panic_guard(|| self.analyze_upgrade_patterns_impl(source))
+    }
+
+    fn analyze_upgrade_patterns_impl(&self, source: &str) -> UpgradeReport {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return UpgradeReport::empty(),
+        };
+
+        let mut report = UpgradeReport::empty();
+
+        for item in &file.items {
+            match item {
+                Item::Struct(s) => {
+                    if has_contracttype(&s.attrs) {
+                        report.storage_types.push(s.ident.to_string());
+                    }
+                }
+                Item::Enum(e) => {
+                    if has_contracttype(&e.attrs) {
+                        report.storage_types.push(e.ident.to_string());
+                    }
+                }
+                Item::Impl(i) => {
+                    for impl_item in &i.items {
+                        if let syn::ImplItem::Fn(f) = impl_item {
+                            if let syn::Visibility::Public(_) = f.vis {
+                                let fn_name = f.sig.ident.to_string();
+                                if is_init_fn(&fn_name) {
+                                    report.init_functions.push(fn_name.clone());
+                                }
+                                if is_upgrade_or_admin_fn(&fn_name) {
+                                    report.upgrade_mechanisms.push(fn_name.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if !report.upgrade_mechanisms.is_empty() {
+            report.findings.push(UpgradeFinding {
+                category: UpgradeCategory::Governance,
+                function_name: report.upgrade_mechanisms.first().cloned(),
+                location: report
+                    .upgrade_mechanisms
+                    .first()
+                    .cloned()
+                    .unwrap_or_else(|| "<unknown>".to_string()),
+                message: "Upgrade/admin mechanism detected".to_string(),
+                suggestion: "Ensure upgrade/admin functions are properly access-controlled (e.g. require_auth) and consider timelocks/governance.".to_string(),
+            });
+        }
+
+        report
     }
 
     pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
@@ -730,6 +796,102 @@ impl Analyzer {
             _ => 8,
         }
     }
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ContractCallEdge {
+    pub caller: String,
+    pub callee: String,
+    pub file: String,
+    pub line: usize,
+    pub contract_id_expr: String,
+    pub function_expr: Option<String>,
+}
+
+pub fn callgraph_to_dot(edges: &[ContractCallEdge]) -> String {
+    use std::collections::BTreeMap;
+
+    let mut per_pair: BTreeMap<(String, String), Vec<&ContractCallEdge>> = BTreeMap::new();
+    for e in edges {
+        per_pair
+            .entry((e.caller.clone(), e.callee.clone()))
+            .or_default()
+            .push(e);
+    }
+
+    let mut out = String::new();
+    out.push_str("digraph ContractCallGraph {\n");
+    out.push_str("  rankdir=LR;\n");
+    out.push_str("  node [shape=box, fontname=\"Helvetica\"];\n");
+
+    for ((caller, callee), calls) in per_pair {
+        let mut label = String::new();
+        for (idx, c) in calls.iter().enumerate() {
+            if idx > 0 {
+                label.push_str("\\n");
+            }
+            label.push_str(&format!("{}:{}", c.file, c.line));
+            if let Some(fx) = &c.function_expr {
+                label.push_str(&format!(" [{}]", fx));
+            }
+        }
+
+        out.push_str(&format!(
+            "  \"{}\" -> \"{}\" [label=\"{}\"];\n",
+            escape_dot(&caller),
+            escape_dot(&callee),
+            escape_dot(&label)
+        ));
+    }
+
+    out.push_str("}\n");
+    out
+}
+
+fn escape_dot(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+struct InvokeContractVisitor {
+    edges: Vec<ContractCallEdge>,
+    caller: String,
+    file_path: String,
+}
+
+impl<'ast> Visit<'ast> for InvokeContractVisitor {
+    fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
+        if node.method == "invoke_contract" {
+            let contract_id_expr = node
+                .args
+                .first()
+                .map(|e| quote::quote!(#e).to_string())
+                .unwrap_or_else(|| "<missing>".to_string());
+
+            let function_expr = node
+                .args
+                .iter()
+                .nth(1)
+                .map(|e| quote::quote!(#e).to_string());
+
+            let callee = simplify_expr_string(&contract_id_expr);
+            let line = node.span().start().line;
+
+            self.edges.push(ContractCallEdge {
+                caller: self.caller.clone(),
+                callee,
+                file: self.file_path.clone(),
+                line,
+                contract_id_expr,
+                function_expr: function_expr.map(|s| simplify_expr_string(&s)),
+            });
+        }
+
+        visit::visit_expr_method_call(self, node);
+    }
+}
+
+fn simplify_expr_string(s: &str) -> String {
+    s.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 // ── UnsafeVisitor ─────────────────────────────────────────────────────────────
