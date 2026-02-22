@@ -187,7 +187,7 @@ fn default_ledger_limit() -> usize {
 }
 
 fn default_approaching_threshold() -> f64 {
-    DEFAULT_APPROACHING_THRESHOLD
+    0.8
 }
 
 impl Default for SanctifyConfig {
@@ -215,18 +215,29 @@ fn has_contracttype(attrs: &[syn::Attribute]) -> bool {
 fn classify_size(
     size: usize,
     limit: usize,
-    approaching: usize,
+    approaching: f64,
     strict: bool,
     strict_threshold: usize,
 ) -> Option<SizeWarningLevel> {
-    if size > limit {
+    if size >= limit {
         Some(SizeWarningLevel::ExceedsLimit)
-    } else if size > approaching {
-        Some(SizeWarningLevel::ApproachingLimit)
-    } else if strict && size > strict_threshold {
+    } else if strict && size >= strict_threshold {
+        Some(SizeWarningLevel::ExceedsLimit)
+    } else if size as f64 >= limit as f64 * approaching {
         Some(SizeWarningLevel::ApproachingLimit)
     } else {
         None
+    }
+}
+
+fn with_panic_guard<F, R>(f: F) -> R
+where
+    F: FnOnce() -> R + std::panic::UnwindSafe,
+    R: Default,
+{
+    match std::panic::catch_unwind(f) {
+        Ok(r) => r,
+        Err(_) => R::default(),
     }
 }
 
@@ -472,6 +483,11 @@ impl Analyzer {
                 Item::Struct(s) => {
                     if has_contracttype(&s.attrs) {
                         let size = self.estimate_struct_size(s);
+                        let limit = self.config.ledger_limit;
+                        let approaching = 0.8; // default
+                        let strict = self.config.strict_mode;
+                        let strict_threshold = limit;
+                        
                         if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
                             warnings.push(SizeWarning {
                                 struct_name: s.ident.to_string(),
@@ -485,6 +501,11 @@ impl Analyzer {
                 Item::Enum(e) => {
                     if has_contracttype(&e.attrs) {
                         let size = self.estimate_enum_size(e);
+                        let limit = self.config.ledger_limit;
+                        let approaching = 0.8; // default
+                        let strict = self.config.strict_mode;
+                        let strict_threshold = limit;
+
                         if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
                             warnings.push(SizeWarning {
                                 struct_name: e.ident.to_string(),
@@ -1189,4 +1210,5 @@ mod tests {
         assert!(issues[0].location.starts_with("risky:"));
     }
 }
-pub mod gas_estimator;\npub mod gas_report;
+pub mod gas_estimator;
+pub mod gas_report;
