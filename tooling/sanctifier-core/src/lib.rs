@@ -138,6 +138,17 @@ pub struct ArithmeticIssue {
     pub location: String,
 }
 
+// ── StorageCollisionIssue (NEW) ──────────────────────────────────────────────
+
+/// Represents a potential storage key collision.
+#[derive(Debug, Serialize, Clone)]
+pub struct StorageCollisionIssue {
+    pub key_value: String,
+    pub key_type: String,
+    pub location: String,
+    pub message: String,
+}
+
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 /// User-defined regex-based rule. Defined in .sanctify.toml under [[custom_rules]].
@@ -165,6 +176,8 @@ pub struct SanctifyConfig {
     pub ledger_limit: usize,
     #[serde(default)]
     pub strict_mode: bool,
+    #[serde(default = "default_approaching_threshold")]
+    pub approaching_threshold: f64,
     #[serde(default)]
     pub custom_rules: Vec<CustomRule>,
 }
@@ -197,6 +210,7 @@ impl Default for SanctifyConfig {
             enabled_rules: default_enabled_rules(),
             ledger_limit: default_ledger_limit(),
             strict_mode: false,
+            approaching_threshold: default_approaching_threshold(),
             custom_rules: vec![],
         }
     }
@@ -484,7 +498,7 @@ impl Analyzer {
                     if has_contracttype(&s.attrs) {
                         let size = self.estimate_struct_size(s);
                         let limit = self.config.ledger_limit;
-                        let approaching = 0.8; // default
+                        let approaching = self.config.approaching_threshold;
                         let strict = self.config.strict_mode;
                         let strict_threshold = limit;
                         
@@ -502,7 +516,7 @@ impl Analyzer {
                     if has_contracttype(&e.attrs) {
                         let size = self.estimate_enum_size(e);
                         let limit = self.config.ledger_limit;
-                        let approaching = 0.8; // default
+                        let approaching = self.config.approaching_threshold;
                         let strict = self.config.strict_mode;
                         let strict_threshold = limit;
 
@@ -595,6 +609,71 @@ impl Analyzer {
             }
         }
         matches
+    }
+
+    // ── Storage key collision detection (NEW) ─────────────────────────────────
+
+    /// Scans for potential storage key collisions by analyzing constants,
+    /// Symbol::new calls, and symbol_short! macros.
+    pub fn scan_storage_collisions(&self, source: &str) -> Vec<StorageCollisionIssue> {
+        with_panic_guard(|| self.scan_storage_collisions_impl(source))
+    }
+
+    fn scan_storage_collisions_impl(&self, source: &str) -> Vec<StorageCollisionIssue> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+
+        let mut visitor = storage_collision::StorageVisitor::new();
+        visitor.visit_file(&file);
+        visitor.final_check();
+        visitor.collisions
+    }
+
+    pub fn analyze_upgrade_patterns(&self, source: &str) -> UpgradeReport {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return UpgradeReport::empty(),
+        };
+
+        let mut report = UpgradeReport::empty();
+        for item in &file.items {
+            match item {
+                Item::Enum(e) => {
+                    if has_contracttype(&e.attrs) {
+                        report.storage_types.push(e.ident.to_string());
+                    }
+                }
+                Item::Struct(s) => {
+                    if has_contracttype(&s.attrs) {
+                        report.storage_types.push(s.ident.to_string());
+                    }
+                }
+                Item::Impl(i) => {
+                    for impl_item in &i.items {
+                        if let syn::ImplItem::Fn(f) = impl_item {
+                            let fn_name = f.sig.ident.to_string();
+                            if is_init_fn(&fn_name) {
+                                report.init_functions.push(fn_name.clone());
+                            }
+                            if is_upgrade_or_admin_fn(&fn_name) {
+                                report.upgrade_mechanisms.push(fn_name.clone());
+                                report.findings.push(UpgradeFinding {
+                                    category: UpgradeCategory::Governance,
+                                    function_name: Some(fn_name),
+                                    location: "contract".to_string(),
+                                    message: "Potential upgrade or administrative function found.".to_string(),
+                                    suggestion: "Ensure this function is protected by proper authentication.".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+        report
     }
 
     // ── Size estimation helpers ───────────────────────────────────────────────
@@ -727,15 +806,15 @@ impl<'ast> Visit<'ast> for UnsafeVisitor {
         visit::visit_expr_method_call(self, i);
     }
 
-    fn visit_expr_macro(&mut self, i: &'ast syn::ExprMacro) {
-        if i.mac.path.is_ident("panic") {
+    fn visit_macro(&mut self, i: &'ast syn::Macro) {
+        if i.path.is_ident("panic") {
             self.patterns.push(UnsafePattern {
                 pattern_type: PatternType::Panic,
                 snippet: quote::quote!(#i).to_string(),
                 line: 0,
             });
         }
-        visit::visit_expr_macro(self, i);
+        visit::visit_macro(self, i);
     }
 }
 
@@ -1209,6 +1288,29 @@ mod tests {
         // Location should include function name
         assert!(issues[0].location.starts_with("risky:"));
     }
+
+    #[test]
+    fn test_scan_storage_collisions() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            const KEY1: &str = "collision";
+            const KEY2: &str = "collision";
+            
+            #[contractimpl]
+            impl Contract {
+                pub fn x() {
+                    let s = symbol_short!("other");
+                    let s2 = symbol_short!("other");
+                }
+            }
+        "#;
+        let issues = analyzer.scan_storage_collisions(source);
+        // 2 for "collision" (KEY1, KEY2) + 2 for "other" (two symbol_short! calls)
+        assert_eq!(issues.len(), 4);
+        assert!(issues.iter().any(|i| i.key_value == "collision"));
+        assert!(issues.iter().any(|i| i.key_value == "other"));
+    }
 }
 pub mod gas_estimator;
 pub mod gas_report;
+pub mod storage_collision;
