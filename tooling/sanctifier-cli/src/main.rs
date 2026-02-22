@@ -19,7 +19,7 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
-enum Commands {
+pub enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
 
     let cli = Cli::parse();
