@@ -1278,6 +1278,7 @@ mod tests {
         assert_eq!(warnings[0].level, SizeWarningLevel::ExceedsLimit);
     }
 
+<<<<<<< HEAD
     /*
         #[test]
         fn test_ledger_size_enum_and_approaching() {
@@ -1305,6 +1306,33 @@ mod tests {
             assert!(warnings.iter().any(|w| w.level == SizeWarningLevel::ApproachingLimit));
         }
     */
+=======
+    #[test]
+    fn test_ledger_size_enum_and_approaching() {
+        let mut config = SanctifyConfig::default();
+        config.ledger_limit = 100;
+        config.approaching_threshold = 0.5;
+        let analyzer = Analyzer::new(config);
+        let source = r#"
+            #[contracttype]
+            pub enum DataKey {
+                Balance(Address),
+                Admin,
+            }
+
+            #[contracttype]
+            pub struct NearLimit {
+                pub a: u128,
+                pub b: u128,
+                pub c: u128,
+                pub d: u128,
+            }
+        "#;
+        let warnings = analyzer.analyze_ledger_size(source);
+        assert!(warnings.iter().any(|w| w.struct_name == "NearLimit"), "NearLimit (64 bytes) should exceed 50% of 100");
+        assert!(warnings.iter().any(|w| w.level == SizeWarningLevel::ApproachingLimit));
+    }
+>>>>>>> 43c1409 (Cleanup: Uncomment tests, fix logic inconsistencies, and ensure Soroban SDK v20 alignment.)
 
     #[test]
     fn test_complex_macro_no_panic() {
@@ -1535,6 +1563,7 @@ mod tests {
         assert_eq!(issues[0].operation, "+");
     }
 
+<<<<<<< HEAD
     /*
         #[test]
         fn test_analyze_upgrade_patterns() {
@@ -1542,6 +1571,14 @@ mod tests {
             let source = r#"
                 #[contracttype]
                 pub enum DataKey { Admin, Balance }
+=======
+    #[test]
+    fn test_analyze_upgrade_patterns() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contracttype]
+            pub enum DataKey { Admin, Balance }
+>>>>>>> 43c1409 (Cleanup: Uncomment tests, fix logic inconsistencies, and ensure Soroban SDK v20 alignment.)
 
                 #[contractimpl]
                 impl Token {
@@ -1552,6 +1589,7 @@ mod tests {
                         env.storage().instance().set(&DataKey::Admin, &new_admin);
                     }
                 }
+<<<<<<< HEAD
             "#;
             let report = analyzer.analyze_upgrade_patterns(source);
             assert_eq!(report.init_functions, vec!["initialize"]);
@@ -1563,6 +1601,22 @@ mod tests {
                 .any(|f| matches!(f.category, UpgradeCategory::Governance)));
         }
     */
+=======
+                pub fn set_admin(env: Env, new_admin: Address) {
+                    env.storage().instance().set(&DataKey::Admin, &new_admin);
+                }
+            }
+        "#;
+        let report = analyzer.analyze_upgrade_patterns(source);
+        assert_eq!(report.init_functions, vec!["initialize"]);
+        assert_eq!(report.upgrade_mechanisms, vec!["set_admin"]);
+        assert!(report.storage_types.contains(&"DataKey".to_string()));
+        assert!(report
+            .findings
+            .iter()
+            .any(|f| matches!(f.category, UpgradeCategory::Governance)));
+    }
+>>>>>>> 43c1409 (Cleanup: Uncomment tests, fix logic inconsistencies, and ensure Soroban SDK v20 alignment.)
 
     #[test]
     fn test_scan_arithmetic_overflow_suggestion_content() {
@@ -1583,6 +1637,7 @@ mod tests {
         assert!(issues[0].location.starts_with("risky:"));
     }
 
+<<<<<<< HEAD
     /*
         #[test]
         fn test_scan_storage_collisions() {
@@ -1607,6 +1662,8 @@ mod tests {
         }
     */
 
+=======
+>>>>>>> 43c1409 (Cleanup: Uncomment tests, fix logic inconsistencies, and ensure Soroban SDK v20 alignment.)
     #[test]
     fn test_scan_events_consistency() {
         let analyzer = Analyzer::new(SanctifyConfig::default());
@@ -1619,6 +1676,7 @@ mod tests {
                 }
             }
         "#;
+<<<<<<< HEAD
         let issues = analyzer.scan_events(source);
         assert!(!issues.is_empty());
         assert!(issues.iter().any(|i| i.issue_type == "inconsistent_topics"));
@@ -1637,5 +1695,7 @@ mod tests {
         "#;
         let issues = analyzer.scan_events(source);
         assert!(issues.iter().any(|i| i.issue_type == "gas_optimization"));
+    }
+
     }
 }
