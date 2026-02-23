@@ -1,8 +1,12 @@
-use syn::{visit::{self, Visit}, ItemConst, Expr, Lit, File, parse_str, ExprCall, ExprMacro, Meta};
 use crate::StorageCollisionIssue;
-use std::collections::HashMap;
 use quote::quote;
+use std::collections::HashMap;
 use syn::spanned::Spanned;
+use syn::{
+    parse_str,
+    visit::{self, Visit},
+    Expr, ExprCall, ExprMacro, File, ItemConst, Lit, Meta,
+};
 
 pub struct StorageVisitor {
     pub collisions: Vec<StorageCollisionIssue>,
@@ -40,11 +44,13 @@ impl StorageVisitor {
             if infos.len() > 1 {
                 for i in 0..infos.len() {
                     let current = &infos[i];
-                    let others: Vec<String> = infos.iter().enumerate()
+                    let others: Vec<String> = infos
+                        .iter()
+                        .enumerate()
                         .filter(|(idx, _)| *idx != i)
                         .map(|(_, info)| format!("{} (line {})", info.location, info.line))
                         .collect();
-                    
+
                     self.collisions.push(StorageCollisionIssue {
                         key_value: value.clone(),
                         key_type: current.key_type.clone(),
@@ -85,7 +91,12 @@ impl<'ast> Visit<'ast> for StorageVisitor {
                         if let Expr::Lit(expr_lit) = &i.args[1] {
                             if let Lit::Str(lit_str) = &expr_lit.lit {
                                 let val = lit_str.value();
-                                self.add_key(val, "Symbol::new".to_string(), "inline".to_string(), i.span().start().line);
+                                self.add_key(
+                                    val,
+                                    "Symbol::new".to_string(),
+                                    "inline".to_string(),
+                                    i.span().start().line,
+                                );
                             }
                         }
                     }
@@ -96,13 +107,24 @@ impl<'ast> Visit<'ast> for StorageVisitor {
     }
 
     fn visit_expr_macro(&mut self, i: &'ast ExprMacro) {
-        let macro_name = i.mac.path.segments.last().map(|s| s.ident.to_string()).unwrap_or_default();
+        let macro_name = i
+            .mac
+            .path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string())
+            .unwrap_or_default();
         if macro_name == "symbol_short" {
             let tokens = &i.mac.tokens;
             let token_str = quote!(#tokens).to_string();
             // symbol_short!("...") -> token_str might be "\" ... \""
             let val = token_str.trim_matches('"').to_string();
-            self.add_key(val, "symbol_short!".to_string(), "inline".to_string(), i.span().start().line);
+            self.add_key(
+                val,
+                "symbol_short!".to_string(),
+                "inline".to_string(),
+                i.span().start().line,
+            );
         }
         visit::visit_expr_macro(self, i);
     }

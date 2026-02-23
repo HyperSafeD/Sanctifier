@@ -98,7 +98,12 @@ impl<'ast> Visit<'ast> for GasEstimationVisitor {
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
         let method = node.method.to_string();
-        if method == "get" || method == "set" || method == "has" || method == "update" || method == "remove" {
+        if method == "get"
+            || method == "set"
+            || method == "has"
+            || method == "update"
+            || method == "remove"
+        {
             // Storage operations are expensive cross-host calls
             self.instruction_count += 1000;
         } else if method == "require_auth" {
@@ -113,7 +118,7 @@ impl<'ast> Visit<'ast> for GasEstimationVisitor {
         self.instruction_count += 50;
         let mut inner_visitor = GasEstimationVisitor::new(String::new());
         inner_visitor.visit_block(&node.body);
-        
+
         self.instruction_count += inner_visitor.instruction_count * 10;
         self.memory_bytes += inner_visitor.memory_bytes * 10;
 
@@ -124,7 +129,7 @@ impl<'ast> Visit<'ast> for GasEstimationVisitor {
         self.instruction_count += 50;
         let mut inner_visitor = GasEstimationVisitor::new(String::new());
         inner_visitor.visit_block(&node.body);
-        
+
         self.instruction_count += inner_visitor.instruction_count * 10;
         self.memory_bytes += inner_visitor.memory_bytes * 10;
 
@@ -135,7 +140,7 @@ impl<'ast> Visit<'ast> for GasEstimationVisitor {
         self.instruction_count += 50;
         let mut inner_visitor = GasEstimationVisitor::new(String::new());
         inner_visitor.visit_block(&node.body);
-        
+
         self.instruction_count += inner_visitor.instruction_count * 10;
         self.memory_bytes += inner_visitor.memory_bytes * 10;
     }

@@ -1,6 +1,6 @@
-
 use serde::{Deserialize, Serialize};
 pub mod gas_estimator;
+mod storage_collision;
 use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use syn::spanned::Spanned;
@@ -24,7 +24,6 @@ where
 }
 
 // ── Existing types ────────────────────────────────────────────────────────────
-
 
 /// Severity of a ledger size warning.
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -193,8 +192,6 @@ pub struct SanctifyConfig {
     pub approaching_threshold: f64,
     #[serde(default)]
     pub strict_mode: bool,
-    #[serde(default = "default_approaching_threshold")]
-    pub approaching_threshold: f64,
     #[serde(default)]
     pub custom_rules: Vec<CustomRule>,
 }
@@ -229,7 +226,6 @@ impl Default for SanctifyConfig {
             ledger_limit: default_ledger_limit(),
             approaching_threshold: default_approaching_threshold(),
             strict_mode: false,
-            approaching_threshold: default_approaching_threshold(),
             custom_rules: vec![],
         }
     }
@@ -262,8 +258,6 @@ fn classify_size(
         None
     }
 }
-
-
 
 // ── Analyzer ──────────────────────────────────────────────────────────────────
 
@@ -304,9 +298,15 @@ impl Analyzer {
                         if let syn::Visibility::Public(_) = f.vis {
                             let fn_name = f.sig.ident.to_string();
                             let mut has_mutation = false;
+                            let mut has_read = false;
                             let mut has_auth = false;
-                            self.check_fn_body(&f.block, &mut has_mutation, &mut has_auth);
-                            if has_mutation && !has_auth {
+                            self.check_fn_body(
+                                &f.block,
+                                &mut has_mutation,
+                                &mut has_read,
+                                &mut has_auth,
+                            );
+                            if has_mutation && !has_read && !has_auth {
                                 gaps.push(fn_name);
                             }
                         }
@@ -421,17 +421,25 @@ impl Analyzer {
 
     // ── Mutation / auth helpers ───────────────────────────────────────────────
 
-    fn check_fn_body(&self, block: &syn::Block, has_mutation: &mut bool, has_auth: &mut bool) {
+    fn check_fn_body(
+        &self,
+        block: &syn::Block,
+        has_mutation: &mut bool,
+        has_read: &mut bool,
+        has_auth: &mut bool,
+    ) {
         for stmt in &block.stmts {
             match stmt {
-                syn::Stmt::Expr(expr, _) => self.check_expr(expr, has_mutation, has_auth),
+                syn::Stmt::Expr(expr, _) => self.check_expr(expr, has_mutation, has_read, has_auth),
                 syn::Stmt::Local(local) => {
                     if let Some(init) = &local.init {
-                        self.check_expr(&init.expr, has_mutation, has_auth);
+                        self.check_expr(&init.expr, has_mutation, has_read, has_auth);
                     }
                 }
                 syn::Stmt::Macro(m) => {
-                    if m.mac.path.is_ident("require_auth") || m.mac.path.is_ident("require_auth_for_args") {
+                    if m.mac.path.is_ident("require_auth")
+                        || m.mac.path.is_ident("require_auth_for_args")
+                    {
                         *has_auth = true;
                     }
                 }
@@ -440,7 +448,13 @@ impl Analyzer {
         }
     }
 
-    fn check_expr(&self, expr: &syn::Expr, has_mutation: &mut bool, has_auth: &mut bool) {
+    fn check_expr(
+        &self,
+        expr: &syn::Expr,
+        has_mutation: &mut bool,
+        has_read: &mut bool,
+        has_auth: &mut bool,
+    ) {
         match expr {
             syn::Expr::Call(c) => {
                 if let syn::Expr::Path(p) = &*c.func {
@@ -452,7 +466,7 @@ impl Analyzer {
                     }
                 }
                 for arg in &c.args {
-                    self.check_expr(arg, has_mutation, has_auth);
+                    self.check_expr(arg, has_mutation, has_read, has_auth);
                 }
             }
             syn::Expr::MethodCall(m) => {
@@ -460,30 +474,44 @@ impl Analyzer {
                 if method_name == "set" || method_name == "update" || method_name == "remove" {
                     // Heuristic: check if receiver chain contains "storage"
                     let receiver_str = quote::quote!(#m.receiver).to_string();
-                    if receiver_str.contains("storage") || receiver_str.contains("persistent") || receiver_str.contains("temporary") || receiver_str.contains("instance") {
+                    if receiver_str.contains("storage")
+                        || receiver_str.contains("persistent")
+                        || receiver_str.contains("temporary")
+                        || receiver_str.contains("instance")
+                    {
                         *has_mutation = true;
+                    }
+                }
+                if method_name == "get" {
+                    let receiver_str = quote::quote!(#m.receiver).to_string();
+                    if receiver_str.contains("storage")
+                        || receiver_str.contains("persistent")
+                        || receiver_str.contains("temporary")
+                        || receiver_str.contains("instance")
+                    {
+                        *has_read = true;
                     }
                 }
                 if method_name == "require_auth" || method_name == "require_auth_for_args" {
                     *has_auth = true;
                 }
-                self.check_expr(&m.receiver, has_mutation, has_auth);
+                self.check_expr(&m.receiver, has_mutation, has_read, has_auth);
                 for arg in &m.args {
-                    self.check_expr(arg, has_mutation, has_auth);
+                    self.check_expr(arg, has_mutation, has_read, has_auth);
                 }
             }
-            syn::Expr::Block(b) => self.check_fn_body(&b.block, has_mutation, has_auth),
+            syn::Expr::Block(b) => self.check_fn_body(&b.block, has_mutation, has_read, has_auth),
             syn::Expr::If(i) => {
-                self.check_expr(&i.cond, has_mutation, has_auth);
-                self.check_fn_body(&i.then_branch, has_mutation, has_auth);
+                self.check_expr(&i.cond, has_mutation, has_read, has_auth);
+                self.check_fn_body(&i.then_branch, has_mutation, has_read, has_auth);
                 if let Some((_, else_expr)) = &i.else_branch {
-                    self.check_expr(else_expr, has_mutation, has_auth);
+                    self.check_expr(else_expr, has_mutation, has_read, has_auth);
                 }
             }
             syn::Expr::Match(m) => {
-                self.check_expr(&m.expr, has_mutation, has_auth);
+                self.check_expr(&m.expr, has_mutation, has_read, has_auth);
                 for arm in &m.arms {
-                    self.check_expr(&arm.body, has_mutation, has_auth);
+                    self.check_expr(&arm.body, has_mutation, has_read, has_auth);
                 }
             }
             _ => {}
@@ -517,24 +545,20 @@ impl Analyzer {
 
         let mut warnings = Vec::new();
         let limit = self.config.ledger_limit;
-        let approaching = (limit as f64 * self.config.approaching_threshold) as usize;
+        let approaching = self.config.approaching_threshold;
         let strict = self.config.strict_mode;
         let strict_threshold = (limit as f64 * 0.5) as usize;
 
-        let approaching_count = approaching; // For clarify_size call below
+        let approaching_count = approaching;
 
         for item in &file.items {
             match item {
                 Item::Struct(s) => {
                     if has_contracttype(&s.attrs) {
                         let size = self.estimate_struct_size(s);
-                        if let Some(level) = classify_size(size, limit, approaching_count, strict, strict_threshold) {
-                        let limit = self.config.ledger_limit;
-                        let approaching = self.config.approaching_threshold;
-                        let strict = self.config.strict_mode;
-                        let strict_threshold = limit;
-                        
-                        if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
+                        if let Some(level) =
+                            classify_size(size, limit, approaching_count, strict, strict_threshold)
+                        {
                             warnings.push(SizeWarning {
                                 struct_name: s.ident.to_string(),
                                 estimated_size: size,
@@ -547,13 +571,9 @@ impl Analyzer {
                 Item::Enum(e) => {
                     if has_contracttype(&e.attrs) {
                         let size = self.estimate_enum_size(e);
-                        if let Some(level) = classify_size(size, limit, approaching_count, strict, strict_threshold) {
-                        let limit = self.config.ledger_limit;
-                        let approaching = self.config.approaching_threshold;
-                        let strict = self.config.strict_mode;
-                        let strict_threshold = limit;
-
-                        if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
+                        if let Some(level) =
+                            classify_size(size, limit, approaching_count, strict, strict_threshold)
+                        {
                             warnings.push(SizeWarning {
                                 struct_name: e.ident.to_string(),
                                 estimated_size: size,
@@ -640,7 +660,6 @@ impl Analyzer {
         visitor.visit_file(&file);
         visitor.issues
     } */
-
     // ── Unsafe-pattern visitor ────────────────────────────────────────────────
 
     /// Visitor-based scan for `panic!`, `.unwrap()`, `.expect()` with line
@@ -734,51 +753,6 @@ impl Analyzer {
         visitor.collisions
     }
 
-    pub fn analyze_upgrade_patterns(&self, source: &str) -> UpgradeReport {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return UpgradeReport::empty(),
-        };
-
-        let mut report = UpgradeReport::empty();
-        for item in &file.items {
-            match item {
-                Item::Enum(e) => {
-                    if has_contracttype(&e.attrs) {
-                        report.storage_types.push(e.ident.to_string());
-                    }
-                }
-                Item::Struct(s) => {
-                    if has_contracttype(&s.attrs) {
-                        report.storage_types.push(s.ident.to_string());
-                    }
-                }
-                Item::Impl(i) => {
-                    for impl_item in &i.items {
-                        if let syn::ImplItem::Fn(f) = impl_item {
-                            let fn_name = f.sig.ident.to_string();
-                            if is_init_fn(&fn_name) {
-                                report.init_functions.push(fn_name.clone());
-                            }
-                            if is_upgrade_or_admin_fn(&fn_name) {
-                                report.upgrade_mechanisms.push(fn_name.clone());
-                                report.findings.push(UpgradeFinding {
-                                    category: UpgradeCategory::Governance,
-                                    function_name: Some(fn_name),
-                                    location: "contract".to_string(),
-                                    message: "Potential upgrade or administrative function found.".to_string(),
-                                    suggestion: "Ensure this function is protected by proper authentication.".to_string(),
-                                });
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-        report
-    }
-
     // ── Size estimation helpers ───────────────────────────────────────────────
 
     fn estimate_enum_size(&self, e: &syn::ItemEnum) -> usize {
@@ -842,13 +816,17 @@ impl Analyzer {
                         }
                         "Map" => {
                             if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                                let inner: usize = args.args.iter().filter_map(|a| {
-                                    if let syn::GenericArgument::Type(t) = a {
-                                        Some(self.estimate_type_size(t))
-                                    } else {
-                                        None
-                                    }
-                                }).sum();
+                                let inner: usize = args
+                                    .args
+                                    .iter()
+                                    .filter_map(|a| {
+                                        if let syn::GenericArgument::Type(t) = a {
+                                            Some(self.estimate_type_size(t))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .sum();
                                 if inner > 0 {
                                     return 16 + inner * 2;
                                 }
@@ -1091,33 +1069,33 @@ mod tests {
         assert_eq!(warnings[0].level, SizeWarningLevel::ExceedsLimit);
     }
 
-/*
-    #[test]
-    fn test_ledger_size_enum_and_approaching() {
-        let mut config = SanctifyConfig::default();
-        config.ledger_limit = 100;
-        config.approaching_threshold = 0.5;
-        let analyzer = Analyzer::new(config);
-        let source = r#"
-            #[contracttype]
-            pub enum DataKey {
-                Balance(Address),
-                Admin,
-            }
+    /*
+        #[test]
+        fn test_ledger_size_enum_and_approaching() {
+            let mut config = SanctifyConfig::default();
+            config.ledger_limit = 100;
+            config.approaching_threshold = 0.5;
+            let analyzer = Analyzer::new(config);
+            let source = r#"
+                #[contracttype]
+                pub enum DataKey {
+                    Balance(Address),
+                    Admin,
+                }
 
-            #[contracttype]
-            pub struct NearLimit {
-                pub a: u128,
-                pub b: u128,
-                pub c: u128,
-                pub d: u128,
-            }
-        "#;
-        let warnings = analyzer.analyze_ledger_size(source);
-        assert!(warnings.iter().any(|w| w.struct_name == "NearLimit"), "NearLimit (64 bytes) should exceed 50% of 100");
-        assert!(warnings.iter().any(|w| w.level == SizeWarningLevel::ApproachingLimit));
-    }
-*/
+                #[contracttype]
+                pub struct NearLimit {
+                    pub a: u128,
+                    pub b: u128,
+                    pub c: u128,
+                    pub d: u128,
+                }
+            "#;
+            let warnings = analyzer.analyze_ledger_size(source);
+            assert!(warnings.iter().any(|w| w.struct_name == "NearLimit"), "NearLimit (64 bytes) should exceed 50% of 100");
+            assert!(warnings.iter().any(|w| w.level == SizeWarningLevel::ApproachingLimit));
+        }
+    */
 
     #[test]
     fn test_complex_macro_no_panic() {
@@ -1348,34 +1326,34 @@ mod tests {
         assert_eq!(issues[0].operation, "+");
     }
 
-/*
-    #[test]
-    fn test_analyze_upgrade_patterns() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contracttype]
-            pub enum DataKey { Admin, Balance }
+    /*
+        #[test]
+        fn test_analyze_upgrade_patterns() {
+            let analyzer = Analyzer::new(SanctifyConfig::default());
+            let source = r#"
+                #[contracttype]
+                pub enum DataKey { Admin, Balance }
 
-            #[contractimpl]
-            impl Token {
-                pub fn initialize(env: Env, admin: Address) {
-                    env.storage().instance().set(&DataKey::Admin, &admin);
+                #[contractimpl]
+                impl Token {
+                    pub fn initialize(env: Env, admin: Address) {
+                        env.storage().instance().set(&DataKey::Admin, &admin);
+                    }
+                    pub fn set_admin(env: Env, new_admin: Address) {
+                        env.storage().instance().set(&DataKey::Admin, &new_admin);
+                    }
                 }
-                pub fn set_admin(env: Env, new_admin: Address) {
-                    env.storage().instance().set(&DataKey::Admin, &new_admin);
-                }
-            }
-        "#;
-        let report = analyzer.analyze_upgrade_patterns(source);
-        assert_eq!(report.init_functions, vec!["initialize"]);
-        assert_eq!(report.upgrade_mechanisms, vec!["set_admin"]);
-        assert!(report.storage_types.contains(&"DataKey".to_string()));
-        assert!(report
-            .findings
-            .iter()
-            .any(|f| matches!(f.category, UpgradeCategory::Governance)));
-    }
-*/
+            "#;
+            let report = analyzer.analyze_upgrade_patterns(source);
+            assert_eq!(report.init_functions, vec!["initialize"]);
+            assert_eq!(report.upgrade_mechanisms, vec!["set_admin"]);
+            assert!(report.storage_types.contains(&"DataKey".to_string()));
+            assert!(report
+                .findings
+                .iter()
+                .any(|f| matches!(f.category, UpgradeCategory::Governance)));
+        }
+    */
 
     #[test]
     fn test_scan_arithmetic_overflow_suggestion_content() {
@@ -1396,30 +1374,27 @@ mod tests {
         assert!(issues[0].location.starts_with("risky:"));
     }
 
-/*
-    #[test]
-    fn test_scan_storage_collisions() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            const KEY1: &str = "collision";
-            const KEY2: &str = "collision";
-            
-            #[contractimpl]
-            impl Contract {
-                pub fn x() {
-                    let s = symbol_short!("other");
-                    let s2 = symbol_short!("other");
+    /*
+        #[test]
+        fn test_scan_storage_collisions() {
+            let analyzer = Analyzer::new(SanctifyConfig::default());
+            let source = r#"
+                const KEY1: &str = "collision";
+                const KEY2: &str = "collision";
+
+                #[contractimpl]
+                impl Contract {
+                    pub fn x() {
+                        let s = symbol_short!("other");
+                        let s2 = symbol_short!("other");
+                    }
                 }
-            }
-        "#;
-        let issues = analyzer.scan_storage_collisions(source);
-        // 2 for "collision" (KEY1, KEY2) + 2 for "other" (two symbol_short! calls)
-        assert_eq!(issues.len(), 4);
-        assert!(issues.iter().any(|i| i.key_value == "collision"));
-        assert!(issues.iter().any(|i| i.key_value == "other"));
-    }
-*/
+            "#;
+            let issues = analyzer.scan_storage_collisions(source);
+            // 2 for "collision" (KEY1, KEY2) + 2 for "other" (two symbol_short! calls)
+            assert_eq!(issues.len(), 4);
+            assert!(issues.iter().any(|i| i.key_value == "collision"));
+            assert!(issues.iter().any(|i| i.key_value == "other"));
+        }
+    */
 }
-pub mod gas_estimator;
-pub mod gas_report;
-pub mod storage_collision;
