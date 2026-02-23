@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
 pub mod gas_estimator;
+<<<<<<< HEAD
 mod storage_collision;
+=======
+pub mod gas_report;
+pub mod complexity;
+pub mod reentrancy;
+pub mod storage_collision;
+
+>>>>>>> 0ef6af1 (Update Soroban SDK to v20.3.2 and fix analysis tool breaking changes)
 use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use syn::spanned::Spanned;
@@ -94,6 +102,13 @@ pub struct UpgradeReport {
     pub init_functions: Vec<String>,
     pub storage_types: Vec<String>,
     pub suggestions: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct SymbolIssue {
+    pub value: String,
+    pub issue_type: String, // "symbol_short! > 10" or "Symbol::new > 32"
+    pub location: String,
 }
 
 impl UpgradeReport {
@@ -282,6 +297,11 @@ impl Analyzer {
 
     pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
         with_panic_guard(|| self.scan_auth_gaps_impl(source))
+    }
+
+    pub fn scan_complexity(&self, source: &str, path: &str) -> Option<complexity::ContractMetrics> {
+        let file = parse_str::<File>(source).ok()?;
+        Some(complexity::analyze_complexity(&file, path))
     }
 
     pub fn scan_gas_estimation(&self, source: &str) -> Vec<gas_estimator::GasEstimationReport> {
@@ -543,11 +563,6 @@ impl Analyzer {
     }
 
     fn analyze_ledger_size_impl(&self, source: &str) -> Vec<SizeWarning> {
-        let limit = self.config.ledger_limit;
-        let approaching = (limit as f64 * DEFAULT_APPROACHING_THRESHOLD) as usize;
-        let strict = self.config.strict_mode;
-        let strict_threshold = limit / 2;
-
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
@@ -559,16 +574,23 @@ impl Analyzer {
         let strict = self.config.strict_mode;
         let strict_threshold = (limit as f64 * 0.5) as usize;
 
+<<<<<<< HEAD
         let approaching_count = approaching;
 
+=======
+>>>>>>> 0ef6af1 (Update Soroban SDK to v20.3.2 and fix analysis tool breaking changes)
         for item in &file.items {
             match item {
                 Item::Struct(s) => {
                     if has_contracttype(&s.attrs) {
                         let size = self.estimate_struct_size(s);
+<<<<<<< HEAD
                         if let Some(level) =
                             classify_size(size, limit, approaching_count, strict, strict_threshold)
                         {
+=======
+                        if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
+>>>>>>> 0ef6af1 (Update Soroban SDK to v20.3.2 and fix analysis tool breaking changes)
                             warnings.push(SizeWarning {
                                 struct_name: s.ident.to_string(),
                                 estimated_size: size,
@@ -581,9 +603,13 @@ impl Analyzer {
                 Item::Enum(e) => {
                     if has_contracttype(&e.attrs) {
                         let size = self.estimate_enum_size(e);
+<<<<<<< HEAD
                         if let Some(level) =
                             classify_size(size, limit, approaching_count, strict, strict_threshold)
                         {
+=======
+                        if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
+>>>>>>> 0ef6af1 (Update Soroban SDK to v20.3.2 and fix analysis tool breaking changes)
                             warnings.push(SizeWarning {
                                 struct_name: e.ident.to_string(),
                                 estimated_size: size,
@@ -593,7 +619,6 @@ impl Analyzer {
                         }
                     }
                 }
-                Item::Impl(_) | Item::Macro(_) => {}
                 _ => {}
             }
         }
@@ -862,6 +887,21 @@ impl Analyzer {
         visitor.collisions
     }
 
+<<<<<<< HEAD
+=======
+    pub fn scan_symbols(&self, source: &str) -> Vec<SymbolIssue> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+
+        let mut visitor = SymbolVisitor { issues: Vec::new() };
+        visitor.visit_file(&file);
+        visitor.issues
+    }
+
+
+>>>>>>> 0ef6af1 (Update Soroban SDK to v20.3.2 and fix analysis tool breaking changes)
     // ── Size estimation helpers ───────────────────────────────────────────────
 
     fn estimate_enum_size(&self, e: &syn::ItemEnum) -> usize {
@@ -914,7 +954,21 @@ impl Analyzer {
                         "u64" | "i64" => 8,
                         "u128" | "i128" | "I128" | "U128" => 16,
                         "Address" => 32,
-                        "Bytes" | "BytesN" | "String" | "Symbol" => 64,
+                        "BytesN" => {
+                            if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                                if let Some(syn::GenericArgument::Type(Type::Path(tp))) = args.args.first() {
+                                    // Sometimes N is a type-level literal or just a number
+                                    if let Some(s) = tp.path.segments.last() {
+                                        if let Ok(n) = s.ident.to_string().parse::<usize>() {
+                                            return n;
+                                        }
+                                    }
+                                }
+                                // Handle const generics if syn supports it easily here
+                            }
+                            32
+                        }
+                        "Bytes" | "String" | "Symbol" => 64,
                         "Vec" => {
                             if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
                                 if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
@@ -1108,6 +1162,52 @@ impl<'ast> Visit<'ast> for ArithVisitor {
         }
         // Continue descending so nested binary ops are also checked
         visit::visit_expr_binary(self, node);
+    }
+}
+
+// ── SymbolVisitor ─────────────────────────────────────────────────────────────
+
+struct SymbolVisitor {
+    issues: Vec<SymbolIssue>,
+}
+
+impl<'ast> Visit<'ast> for SymbolVisitor {
+    fn visit_expr_call(&mut self, i: &'ast syn::ExprCall) {
+        if let syn::Expr::Path(p) = &*i.func {
+            if p.path.is_ident("Symbol") || p.path.segments.iter().any(|s| s.ident == "Symbol") {
+                if let Some(last) = p.path.segments.last() {
+                    if last.ident == "new" && i.args.len() >= 2 {
+                        if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) = &i.args[1] {
+                            let val = s.value();
+                            if val.len() > 32 {
+                                self.issues.push(SymbolIssue {
+                                    value: val,
+                                    issue_type: "Symbol::new > 32".to_string(),
+                                    location: format!("line {}", i.span().start().line),
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        visit::visit_expr_call(self, i);
+    }
+
+    fn visit_macro(&mut self, i: &'ast syn::Macro) {
+        if i.path.is_ident("symbol_short") {
+            let tokens = &i.tokens;
+            let token_str = quote::quote!(#tokens).to_string();
+            let val = token_str.trim_matches('"').trim_matches(' ').to_string();
+            if val.len() > 10 {
+                self.issues.push(SymbolIssue {
+                    value: val,
+                    issue_type: "symbol_short! > 10".to_string(),
+                    location: format!("line {}", i.span().start().line),
+                });
+            }
+        }
+        visit::visit_macro(self, i);
     }
 }
 
