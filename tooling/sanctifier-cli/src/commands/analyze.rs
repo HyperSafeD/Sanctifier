@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use clap::Args;
 use colored::*;
-use sanctifier_core::{Analyzer, ArithmeticIssue, SizeWarning, UnsafePattern};
+use sanctifier_core::{Analyzer, SanctifyConfig};
 
 #[derive(Args, Debug)]
 pub struct AnalyzeArgs {
@@ -44,120 +44,54 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
 
     let mut analyzer = Analyzer::new(sanctifier_core::SanctifyConfig::default());
     
-    let mut all_size_warnings: Vec<SizeWarning> = Vec::new();
-    let mut all_unsafe_patterns: Vec<UnsafePattern> = Vec::new();
-    let mut all_auth_gaps: Vec<String> = Vec::new();
-    let mut all_panic_issues = Vec::new();
-    let mut all_arithmetic_issues: Vec<ArithmeticIssue> = Vec::new();
+    let config = SanctifyConfig::default();
+    let analyzer = Analyzer::new(config);
+    
+    let mut collisions = Vec::new();
 
     if path.is_dir() {
-        analyze_directory(
-            path,
-            &analyzer,
-            &mut all_size_warnings,
-            &mut all_unsafe_patterns,
-            &mut all_auth_gaps,
-            &mut all_panic_issues,
-            &mut all_arithmetic_issues,
-        );
-    } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-        if let Ok(content) = fs::read_to_string(path) {
-            all_size_warnings.extend(analyzer.analyze_ledger_size(&content));
-
-            let patterns = analyzer.analyze_unsafe_patterns(&content);
-            for mut p in patterns {
-                p.snippet = format!("{}: {}", path.display(), p.snippet);
-                all_unsafe_patterns.push(p);
-            }
-
-            let gaps = analyzer.scan_auth_gaps(&content);
-            for g in gaps {
-                all_auth_gaps.push(format!("{}: {}", path.display(), g));
-            }
-
-            let panics = analyzer.scan_panics(&content);
-            for p in panics {
-                let mut p_mod = p.clone();
-                p_mod.location = format!("{}: {}", path.display(), p.location);
-                all_panic_issues.push(p_mod);
-            }
-
-            let arith = analyzer.scan_arithmetic_overflow(&content);
-            for mut a in arith {
-                a.location = format!("{}: {}", path.display(), a.location);
-                all_arithmetic_issues.push(a);
+        walk_dir(path, &analyzer, &mut collisions)?;
+    } else {
+        if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            if let Ok(content) = fs::read_to_string(path) {
+                collisions.extend(analyzer.scan_storage_collisions(&content));
             }
         }
     }
 
-    if is_json {
-        eprintln!("{} Static analysis complete.\n", "✅".green());
-        let output = serde_json::json!({
-            "size_warnings": all_size_warnings,
-            "unsafe_patterns": all_unsafe_patterns,
-            "auth_gaps": all_auth_gaps,
-            "panic_issues": all_panic_issues,
-            "arithmetic_issues": all_arithmetic_issues,
-        });
-        println!("{}", serde_json::to_string_pretty(&output).unwrap_or_else(|_| "{}".to_string()));
+    if collisions.is_empty() {
+        println!("\n{} No storage key collisions found.", "✅".green());
     } else {
-        println!("{} Static analysis complete.\n", "✅".green());
-        
-        if all_size_warnings.is_empty() {
-            println!("No ledger size issues found.");
-        } else {
-            for warning in all_size_warnings {
-                println!(
-                    "{} Warning: Struct {} is approaching ledger entry size limit!",
-                    "⚠️".yellow(),
-                    warning.struct_name.bold()
-                );
-            }
+        println!("\n{} Found potential Storage Key Collisions!", "⚠️".yellow());
+        for collision in collisions {
+            println!("   {} Value: {}", "->".red(), collision.key_value.bold());
+            println!("      Type: {}", collision.key_type);
+            println!("      Location: {}", collision.location);
+            println!("      Message: {}", collision.message);
         }
-
-        if !all_auth_gaps.is_empty() {
-            println!("\n{} Found potential Authentication Gaps!", "🛑".red());
-            for gap in all_auth_gaps {
-                println!("   {} Function {} is modifying state without require_auth()", "->".red(), gap.bold());
-            }
-        } else {
-            println!("\nNo authentication gaps found.");
-        }
-
-        if !all_panic_issues.is_empty() {
-            println!("\n{} Found explicit Panics/Unwraps!", "🛑".red());
-            for issue in all_panic_issues {
-                println!(
-                    "   {} Function {}: Using {} (Location: {})",
-                    "->".red(),
-                    issue.function_name.bold(),
-                    format!("{:?}", issue.issue_type).yellow().bold(),
-                    issue.location
-                );
-            }
-            println!("   {} Tip: Prefer returning Result or Error types for better contract safety.", "💡".blue());
-        } else {
-            println!("\nNo panic/unwrap issues found.");
-        }
-
-        if !all_arithmetic_issues.is_empty() {
-            println!("\n{} Found unchecked Arithmetic Operations!", "🔢".yellow());
-            for issue in all_arithmetic_issues {
-                println!(
-                    "   {} Function {}: Unchecked `{}` ({})",
-                    "->".red(),
-                    issue.function_name.bold(),
-                    issue.operation.yellow().bold(),
-                    issue.location
-                );
-            }
-        } else {
-            println!("\nNo arithmetic overflow risks found.");
-        }
-        
-        println!("\nNo upgrade pattern issues found.");
     }
     
+    Ok(())
+}
+
+fn walk_dir(dir: &Path, analyzer: &Analyzer, collisions: &mut Vec<sanctifier_core::StorageCollisionIssue>) -> anyhow::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            walk_dir(&path, analyzer, collisions)?;
+        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+            if let Ok(content) = fs::read_to_string(&path) {
+                let mut issues = analyzer.scan_storage_collisions(&content);
+                // Prefix location with filename
+                let file_name = path.display().to_string();
+                for issue in &mut issues {
+                    issue.location = format!("{}:{}", file_name, issue.location);
+                }
+                collisions.extend(issues);
+            }
+        }
+    }
     Ok(())
 }
 
