@@ -813,6 +813,62 @@ mod tests {
         // Location should include function name
         assert!(issues[0].location.starts_with("risky:"));
     }
+
+    #[test]
+    fn test_token_with_bugs() {
+        let analyzer = Analyzer::new(false);
+        let source = r#"
+            #![no_std]
+            use soroban_sdk::{contract, contractimpl, symbol_short, Env, String, Address, Symbol, Val};
+
+            #[contract]
+            pub struct TokenWithBugs;
+
+            const BALANCE: Symbol = symbol_short!("BALANCE");
+
+            #[contractimpl]
+            impl TokenWithBugs {
+                pub fn initialize(e: Env, admin: Address, name: String, symbol: String) {
+                    // Not implemented for this test
+                }
+
+                pub fn balance(e: Env, id: Address) -> i128 {
+                    e.storage().persistent().get(&id).unwrap_or(0)
+                }
+
+                // This transfer function is missing an authorization check but performs a storage operation
+                pub fn transfer(e: Env, from: Address, to: Address, amount: i128) {
+                    // Vulnerability: Missing require_auth call for 'from'
+                    let from_balance = Self::balance(e.clone(), from.clone());
+                    e.storage().persistent().set(&from, &(from_balance - amount)); // Mutable operation
+                    
+                    let to_balance = Self::balance(e.clone(), to.clone());
+                    e.storage().persistent().set(&to, &(to_balance + amount));
+                }
+
+                // This mint function can cause an overflow
+                pub fn mint(e: Env, to: Address, amount: i128) {
+                    // VULNERABILITY: No overflow check
+                    let current_balance = Self::balance(e.clone(), to.clone());
+                    let new_balance = current_balance + amount; // This can overflow
+                    e.storage().persistent().set(&to, &new_balance);
+                }
+
+                pub fn symbol(e: Env) -> String {
+                    String::from_str(&e, "TKN")
+                }
+            }
+        "#;
+
+        let auth_gaps = analyzer.scan_auth_gaps(source);
+        assert_eq!(auth_gaps.len(), 1, "Expected 1 auth gap");
+        assert_eq!(auth_gaps[0], "transfer");
+
+        let arithmetic_issues = analyzer.scan_arithmetic_overflow(source);
+        assert_eq!(arithmetic_issues.len(), 2, "Expected 2 arithmetic issues");
+        assert!(arithmetic_issues.iter().any(|issue| issue.function_name == "transfer" && issue.operation == "-"));
+        assert!(arithmetic_issues.iter().any(|issue| issue.function_name == "transfer" && issue.operation == "+"));
+    }
 }
 pub mod gas_estimator;\npub mod gas_report;
 pub mod reentrancy;
