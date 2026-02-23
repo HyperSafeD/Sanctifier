@@ -163,6 +163,16 @@ pub struct StorageCollisionIssue {
     pub message: String,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct EventIssue {
+    pub event_name: String,
+    pub topic_count: usize,
+    pub location: String,
+    pub issue_type: String,
+    pub message: String,
+    pub suggestion: String,
+}
+
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 /// User-defined regex-based rule. Defined in .sanctify.toml under [[custom_rules]].
@@ -637,29 +647,128 @@ impl Analyzer {
         report
     }
 
-    // ── Event Consistency and Optimization (NEW) ─────────────────────────────
+    // ── Event Consistency and Optimization ──────────────────────────────────────
+
+    fn extract_topics(line: &str) -> String {
+        if let Some(start_paren) = line.find('(') {
+            let after_publish = &line[start_paren + 1..];
+            if let Some(end_paren) = after_publish.rfind(')') {
+                let topics_content = &after_publish[..end_paren];
+                if topics_content.contains(',') || topics_content.starts_with('(') {
+                    return topics_content.to_string();
+                }
+            }
+        }
+        if let Some(vec_start) = line.find("vec![") {
+            let after_vec = &line[vec_start + 5..];
+            if let Some(end_bracket) = after_vec.find(']') {
+                return after_vec[..end_bracket].to_string();
+            }
+        }
+        String::new()
+    }
+
+    fn extract_event_name(line: &str) -> Option<String> {
+        if let Some(start) = line.find('(') {
+            let content = &line[start..];
+            if let Some(name_end) = content.find(',') {
+                let name_part = &content[1..name_end];
+                let clean_name = name_part.trim().trim_matches('"');
+                if !clean_name.is_empty() {
+                    return Some(clean_name.to_string());
+                }
+            } else if let Some(end_paren) = content.find(')') {
+                let name_part = &content[1..end_paren];
+                let clean_name = name_part.trim().trim_matches('"');
+                if !clean_name.is_empty() {
+                    return Some(clean_name.to_string());
+                }
+            }
+        }
+        None
+    }
 
     /// Scans for `env.events().publish(topics, data)` and checks:
     /// 1. Consistency of topic counts for the same event name.
     /// 2. Opportunities to use `symbol_short!` for gas savings.
-    /* pub fn scan_events(&self, source: &str) -> Vec<EventIssue> {
+    pub fn scan_events(&self, source: &str) -> Vec<EventIssue> {
         with_panic_guard(|| self.scan_events_impl(source))
     }
 
     fn scan_events_impl(&self, source: &str) -> Vec<EventIssue> {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return vec![],
-        };
+        let mut issues = Vec::new();
+        let mut event_schemas: std::collections::HashMap<String, Vec<usize>> =
+            std::collections::HashMap::new();
+        let mut issue_locations: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
 
-        let mut visitor = EventVisitor {
-            issues: Vec::new(),
-            current_fn: None,
-            event_schemas: std::collections::HashMap::new(),
-        };
-        visitor.visit_file(&file);
-        visitor.issues
-    } */
+        for (line_num, line) in source.lines().enumerate() {
+            let line = line.trim();
+
+            if line.contains("env.events().publish(") || line.contains("env.events().emit(") {
+                let topics_str = Self::extract_topics(line);
+                let topic_count = if topics_str.is_empty() {
+                    0
+                } else {
+                    topics_str.matches(',').count() + 1
+                };
+
+                let event_name = Self::extract_event_name(line)
+                    .unwrap_or_else(|| format!("unknown_{}", line_num));
+
+                let location = format!("line {}", line_num + 1);
+                let location_key = format!("{}:{}", event_name, topic_count);
+
+                if let Some(previous_counts) = event_schemas.get(&event_name) {
+                    for &prev_count in previous_counts {
+                        if prev_count != topic_count {
+                            let issue_key = format!("{}:{}:inconsistent", event_name, line_num + 1);
+                            if !issue_locations.contains(&issue_key) {
+                                issue_locations.insert(issue_key);
+                                issues.push(EventIssue {
+                                    event_name: event_name.clone(),
+                                    topic_count,
+                                    location: location.clone(),
+                                    issue_type: "inconsistent_topics".to_string(),
+                                    message: format!(
+                                        "Event '{}' has inconsistent topic count. Previous: {}, Current: {}",
+                                        event_name, prev_count, topic_count
+                                    ),
+                                    suggestion: "Ensure the same event always uses the same number of topics.".to_string(),
+                                });
+                            }
+                        }
+                    }
+                }
+
+                event_schemas
+                    .entry(event_name.clone())
+                    .or_insert_with(Vec::new)
+                    .push(topic_count);
+
+                if !line.contains("symbol_short!") && topic_count > 0 {
+                    let has_string_topic = line.contains("\"") || line.contains("String");
+                    if has_string_topic {
+                        let issue_key = format!("{}:{}:gas_optimization", event_name, line_num + 1);
+                        if !issue_locations.contains(&issue_key) {
+                            issue_locations.insert(issue_key);
+                            issues.push(EventIssue {
+                                event_name,
+                                topic_count,
+                                location: format!("line {}", line_num + 1),
+                                issue_type: "gas_optimization".to_string(),
+                                message: "Consider using symbol_short! for short topic names to save gas.".to_string(),
+                                suggestion: "Replace string literals with symbol_short!(\"...\") for topics that are short (up to 9 characters).".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        issues
+    }
+
     // ── Unsafe-pattern visitor ────────────────────────────────────────────────
 
     /// Visitor-based scan for `panic!`, `.unwrap()`, `.expect()` with line
@@ -1397,4 +1506,36 @@ mod tests {
             assert!(issues.iter().any(|i| i.key_value == "other"));
         }
     */
+
+    #[test]
+    fn test_scan_events_consistency() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contractimpl]
+            impl Token {
+                pub fn transfer(env: Env, from: Address, to: Address, amount: u128) {
+                    env.events().publish((from, to, "transfer"), amount);
+                    env.events().publish((from, "transfer"), amount);
+                }
+            }
+        "#;
+        let issues = analyzer.scan_events(source);
+        assert!(!issues.is_empty());
+        assert!(issues.iter().any(|i| i.issue_type == "inconsistent_topics"));
+    }
+
+    #[test]
+    fn test_scan_events_gas_optimization() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contractimpl]
+            impl Token {
+                pub fn mint(env: Env, to: Address) {
+                    env.events().publish(("mint", to), 100u128);
+                }
+            }
+        "#;
+        let issues = analyzer.scan_events(source);
+        assert!(issues.iter().any(|i| i.issue_type == "gas_optimization"));
+    }
 }
