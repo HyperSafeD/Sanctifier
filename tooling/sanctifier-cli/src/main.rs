@@ -8,10 +8,7 @@ use sanctifier_core::{
     SizeWarning, UnsafePattern, UpgradeCategory, UpgradeReport,
 };
 use std::fs;
-use std::path::{Path, PathBuf};
-mod commands;
 
-use commands::analyze::AnalyzeArgs;
 
 #[derive(Parser)]
 #[command(name = "sanctifier")]
@@ -22,12 +19,9 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
-enum Commands {
+pub enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
-    Analyze(AnalyzeArgs),
-}
 
-fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
@@ -304,6 +298,7 @@ fn main() -> anyhow::Result<()> {
             } else {
                 println!("Report printed to stdout.");
             }
+
         }
         Commands::Init => {}
     }
@@ -417,7 +412,27 @@ fn analyze_directory(
                 }
             }
         }
+        fn collect_rs_files(path: &PathBuf) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    if path.is_file() && path.extension().map_or(false, |e| e == "rs") {
+        files.push(path.clone());
+    } else if path.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                let name = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                if p.is_dir() && name != "target" && name != ".git" {
+                    files.extend(collect_rs_files(&p));
+                } else if p.extension().map_or(false, |e| e == "rs") {
+                    files.push(p);
+                }
+            }
+        }
     }
+    files
+}
+    }
+    
 }
 
 fn load_config(path: &Path) -> SanctifyConfig {
