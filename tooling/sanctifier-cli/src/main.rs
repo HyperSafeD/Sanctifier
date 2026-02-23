@@ -21,7 +21,7 @@ pub enum Commands {
         output: Option<std::path::PathBuf>,
     },
     /// Initialize Sanctifier in a new project
-    Init,
+    Init(commands::init::InitArgs),
 }
 
 fn main() -> anyhow::Result<()> {
@@ -41,8 +41,8 @@ fn main() -> anyhow::Result<()> {
                 println!("Report printed to stdout.");
             }
         }
-        Commands::Init => {
-            println!("Initializing project...");
+        Commands::Init(args) => {
+            commands::init::exec(args)?;
         }
     }
 
