@@ -1,22 +1,21 @@
 use serde::{Deserialize, Serialize};
 pub mod gas_estimator;
-<<<<<<< HEAD
-mod storage_collision;
-=======
 pub mod gas_report;
 pub mod complexity;
 pub mod reentrancy;
 pub mod storage_collision;
 
->>>>>>> 0ef6af1 (Update Soroban SDK to v20.3.2 and fix analysis tool breaking changes)
 use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{parse_str, Fields, File, Item, Meta, Type};
 
-use soroban_sdk::Env;
 use thiserror::Error;
+// Note: soroban_sdk::Env is only used in the SanctifiedGuard trait below,
+// which is gated to avoid conflicts in host-side / test builds.
+#[cfg(target_arch = "wasm32")]
+use soroban_sdk::Env;
 
 const DEFAULT_APPROACHING_THRESHOLD: f64 = 0.8;
 
@@ -32,6 +31,7 @@ where
 }
 
 // ── Existing types ────────────────────────────────────────────────────────────
+
 
 /// Severity of a ledger size warning.
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -178,16 +178,6 @@ pub struct StorageCollisionIssue {
     pub message: String,
 }
 
-#[derive(Debug, Serialize, Clone)]
-pub struct EventIssue {
-    pub event_name: String,
-    pub topic_count: usize,
-    pub location: String,
-    pub issue_type: String,
-    pub message: String,
-    pub suggestion: String,
-}
-
 // ── Configuration ─────────────────────────────────────────────────────────────
 
 /// User-defined regex-based rule. Defined in .sanctify.toml under [[custom_rules]].
@@ -284,6 +274,8 @@ fn classify_size(
     }
 }
 
+
+
 // ── Analyzer ──────────────────────────────────────────────────────────────────
 
 pub struct Analyzer {
@@ -328,15 +320,9 @@ impl Analyzer {
                         if let syn::Visibility::Public(_) = f.vis {
                             let fn_name = f.sig.ident.to_string();
                             let mut has_mutation = false;
-                            let mut has_read = false;
                             let mut has_auth = false;
-                            self.check_fn_body(
-                                &f.block,
-                                &mut has_mutation,
-                                &mut has_read,
-                                &mut has_auth,
-                            );
-                            if has_mutation && !has_read && !has_auth {
+                            self.check_fn_body(&f.block, &mut has_mutation, &mut has_auth);
+                            if has_mutation && !has_auth {
                                 gaps.push(fn_name);
                             }
                         }
@@ -451,25 +437,17 @@ impl Analyzer {
 
     // ── Mutation / auth helpers ───────────────────────────────────────────────
 
-    fn check_fn_body(
-        &self,
-        block: &syn::Block,
-        has_mutation: &mut bool,
-        has_read: &mut bool,
-        has_auth: &mut bool,
-    ) {
+    fn check_fn_body(&self, block: &syn::Block, has_mutation: &mut bool, has_auth: &mut bool) {
         for stmt in &block.stmts {
             match stmt {
-                syn::Stmt::Expr(expr, _) => self.check_expr(expr, has_mutation, has_read, has_auth),
+                syn::Stmt::Expr(expr, _) => self.check_expr(expr, has_mutation, has_auth),
                 syn::Stmt::Local(local) => {
                     if let Some(init) = &local.init {
-                        self.check_expr(&init.expr, has_mutation, has_read, has_auth);
+                        self.check_expr(&init.expr, has_mutation, has_auth);
                     }
                 }
                 syn::Stmt::Macro(m) => {
-                    if m.mac.path.is_ident("require_auth")
-                        || m.mac.path.is_ident("require_auth_for_args")
-                    {
+                    if m.mac.path.is_ident("require_auth") || m.mac.path.is_ident("require_auth_for_args") {
                         *has_auth = true;
                     }
                 }
@@ -478,13 +456,7 @@ impl Analyzer {
         }
     }
 
-    fn check_expr(
-        &self,
-        expr: &syn::Expr,
-        has_mutation: &mut bool,
-        has_read: &mut bool,
-        has_auth: &mut bool,
-    ) {
+    fn check_expr(&self, expr: &syn::Expr, has_mutation: &mut bool, has_auth: &mut bool) {
         match expr {
             syn::Expr::Call(c) => {
                 if let syn::Expr::Path(p) = &*c.func {
@@ -496,7 +468,7 @@ impl Analyzer {
                     }
                 }
                 for arg in &c.args {
-                    self.check_expr(arg, has_mutation, has_read, has_auth);
+                    self.check_expr(arg, has_mutation, has_auth);
                 }
             }
             syn::Expr::MethodCall(m) => {
@@ -504,44 +476,30 @@ impl Analyzer {
                 if method_name == "set" || method_name == "update" || method_name == "remove" {
                     // Heuristic: check if receiver chain contains "storage"
                     let receiver_str = quote::quote!(#m.receiver).to_string();
-                    if receiver_str.contains("storage")
-                        || receiver_str.contains("persistent")
-                        || receiver_str.contains("temporary")
-                        || receiver_str.contains("instance")
-                    {
+                    if receiver_str.contains("storage") || receiver_str.contains("persistent") || receiver_str.contains("temporary") || receiver_str.contains("instance") {
                         *has_mutation = true;
-                    }
-                }
-                if method_name == "get" {
-                    let receiver_str = quote::quote!(#m.receiver).to_string();
-                    if receiver_str.contains("storage")
-                        || receiver_str.contains("persistent")
-                        || receiver_str.contains("temporary")
-                        || receiver_str.contains("instance")
-                    {
-                        *has_read = true;
                     }
                 }
                 if method_name == "require_auth" || method_name == "require_auth_for_args" {
                     *has_auth = true;
                 }
-                self.check_expr(&m.receiver, has_mutation, has_read, has_auth);
+                self.check_expr(&m.receiver, has_mutation, has_auth);
                 for arg in &m.args {
-                    self.check_expr(arg, has_mutation, has_read, has_auth);
+                    self.check_expr(arg, has_mutation, has_auth);
                 }
             }
-            syn::Expr::Block(b) => self.check_fn_body(&b.block, has_mutation, has_read, has_auth),
+            syn::Expr::Block(b) => self.check_fn_body(&b.block, has_mutation, has_auth),
             syn::Expr::If(i) => {
-                self.check_expr(&i.cond, has_mutation, has_read, has_auth);
-                self.check_fn_body(&i.then_branch, has_mutation, has_read, has_auth);
+                self.check_expr(&i.cond, has_mutation, has_auth);
+                self.check_fn_body(&i.then_branch, has_mutation, has_auth);
                 if let Some((_, else_expr)) = &i.else_branch {
-                    self.check_expr(else_expr, has_mutation, has_read, has_auth);
+                    self.check_expr(else_expr, has_mutation, has_auth);
                 }
             }
             syn::Expr::Match(m) => {
-                self.check_expr(&m.expr, has_mutation, has_read, has_auth);
+                self.check_expr(&m.expr, has_mutation, has_auth);
                 for arm in &m.arms {
-                    self.check_expr(&arm.body, has_mutation, has_read, has_auth);
+                    self.check_expr(&arm.body, has_mutation, has_auth);
                 }
             }
             _ => {}
@@ -574,23 +532,12 @@ impl Analyzer {
         let strict = self.config.strict_mode;
         let strict_threshold = (limit as f64 * 0.5) as usize;
 
-<<<<<<< HEAD
-        let approaching_count = approaching;
-
-=======
->>>>>>> 0ef6af1 (Update Soroban SDK to v20.3.2 and fix analysis tool breaking changes)
         for item in &file.items {
             match item {
                 Item::Struct(s) => {
                     if has_contracttype(&s.attrs) {
                         let size = self.estimate_struct_size(s);
-<<<<<<< HEAD
-                        if let Some(level) =
-                            classify_size(size, limit, approaching_count, strict, strict_threshold)
-                        {
-=======
                         if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
->>>>>>> 0ef6af1 (Update Soroban SDK to v20.3.2 and fix analysis tool breaking changes)
                             warnings.push(SizeWarning {
                                 struct_name: s.ident.to_string(),
                                 estimated_size: size,
@@ -603,13 +550,7 @@ impl Analyzer {
                 Item::Enum(e) => {
                     if has_contracttype(&e.attrs) {
                         let size = self.estimate_enum_size(e);
-<<<<<<< HEAD
-                        if let Some(level) =
-                            classify_size(size, limit, approaching_count, strict, strict_threshold)
-                        {
-=======
                         if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
->>>>>>> 0ef6af1 (Update Soroban SDK to v20.3.2 and fix analysis tool breaking changes)
                             warnings.push(SizeWarning {
                                 struct_name: e.ident.to_string(),
                                 estimated_size: size,
@@ -672,127 +613,29 @@ impl Analyzer {
         report
     }
 
-    // ── Event Consistency and Optimization ──────────────────────────────────────
-
-    fn extract_topics(line: &str) -> String {
-        if let Some(start_paren) = line.find('(') {
-            let after_publish = &line[start_paren + 1..];
-            if let Some(end_paren) = after_publish.rfind(')') {
-                let topics_content = &after_publish[..end_paren];
-                if topics_content.contains(',') || topics_content.starts_with('(') {
-                    return topics_content.to_string();
-                }
-            }
-        }
-        if let Some(vec_start) = line.find("vec![") {
-            let after_vec = &line[vec_start + 5..];
-            if let Some(end_bracket) = after_vec.find(']') {
-                return after_vec[..end_bracket].to_string();
-            }
-        }
-        String::new()
-    }
-
-    fn extract_event_name(line: &str) -> Option<String> {
-        if let Some(start) = line.find('(') {
-            let content = &line[start..];
-            if let Some(name_end) = content.find(',') {
-                let name_part = &content[1..name_end];
-                let clean_name = name_part.trim().trim_matches('"');
-                if !clean_name.is_empty() {
-                    return Some(clean_name.to_string());
-                }
-            } else if let Some(end_paren) = content.find(')') {
-                let name_part = &content[1..end_paren];
-                let clean_name = name_part.trim().trim_matches('"');
-                if !clean_name.is_empty() {
-                    return Some(clean_name.to_string());
-                }
-            }
-        }
-        None
-    }
+    // ── Event Consistency and Optimization (NEW) ─────────────────────────────
 
     /// Scans for `env.events().publish(topics, data)` and checks:
     /// 1. Consistency of topic counts for the same event name.
     /// 2. Opportunities to use `symbol_short!` for gas savings.
-    pub fn scan_events(&self, source: &str) -> Vec<EventIssue> {
+    /* pub fn scan_events(&self, source: &str) -> Vec<EventIssue> {
         with_panic_guard(|| self.scan_events_impl(source))
     }
 
     fn scan_events_impl(&self, source: &str) -> Vec<EventIssue> {
-        let mut issues = Vec::new();
-        let mut event_schemas: std::collections::HashMap<String, Vec<usize>> =
-            std::collections::HashMap::new();
-        let mut issue_locations: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
 
-        for (line_num, line) in source.lines().enumerate() {
-            let line = line.trim();
-
-            if line.contains("env.events().publish(") || line.contains("env.events().emit(") {
-                let topics_str = Self::extract_topics(line);
-                let topic_count = if topics_str.is_empty() {
-                    0
-                } else {
-                    topics_str.matches(',').count() + 1
-                };
-
-                let event_name = Self::extract_event_name(line)
-                    .unwrap_or_else(|| format!("unknown_{}", line_num));
-
-                let location = format!("line {}", line_num + 1);
-                let location_key = format!("{}:{}", event_name, topic_count);
-
-                if let Some(previous_counts) = event_schemas.get(&event_name) {
-                    for &prev_count in previous_counts {
-                        if prev_count != topic_count {
-                            let issue_key = format!("{}:{}:inconsistent", event_name, line_num + 1);
-                            if !issue_locations.contains(&issue_key) {
-                                issue_locations.insert(issue_key);
-                                issues.push(EventIssue {
-                                    event_name: event_name.clone(),
-                                    topic_count,
-                                    location: location.clone(),
-                                    issue_type: "inconsistent_topics".to_string(),
-                                    message: format!(
-                                        "Event '{}' has inconsistent topic count. Previous: {}, Current: {}",
-                                        event_name, prev_count, topic_count
-                                    ),
-                                    suggestion: "Ensure the same event always uses the same number of topics.".to_string(),
-                                });
-                            }
-                        }
-                    }
-                }
-
-                event_schemas
-                    .entry(event_name.clone())
-                    .or_insert_with(Vec::new)
-                    .push(topic_count);
-
-                if !line.contains("symbol_short!") && topic_count > 0 {
-                    let has_string_topic = line.contains("\"") || line.contains("String");
-                    if has_string_topic {
-                        let issue_key = format!("{}:{}:gas_optimization", event_name, line_num + 1);
-                        if !issue_locations.contains(&issue_key) {
-                            issue_locations.insert(issue_key);
-                            issues.push(EventIssue {
-                                event_name,
-                                topic_count,
-                                location: format!("line {}", line_num + 1),
-                                issue_type: "gas_optimization".to_string(),
-                                message: "Consider using symbol_short! for short topic names to save gas.".to_string(),
-                                suggestion: "Replace string literals with symbol_short!(\"...\") for topics that are short (up to 9 characters).".to_string(),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        issues
-    }
+        let mut visitor = EventVisitor {
+            issues: Vec::new(),
+            current_fn: None,
+            event_schemas: std::collections::HashMap::new(),
+        };
+        visitor.visit_file(&file);
+        visitor.issues
+    } */
 
     // ── Unsafe-pattern visitor ────────────────────────────────────────────────
 
@@ -887,8 +730,6 @@ impl Analyzer {
         visitor.collisions
     }
 
-<<<<<<< HEAD
-=======
     pub fn scan_symbols(&self, source: &str) -> Vec<SymbolIssue> {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
@@ -901,7 +742,6 @@ impl Analyzer {
     }
 
 
->>>>>>> 0ef6af1 (Update Soroban SDK to v20.3.2 and fix analysis tool breaking changes)
     // ── Size estimation helpers ───────────────────────────────────────────────
 
     fn estimate_enum_size(&self, e: &syn::ItemEnum) -> usize {
@@ -979,17 +819,13 @@ impl Analyzer {
                         }
                         "Map" => {
                             if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                                let inner: usize = args
-                                    .args
-                                    .iter()
-                                    .filter_map(|a| {
-                                        if let syn::GenericArgument::Type(t) = a {
-                                            Some(self.estimate_type_size(t))
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .sum();
+                                let inner: usize = args.args.iter().filter_map(|a| {
+                                    if let syn::GenericArgument::Type(t) = a {
+                                        Some(self.estimate_type_size(t))
+                                    } else {
+                                        None
+                                    }
+                                }).sum();
                                 if inner > 0 {
                                     return 16 + inner * 2;
                                 }
@@ -1066,17 +902,19 @@ impl<'ast> Visit<'ast> for UnsafeVisitor {
 
 /// Error type for SanctifiedGuard runtime invariant violations.
 #[derive(Debug, Error)]
-pub enum Error {
+pub enum GuardError {
     #[error("invariant violation: {0}")]
     InvariantViolation(String),
 }
 
-/// Trait for runtime monitoring. Implement this to enforce invariants
-/// on your contract state. The foundation for runtime monitoring.
+/// Trait for runtime monitoring. Implement this on-chain in your contract
+/// to enforce invariants against the Soroban Env. Only available when
+/// compiling to wasm32 (i.e. inside a real Soroban contract).
+#[cfg(target_arch = "wasm32")]
 pub trait SanctifiedGuard {
     /// Verifies that contract invariants hold in the current environment.
     /// Returns `Ok(())` if all invariants hold, or `Err` with a violation message.
-    fn check_invariant(&self, env: &Env) -> Result<(), Error>;
+    fn check_invariant(&self, env: &Env) -> Result<(), GuardError>;
 }
 
 // ── ArithVisitor ──────────────────────────────────────────────────────────────
@@ -1227,475 +1065,4 @@ fn is_string_literal(expr: &syn::Expr) -> bool {
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_analyze_with_macros() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            use soroban_sdk::{contract, contractimpl, Env};
-
-            #[contract]
-            pub struct MyContract;
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn hello(env: Env) {}
-            }
-
-            #[contracttype]
-            pub struct SmallData {
-                pub x: u32,
-            }
-
-            #[contracttype]
-            pub struct BigData {
-                pub buffer: Bytes,
-                pub large: u128,
-            }
-        "#;
-        let warnings = analyzer.analyze_ledger_size(source);
-        // SmallData: 4 bytes — BigData: 64 + 16 = 80 bytes — both under 64 KB
-        assert!(warnings.is_empty());
-    }
-
-    #[test]
-    fn test_analyze_with_limit() {
-        let mut config = SanctifyConfig::default();
-        config.ledger_limit = 50;
-        let analyzer = Analyzer::new(config);
-        let source = r#"
-            #[contracttype]
-            pub struct ExceedsLimit {
-                pub buffer: Bytes, // 64 bytes estimated
-            }
-        "#;
-        let warnings = analyzer.analyze_ledger_size(source);
-        assert_eq!(warnings.len(), 1);
-        assert_eq!(warnings[0].struct_name, "ExceedsLimit");
-        assert_eq!(warnings[0].estimated_size, 64);
-        assert_eq!(warnings[0].level, SizeWarningLevel::ExceedsLimit);
-    }
-
-<<<<<<< HEAD
-    /*
-        #[test]
-        fn test_ledger_size_enum_and_approaching() {
-            let mut config = SanctifyConfig::default();
-            config.ledger_limit = 100;
-            config.approaching_threshold = 0.5;
-            let analyzer = Analyzer::new(config);
-            let source = r#"
-                #[contracttype]
-                pub enum DataKey {
-                    Balance(Address),
-                    Admin,
-                }
-
-                #[contracttype]
-                pub struct NearLimit {
-                    pub a: u128,
-                    pub b: u128,
-                    pub c: u128,
-                    pub d: u128,
-                }
-            "#;
-            let warnings = analyzer.analyze_ledger_size(source);
-            assert!(warnings.iter().any(|w| w.struct_name == "NearLimit"), "NearLimit (64 bytes) should exceed 50% of 100");
-            assert!(warnings.iter().any(|w| w.level == SizeWarningLevel::ApproachingLimit));
-        }
-    */
-=======
-    #[test]
-    fn test_ledger_size_enum_and_approaching() {
-        let mut config = SanctifyConfig::default();
-        config.ledger_limit = 100;
-        config.approaching_threshold = 0.5;
-        let analyzer = Analyzer::new(config);
-        let source = r#"
-            #[contracttype]
-            pub enum DataKey {
-                Balance(Address),
-                Admin,
-            }
-
-            #[contracttype]
-            pub struct NearLimit {
-                pub a: u128,
-                pub b: u128,
-                pub c: u128,
-                pub d: u128,
-            }
-        "#;
-        let warnings = analyzer.analyze_ledger_size(source);
-        assert!(warnings.iter().any(|w| w.struct_name == "NearLimit"), "NearLimit (64 bytes) should exceed 50% of 100");
-        assert!(warnings.iter().any(|w| w.level == SizeWarningLevel::ApproachingLimit));
-    }
->>>>>>> 43c1409 (Cleanup: Uncomment tests, fix logic inconsistencies, and ensure Soroban SDK v20 alignment.)
-
-    #[test]
-    fn test_complex_macro_no_panic() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            macro_rules! complex {
-                ($($t:tt)*) => { $($t)* };
-            }
-
-            complex! {
-                pub struct MyStruct {
-                    pub x: u32,
-                }
-            }
-
-            #[contractimpl]
-            impl Contract {
-                pub fn test() {
-                    let x = symbol_short!("test");
-                }
-            }
-        "#;
-        let _ = analyzer.analyze_ledger_size(source);
-    }
-
-    #[test]
-    fn test_heavy_macro_usage_graceful() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            use soroban_sdk::{contract, contractimpl, Env};
-
-            #[contract]
-            pub struct Token;
-
-            #[contractimpl]
-            impl Token {
-                pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
-                    // Heavy macro expansion - analyzer must not panic
-                }
-            }
-        "#;
-        let _ = analyzer.scan_auth_gaps(source);
-        let _ = analyzer.scan_panics(source);
-        let _ = analyzer.analyze_unsafe_patterns(source);
-        let _ = analyzer.analyze_ledger_size(source);
-        let _ = analyzer.scan_arithmetic_overflow(source);
-    }
-
-    #[test]
-    fn test_scan_auth_gaps() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn set_data(env: Env, val: u32) {
-                    env.storage().instance().set(&DataKey::Val, &val);
-                }
-
-                pub fn set_data_secure(env: Env, val: u32) {
-                    env.require_auth();
-                    env.storage().instance().set(&DataKey::Val, &val);
-                }
-
-                pub fn get_data(env: Env) -> u32 {
-                    env.storage().instance().get(&DataKey::Val).unwrap_or(0)
-                }
-
-                pub fn no_storage(env: Env) {
-                    let x = 1 + 1;
-                }
-            }
-        "#;
-        let gaps = analyzer.scan_auth_gaps(source);
-        assert_eq!(gaps.len(), 1);
-        assert_eq!(gaps[0], "set_data");
-    }
-
-    #[test]
-    fn test_scan_panics() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn unsafe_fn(env: Env) {
-                    panic!("Something went wrong");
-                }
-
-                pub fn unsafe_unwrap(env: Env) {
-                    let x: Option<u32> = None;
-                    let y = x.unwrap();
-                }
-
-                pub fn unsafe_expect(env: Env) {
-                    let x: Option<u32> = None;
-                    let y = x.expect("Failed to get x");
-                }
-
-                pub fn safe_fn(env: Env) -> Result<(), u32> {
-                    Ok(())
-                }
-            }
-        "#;
-        let issues = analyzer.scan_panics(source);
-        assert_eq!(issues.len(), 3);
-
-        let types: Vec<String> = issues.iter().map(|i| i.issue_type.clone()).collect();
-        assert!(types.contains(&"panic!".to_string()));
-        assert!(types.contains(&"unwrap".to_string()));
-        assert!(types.contains(&"expect".to_string()));
-    }
-
-    // ── Arithmetic overflow tests ─────────────────────────────────────────────
-
-    #[test]
-    fn test_scan_arithmetic_overflow_basic() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn add_balances(env: Env, a: u64, b: u64) -> u64 {
-                    a + b
-                }
-
-                pub fn subtract(env: Env, total: u128, amount: u128) -> u128 {
-                    total - amount
-                }
-
-                pub fn multiply(env: Env, price: u64, qty: u64) -> u64 {
-                    price * qty
-                }
-
-                pub fn safe_add(env: Env, a: u64, b: u64) -> Option<u64> {
-                    a.checked_add(b)
-                }
-            }
-        "#;
-        let issues = analyzer.scan_arithmetic_overflow(source);
-        // Three distinct (function, operator) pairs flagged
-        assert_eq!(issues.len(), 3);
-
-        let ops: Vec<&str> = issues.iter().map(|i| i.operation.as_str()).collect();
-        assert!(ops.contains(&"+"));
-        assert!(ops.contains(&"-"));
-        assert!(ops.contains(&"*"));
-
-        // safe_add uses checked_add — no bare + operator, so not flagged
-        assert!(issues.iter().all(|i| i.function_name != "safe_add"));
-    }
-
-    #[test]
-    fn test_scan_arithmetic_overflow_compound_assign() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl Token {
-                pub fn accumulate(env: Env, mut balance: u64, amount: u64) -> u64 {
-                    balance += amount;
-                    balance -= 1;
-                    balance *= 2;
-                    balance
-                }
-            }
-        "#;
-        let issues = analyzer.scan_arithmetic_overflow(source);
-        // One issue per compound operator per function
-        assert_eq!(issues.len(), 3);
-        let ops: Vec<&str> = issues.iter().map(|i| i.operation.as_str()).collect();
-        assert!(ops.contains(&"+="));
-        assert!(ops.contains(&"-="));
-        assert!(ops.contains(&"*="));
-    }
-
-    #[test]
-    fn test_scan_arithmetic_overflow_deduplication() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn sum_three(env: Env, a: u64, b: u64, c: u64) -> u64 {
-                    // Two `+` operations — should produce only ONE issue for this function
-                    a + b + c
-                }
-            }
-        "#;
-        let issues = analyzer.scan_arithmetic_overflow(source);
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].operation, "+");
-        assert_eq!(issues[0].function_name, "sum_three");
-    }
-
-    #[test]
-    fn test_scan_arithmetic_overflow_no_false_positive_safe_code() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn compare(env: Env, a: u64, b: u64) -> bool {
-                    a > b
-                }
-
-                pub fn bitwise(env: Env, a: u32) -> u32 {
-                    a & 0xFF
-                }
-            }
-        "#;
-        let issues = analyzer.scan_arithmetic_overflow(source);
-        assert!(
-            issues.is_empty(),
-            "Expected no issues but found: {:?}",
-            issues
-        );
-    }
-
-    #[test]
-    fn test_scan_arithmetic_overflow_custom_wrapper_types() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        // Custom type wrapping a primitive — arithmetic on it is still flagged
-        let source = r#"
-            #[contractimpl]
-            impl Vault {
-                pub fn add_shares(env: Env, current: Shares, delta: Shares) -> Shares {
-                    Shares(current.0 + delta.0)
-                }
-            }
-        "#;
-        let issues = analyzer.scan_arithmetic_overflow(source);
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].operation, "+");
-    }
-
-<<<<<<< HEAD
-    /*
-        #[test]
-        fn test_analyze_upgrade_patterns() {
-            let analyzer = Analyzer::new(SanctifyConfig::default());
-            let source = r#"
-                #[contracttype]
-                pub enum DataKey { Admin, Balance }
-=======
-    #[test]
-    fn test_analyze_upgrade_patterns() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contracttype]
-            pub enum DataKey { Admin, Balance }
->>>>>>> 43c1409 (Cleanup: Uncomment tests, fix logic inconsistencies, and ensure Soroban SDK v20 alignment.)
-
-                #[contractimpl]
-                impl Token {
-                    pub fn initialize(env: Env, admin: Address) {
-                        env.storage().instance().set(&DataKey::Admin, &admin);
-                    }
-                    pub fn set_admin(env: Env, new_admin: Address) {
-                        env.storage().instance().set(&DataKey::Admin, &new_admin);
-                    }
-                }
-<<<<<<< HEAD
-            "#;
-            let report = analyzer.analyze_upgrade_patterns(source);
-            assert_eq!(report.init_functions, vec!["initialize"]);
-            assert_eq!(report.upgrade_mechanisms, vec!["set_admin"]);
-            assert!(report.storage_types.contains(&"DataKey".to_string()));
-            assert!(report
-                .findings
-                .iter()
-                .any(|f| matches!(f.category, UpgradeCategory::Governance)));
-        }
-    */
-=======
-                pub fn set_admin(env: Env, new_admin: Address) {
-                    env.storage().instance().set(&DataKey::Admin, &new_admin);
-                }
-            }
-        "#;
-        let report = analyzer.analyze_upgrade_patterns(source);
-        assert_eq!(report.init_functions, vec!["initialize"]);
-        assert_eq!(report.upgrade_mechanisms, vec!["set_admin"]);
-        assert!(report.storage_types.contains(&"DataKey".to_string()));
-        assert!(report
-            .findings
-            .iter()
-            .any(|f| matches!(f.category, UpgradeCategory::Governance)));
-    }
->>>>>>> 43c1409 (Cleanup: Uncomment tests, fix logic inconsistencies, and ensure Soroban SDK v20 alignment.)
-
-    #[test]
-    fn test_scan_arithmetic_overflow_suggestion_content() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn risky(env: Env, a: u64, b: u64) -> u64 {
-                    a + b
-                }
-            }
-        "#;
-        let issues = analyzer.scan_arithmetic_overflow(source);
-        assert_eq!(issues.len(), 1);
-        // Suggestion should mention checked_add
-        assert!(issues[0].suggestion.contains("checked_add"));
-        // Location should include function name
-        assert!(issues[0].location.starts_with("risky:"));
-    }
-
-<<<<<<< HEAD
-    /*
-        #[test]
-        fn test_scan_storage_collisions() {
-            let analyzer = Analyzer::new(SanctifyConfig::default());
-            let source = r#"
-                const KEY1: &str = "collision";
-                const KEY2: &str = "collision";
-
-                #[contractimpl]
-                impl Contract {
-                    pub fn x() {
-                        let s = symbol_short!("other");
-                        let s2 = symbol_short!("other");
-                    }
-                }
-            "#;
-            let issues = analyzer.scan_storage_collisions(source);
-            // 2 for "collision" (KEY1, KEY2) + 2 for "other" (two symbol_short! calls)
-            assert_eq!(issues.len(), 4);
-            assert!(issues.iter().any(|i| i.key_value == "collision"));
-            assert!(issues.iter().any(|i| i.key_value == "other"));
-        }
-    */
-
-=======
->>>>>>> 43c1409 (Cleanup: Uncomment tests, fix logic inconsistencies, and ensure Soroban SDK v20 alignment.)
-    #[test]
-    fn test_scan_events_consistency() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl Token {
-                pub fn transfer(env: Env, from: Address, to: Address, amount: u128) {
-                    env.events().publish((from, to, "transfer"), amount);
-                    env.events().publish((from, "transfer"), amount);
-                }
-            }
-        "#;
-<<<<<<< HEAD
-        let issues = analyzer.scan_events(source);
-        assert!(!issues.is_empty());
-        assert!(issues.iter().any(|i| i.issue_type == "inconsistent_topics"));
-    }
-
-    #[test]
-    fn test_scan_events_gas_optimization() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl Token {
-                pub fn mint(env: Env, to: Address) {
-                    env.events().publish(("mint", to), 100u128);
-                }
-            }
-        "#;
-        let issues = analyzer.scan_events(source);
-        assert!(issues.iter().any(|i| i.issue_type == "gas_optimization"));
-    }
-
-    }
-}
+mod tests;

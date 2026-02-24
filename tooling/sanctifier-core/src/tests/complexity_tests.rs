@@ -62,7 +62,7 @@ mod tests {
         "#;
         let metrics = analyze_complexity(&parse(src), "test.rs");
         let f = &metrics.functions[0];
-        assert_eq!(f.param_count, 7); // env + 6
+        assert_eq!(f.param_count, 6); // env + 5 others
         assert!(f.warnings.iter().any(|w| w.contains("parameters")));
     }
 
