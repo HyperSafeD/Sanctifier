@@ -32,6 +32,13 @@ A library of hook-based guards that you can integrate into your contracts:
 *   `Sanctifier::guard_invariant(|ctx| ...)`: Enforce state invariants.
 *   `Sanctifier::monitor_events()`: Ensure critical events are emitted.
 
+### 3. Automated Deployment & Validation (NEW!)
+Deploy runtime guard wrapper contracts to Soroban testnet with continuous validation:
+*   **CLI Deployment**: One-command contract deployment with `sanctifier deploy`
+*   **Bash Automation**: Production-ready scripts for testnet deployment
+*   **CI/CD Integration**: GitHub Actions workflow for automated deployment and monitoring
+*   **Continuous Validation**: Periodic health checks and execution metrics collection
+
 ## 📦 Installation (CLI)
 
 ```bash
@@ -46,6 +53,21 @@ Run the analysis suite on your Soroban project:
 ```bash
 sanctifier analyze ./contracts/my-token
 ```
+
+### Deploy to Soroban Testnet
+Deploy runtime guard wrapper contracts with automated validation:
+
+```bash
+# Quick start (5 minutes)
+sanctifier deploy contracts/runtime-guard-wrapper \
+    --network testnet \
+    --validate
+
+# OR use the bash automation script
+./scripts/deploy-soroban-testnet.sh --network testnet
+```
+
+See [QUICK_START.md](QUICK_START.md) for setup instructions and [SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md) for complete deployment guide.
 
 ## 🤝 Contributing
 We welcome contributions from the Stellar community! Please see our [Contributing Guide](CONTRIBUTING.md) for details.

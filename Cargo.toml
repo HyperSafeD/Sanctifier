@@ -4,6 +4,7 @@ members = [
     "tooling/sanctifier-core",
     "contracts/vulnerable-contract",
     "contracts/kani-poc",
+    "contracts/runtime-guard-wrapper",
 ]
 resolver = "2"
 
