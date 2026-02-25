@@ -8,11 +8,11 @@ fn integer_sqrt(n: u128) -> u128 {
     }
 
     let mut x = n;
-    let mut y = (x + 1) / 2;
+    let mut y = x.div_ceil(2);
 
     while y < x {
         x = y;
-        y = (x + n / x) / 2;
+        y = (x + n / x).div_ceil(2);
     }
 
     x
@@ -296,7 +296,7 @@ proptest! {
         total_supply in 1u128..1_000_000u128,
         excess in 1u128..1_000_000u128,
     ) {
-        let liquidity = total_supply.checked_add(excess).unwrap_or(u128::MAX);
+        let liquidity = total_supply.saturating_add(excess);
         let result = calculate_liquidity_burn(reserve_a, reserve_b, liquidity, total_supply);
         prop_assert!(result.is_err());
     }
