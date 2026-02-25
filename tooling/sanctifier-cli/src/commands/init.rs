@@ -29,10 +29,12 @@ impl ConfigGenerator {
                 CustomRule {
                     name: "no_unsafe_block".to_string(),
                     pattern: "unsafe\\s*\\{".to_string(),
+                    severity: sanctifier_core::RuleSeverity::Error,
                 },
                 CustomRule {
                     name: "no_mem_forget".to_string(),
                     pattern: "std::mem::forget".to_string(),
+                    severity: sanctifier_core::RuleSeverity::Warning,
                 },
             ],
             approaching_threshold: 0.8,
@@ -286,7 +288,7 @@ mod tests {
         // Create existing file
         fs::write(&config_path, "existing content").unwrap();
 
-        let args = InitArgs { force: false };
+        let _args = InitArgs { force: false };
 
         // Change to temp directory
         let original_dir = std::env::current_dir().unwrap();

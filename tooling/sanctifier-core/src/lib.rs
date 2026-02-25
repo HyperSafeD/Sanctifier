@@ -180,13 +180,27 @@ pub struct EventIssue {
     pub location: String,
 }
 
-// ── Configuration ─────────────────────────────────────────────────────────────
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleSeverity {
+    Info,
+    Warning,
+    Error,
+}
+
+impl Default for RuleSeverity {
+    fn default() -> Self {
+        Self::Warning
+    }
+}
 
 /// User-defined regex-based rule. Defined in .sanctify.toml under [[custom_rules]].
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CustomRule {
     pub name: String,
     pub pattern: String,
+    #[serde(default)]
+    pub severity: RuleSeverity,
 }
 
 /// A match from a custom regex rule.
@@ -195,6 +209,7 @@ pub struct CustomRuleMatch {
     pub rule_name: String,
     pub line: usize,
     pub snippet: String,
+    pub severity: RuleSeverity,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -840,6 +855,7 @@ impl Analyzer {
                         rule_name: rule.name.clone(),
                         line: line_num,
                         snippet: line.trim().to_string(),
+                        severity: rule.severity.clone(),
                     });
                 }
             }
@@ -1618,6 +1634,39 @@ mod tests {
         // Location should include function name
         assert!(issues[0].location.starts_with("risky:"));
     }
+    #[test]
+    fn test_custom_rules_with_severity() {
+        let config = SanctifyConfig {
+            custom_rules: vec![
+                CustomRule {
+                    name: "no_unsafe".to_string(),
+                    pattern: "unsafe".to_string(),
+                    severity: RuleSeverity::Error,
+                },
+                CustomRule {
+                    name: "todo_comment".to_string(),
+                    pattern: "TODO".to_string(),
+                    severity: RuleSeverity::Info,
+                },
+            ],
+            ..Default::default()
+        };
+        let analyzer = Analyzer::new(config);
+        let source = r#"
+            pub fn my_fn() {
+                // TODO: implement this
+                unsafe {
+                    let x = 1;
+                }
+            }
+        "#;
+        let matches = analyzer.analyze_custom_rules(source, &analyzer.config.custom_rules);
+        assert_eq!(matches.len(), 2);
 
+        let todo_match = matches.iter().find(|m| m.rule_name == "todo_comment").unwrap();
+        assert_eq!(todo_match.severity, RuleSeverity::Info);
 
+        let unsafe_match = matches.iter().find(|m| m.rule_name == "no_unsafe").unwrap();
+        assert_eq!(unsafe_match.severity, RuleSeverity::Error);
+    }
 }
