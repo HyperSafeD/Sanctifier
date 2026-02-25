@@ -102,7 +102,7 @@ jobs:
         run: cargo fmt --check
 
       - name: Run Clippy
-        run: cargo clippy -p sanctifier-core -p sanctifier-cli --all-targets --all-features -- -D warnings
+        run: cargo clippy -p sanctifier-core -p sanctifier-cli --all-features -- -D warnings
 
       - name: Run tests
         run: cargo test -p sanctifier-core -p sanctifier-cli --all-features

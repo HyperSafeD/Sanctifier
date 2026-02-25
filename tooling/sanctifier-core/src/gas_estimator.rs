@@ -11,6 +11,12 @@ pub struct GasEstimationReport {
 
 pub struct GasEstimator {}
 
+impl Default for GasEstimator {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl GasEstimator {
     pub fn new() -> Self {
         Self {}
