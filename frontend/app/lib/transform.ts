@@ -1,4 +1,4 @@
-import type { AnalysisReport, Finding, Severity } from "../types";
+import type { AnalysisReport, CallGraphEdge, CallGraphNode, Finding, Severity } from "../types";
 
 function toFinding(
   id: string,
@@ -110,4 +110,75 @@ export function transformReport(report: AnalysisReport): Finding[] {
   });
 
   return findings;
+}
+
+export function extractCallGraph(
+  report: AnalysisReport
+): { nodes: CallGraphNode[]; edges: CallGraphEdge[] } {
+  const nodeMap = new Map<string, CallGraphNode>();
+  const edges: CallGraphEdge[] = [];
+
+  // Extract function nodes and storage mutation edges from auth gaps
+  (report.auth_gaps ?? []).forEach((gap) => {
+    // Auth gaps are strings like "file.rs:function_name" indicating functions
+    // that mutate storage without authentication
+    const parts = gap.split(":");
+    const funcName = parts.length > 1 ? parts[parts.length - 1].trim() : gap;
+    const file = parts.length > 1 ? parts.slice(0, -1).join(":").trim() : undefined;
+    const funcId = `fn-${funcName}`;
+
+    if (!nodeMap.has(funcId)) {
+      nodeMap.set(funcId, {
+        id: funcId,
+        label: funcName,
+        type: "function",
+        file,
+        severity: "critical",
+      });
+    }
+
+    const storageId = `storage-${funcName}`;
+    if (!nodeMap.has(storageId)) {
+      nodeMap.set(storageId, {
+        id: storageId,
+        label: `${funcName} storage`,
+        type: "storage",
+      });
+    }
+
+    edges.push({
+      source: funcId,
+      target: storageId,
+      label: "mutates (no auth)",
+      type: "mutates",
+    });
+  });
+
+  // Extract function nodes from panic issues
+  (report.panic_issues ?? []).forEach((p) => {
+    const funcId = `fn-${p.function_name}`;
+    if (!nodeMap.has(funcId)) {
+      nodeMap.set(funcId, {
+        id: funcId,
+        label: p.function_name,
+        type: "function",
+        severity: p.issue_type === "panic!" ? "critical" : "high",
+      });
+    }
+  });
+
+  // Extract function nodes from arithmetic issues
+  (report.arithmetic_issues ?? []).forEach((a) => {
+    const funcId = `fn-${a.function_name}`;
+    if (!nodeMap.has(funcId)) {
+      nodeMap.set(funcId, {
+        id: funcId,
+        label: a.function_name,
+        type: "function",
+        severity: "high",
+      });
+    }
+  });
+
+  return { nodes: Array.from(nodeMap.values()), edges };
 }

@@ -52,3 +52,18 @@ export interface Finding {
   suggestion?: string;
   raw: unknown;
 }
+
+export interface CallGraphNode {
+  id: string;
+  label: string;
+  type: "function" | "storage" | "external";
+  file?: string;
+  severity?: Severity;
+}
+
+export interface CallGraphEdge {
+  source: string;
+  target: string;
+  label?: string;
+  type: "calls" | "mutates" | "reads";
+}

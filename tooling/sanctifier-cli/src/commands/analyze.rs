@@ -27,11 +27,19 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     let is_json = format == "json";
 
     if !is_soroban_project(path) {
-        eprintln!(
-            "{} Error: {:?} is not a valid Soroban project. (Missing Cargo.toml with 'soroban-sdk' dependency)",
-            "❌".red(),
-            path
-        );
+        if is_json {
+            let err = serde_json::json!({
+                "error": format!("{:?} is not a valid Soroban project", path),
+                "success": false,
+            });
+            println!("{}", serde_json::to_string_pretty(&err)?);
+        } else {
+            eprintln!(
+                "{} Error: {:?} is not a valid Soroban project. (Missing Cargo.toml with 'soroban-sdk' dependency)",
+                "❌".red(),
+                path
+            );
+        }
         std::process::exit(1);
     }
 
@@ -74,17 +82,6 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             &mut arithmetic_issues,
             &mut custom_matches,
         )?;
-    } else {
-        if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-            if let Ok(content) = fs::read_to_string(path) {
-                collisions.extend(analyzer.scan_storage_collisions(&content));
-                size_warnings.extend(analyzer.analyze_ledger_size(&content));
-                unsafe_patterns.extend(analyzer.analyze_unsafe_patterns(&content));
-                auth_gaps.extend(analyzer.scan_auth_gaps(&content));
-                panic_issues.extend(analyzer.scan_panics(&content));
-                arithmetic_issues.extend(analyzer.scan_arithmetic_overflow(&content));
-                custom_matches.extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
-            }
     } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
         if let Ok(content) = fs::read_to_string(path) {
             collisions.extend(analyzer.scan_storage_collisions(&content));
@@ -93,20 +90,59 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             auth_gaps.extend(analyzer.scan_auth_gaps(&content));
             panic_issues.extend(analyzer.scan_panics(&content));
             arithmetic_issues.extend(analyzer.scan_arithmetic_overflow(&content));
+            custom_matches.extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
         }
     }
 
+    let total_findings = collisions.len()
+        + size_warnings.len()
+        + unsafe_patterns.len()
+        + auth_gaps.len()
+        + panic_issues.len()
+        + arithmetic_issues.len()
+        + custom_matches.len();
+
+    let has_critical = !auth_gaps.is_empty()
+        || panic_issues.iter().any(|p| p.issue_type == "panic!");
+    let has_high = !arithmetic_issues.is_empty()
+        || !panic_issues.is_empty()
+        || size_warnings.iter().any(|w| w.level == "ExceedsLimit");
+
     if is_json {
         let report = serde_json::json!({
-            "storage_collisions": collisions,
-            "ledger_size_warnings": size_warnings,
-            "unsafe_patterns": unsafe_patterns,
-            "auth_gaps": auth_gaps,
-            "panic_issues": panic_issues,
-            "arithmetic_issues": arithmetic_issues,
-            "custom_rules": custom_matches,
+            "metadata": {
+                "version": env!("CARGO_PKG_VERSION"),
+                "timestamp": chrono_timestamp(),
+                "project_path": path.display().to_string(),
+                "format": "sanctifier-ci-v1",
+            },
+            "summary": {
+                "total_findings": total_findings,
+                "storage_collisions": collisions.len(),
+                "auth_gaps": auth_gaps.len(),
+                "panic_issues": panic_issues.len(),
+                "arithmetic_issues": arithmetic_issues.len(),
+                "size_warnings": size_warnings.len(),
+                "unsafe_patterns": unsafe_patterns.len(),
+                "custom_rule_matches": custom_matches.len(),
+                "has_critical": has_critical,
+                "has_high": has_high,
+            },
+            "findings": {
+                "storage_collisions": collisions,
+                "ledger_size_warnings": size_warnings,
+                "unsafe_patterns": unsafe_patterns,
+                "auth_gaps": auth_gaps,
+                "panic_issues": panic_issues,
+                "arithmetic_issues": arithmetic_issues,
+                "custom_rules": custom_matches,
+            },
         });
         println!("{}", serde_json::to_string_pretty(&report)?);
+
+        if has_critical || has_high {
+            std::process::exit(1);
+        }
         return Ok(());
     }
 
@@ -179,6 +215,15 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     println!("\n{} Static analysis complete.", "✨".green());
 
     Ok(())
+}
+
+fn chrono_timestamp() -> String {
+    let now = std::time::SystemTime::now();
+    let duration = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = duration.as_secs();
+    format!("{}", secs)
 }
 
 fn load_config(path: &Path) -> SanctifyConfig {
