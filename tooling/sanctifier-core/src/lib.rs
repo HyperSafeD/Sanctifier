@@ -1298,7 +1298,7 @@ mod tests {
     fn test_analyze_with_limit() {
         let config = SanctifyConfig {
             ledger_limit: 50,
-            ..SanctifyConfig::default()
+
         };
         let analyzer = Analyzer::new(config);
         let source = r#"
