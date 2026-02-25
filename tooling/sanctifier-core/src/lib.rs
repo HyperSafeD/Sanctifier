@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::panic::catch_unwind;
 pub mod gas_estimator;
 mod storage_collision;
 use std::collections::HashSet;
@@ -1618,6 +1619,4 @@ mod tests {
         // Location should include function name
         assert!(issues[0].location.starts_with("risky:"));
     }
-
-
 }
