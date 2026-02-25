@@ -1,6 +1,8 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use std::env;
+use std::fs;
+use tempfile::tempdir;
 
 #[test]
 fn test_cli_help() {
@@ -80,4 +82,55 @@ fn test_analyze_empty_macro_heavy() {
         .assert()
         .success()
         .stdout(predicates::str::contains("Static analysis complete."));
+}
+
+#[test]
+fn test_init_creates_sanctify_toml_in_current_directory() {
+    let temp_dir = tempdir().unwrap();
+    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
+
+    cmd.current_dir(temp_dir.path())
+        .arg("init")
+        .assert()
+        .success();
+
+    let config_path = temp_dir.path().join(".sanctify.toml");
+    assert!(
+        config_path.exists(),
+        "Expected init command to create .sanctify.toml"
+    );
+}
+
+#[test]
+fn test_init_fails_when_config_exists_without_force() {
+    let temp_dir = tempdir().unwrap();
+    let config_path = temp_dir.path().join(".sanctify.toml");
+    fs::write(&config_path, "existing content").unwrap();
+
+    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("init")
+        .assert()
+        .failure();
+
+    let content = fs::read_to_string(&config_path).unwrap();
+    assert_eq!(content, "existing content");
+}
+
+#[test]
+fn test_init_overwrites_when_force_is_set() {
+    let temp_dir = tempdir().unwrap();
+    let config_path = temp_dir.path().join(".sanctify.toml");
+    fs::write(&config_path, "existing content").unwrap();
+
+    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
+    cmd.current_dir(temp_dir.path())
+        .arg("init")
+        .arg("--force")
+        .assert()
+        .success();
+
+    let content = fs::read_to_string(&config_path).unwrap();
+    assert_ne!(content, "existing content");
+    assert!(content.contains("ignore_paths"));
 }

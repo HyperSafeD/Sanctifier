@@ -89,7 +89,7 @@ pub fn exec(args: InitArgs, path: Option<PathBuf>) -> anyhow::Result<()> {
     // Check for existing config file
     if FileWriter::config_exists(&target_dir) && !args.force {
         OutputFormatter::display_existing_file_warning();
-        std::process::exit(1);
+        anyhow::bail!("configuration file already exists");
     }
 
     // Generate default configuration
@@ -103,7 +103,7 @@ pub fn exec(args: InitArgs, path: Option<PathBuf>) -> anyhow::Result<()> {
         }
         Err(e) => {
             OutputFormatter::display_error(&e);
-            std::process::exit(1);
+            Err(e)
         }
     }
 }
@@ -292,14 +292,14 @@ mod tests {
         let original_dir = std::env::current_dir().unwrap();
         std::env::set_current_dir(temp_dir.path()).unwrap();
 
-        // Execute init command - this will call std::process::exit(1)
-        // We can't test this directly without spawning a subprocess
-        // So we'll just test the components separately
+        // Execute init command
+        let result = exec(args, Some(temp_dir.path().to_path_buf()));
 
         // Restore original directory
         std::env::set_current_dir(original_dir).unwrap();
 
-        // Verify file was not modified
+        // Verify command failed and file was not modified
+        assert!(result.is_err(), "exec should fail without --force");
         let content = fs::read_to_string(&config_path).unwrap();
         assert_eq!(content, "existing content", "File should not be modified");
     }
