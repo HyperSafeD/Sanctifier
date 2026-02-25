@@ -1,5 +1,9 @@
 # Sanctifier 🛡️
 
+<p align="center">
+  <img src="branding/logo.png" width="300" alt="Sanctifier Logo">
+</p>
+
 **Sanctifier** is a comprehensive security and formal verification suite built specifically for [Stellar Soroban](https://soroban.stellar.org/) smart contracts. In the high-stakes environment of DeFi and decentralized applications, "code is law" only holds true if the code is secure. Sanctifier ensures your contracts are not just compiled, but *sanctified*—rigorously tested, formally verified, and runtime-guarded against vulnerabilities.
 
 ## 📂 Project Structure

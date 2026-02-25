@@ -1,0 +1,131 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/wilfred/Soroban/Sanctifier/Sanctifier/contracts/kani-poc/Cargo.toml
+workspace: /home/wilfred/Soroban/Sanctifier/Sanctifier/Cargo.toml
+    Checking sanctifier-core v0.1.0 (/home/wilfred/Soroban/Sanctifier/Sanctifier/tooling/sanctifier-core)
+warning: unexpected `cfg` condition value: `testutils`
+  --> contracts/kani-poc/src/lib.rs:52:1
+   |
+52 | #[contract]
+   | ^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `contract` crate for guidance on how handle this unexpected cfg
+   = help: the attribute macro `contract` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: requested on the command line with `-W unexpected-cfgs`
+   = note: this warning originates in the attribute macro `contract` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `testutils`
+  --> contracts/kani-poc/src/lib.rs:55:1
+   |
+55 | #[contractimpl]
+   | ^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `contractimpl` crate for guidance on how handle this unexpected cfg
+   = help: the attribute macro `contractimpl` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the attribute macro `contractimpl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `testutils`
+  --> contracts/kani-poc/src/lib.rs:55:1
+   |
+55 | #[contractimpl]
+   | ^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `soroban_sdk::contractclient` crate for guidance on how handle this unexpected cfg
+   = help: the attribute macro `soroban_sdk::contractclient` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the attribute macro `soroban_sdk::contractclient` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `testutils`
+ --> contracts/vulnerable-contract/src/lib.rs:4:1
+  |
+4 | #[contract]
+  | ^^^^^^^^^^^
+  |
+  = note: no expected values for `feature`
+  = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `contract` crate for guidance on how handle this unexpected cfg
+  = help: the attribute macro `contract` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+  = note: this warning originates in the attribute macro `contract` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `testutils`
+ --> contracts/vulnerable-contract/src/lib.rs:7:1
+  |
+7 | #[contractimpl]
+  | ^^^^^^^^^^^^^^^
+  |
+  = note: no expected values for `feature`
+  = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `contractimpl` crate for guidance on how handle this unexpected cfg
+  = help: the attribute macro `contractimpl` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: this warning originates in the attribute macro `contractimpl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `testutils`
+ --> contracts/vulnerable-contract/src/lib.rs:7:1
+  |
+7 | #[contractimpl]
+  | ^^^^^^^^^^^^^^^
+  |
+  = note: no expected values for `feature`
+  = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `soroban_sdk::contractclient` crate for guidance on how handle this unexpected cfg
+  = help: the attribute macro `soroban_sdk::contractclient` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: this warning originates in the attribute macro `soroban_sdk::contractclient` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `admin`
+  --> contracts/vulnerable-contract/src/lib.rs:19:13
+   |
+19 |         let admin: Symbol = env
+   |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_admin`
+   |
+   = note: `#[warn(unused_variables)]` on by default
+
+warning: `kani-poc-contract` (lib) generated 3 warnings
+warning: `vulnerable-contract` (lib) generated 4 warnings
+warning: unused import: `std::panic`
+ --> tooling/sanctifier-core/src/lib.rs:4:5
+  |
+4 | use std::panic;
+  |     ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+warning: function `has_attr` is never used
+  --> tooling/sanctifier-core/src/lib.rs:97:4
+   |
+97 | fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
+   |    ^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` on by default
+
+warning: `sanctifier-core` (lib) generated 2 warnings (run `cargo fix --lib -p sanctifier-core` to apply 1 suggestion)
+    Checking sanctifier-cli v0.1.0 (/home/wilfred/Soroban/Sanctifier/Sanctifier/tooling/sanctifier-cli)
+error: this file contains an unclosed delimiter
+   --> tooling/sanctifier-cli/src/main.rs:448:3
+    |
+ 45 | fn main() {
+    |           - unclosed delimiter
+...
+ 48 |     match &cli.command {
+    |                        - unclosed delimiter
+...
+172 |                     for warning in &all_size_warnings {
+    |                                                       - this delimiter might not be properly closed...
+...
+291 |             }
+    |             - ...as it matches this but it has different indentation
+...
+448 | }
+    |  ^
+
+error: could not compile `sanctifier-cli` (bin "sanctifier") due to 1 previous error
