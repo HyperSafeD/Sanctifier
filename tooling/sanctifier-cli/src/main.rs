@@ -14,6 +14,8 @@ struct Cli {
 pub enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
     Analyze(commands::analyze::AnalyzeArgs),
+    /// Deploy a Soroban contract (builds and deploys using soroban-cli)
+    Deploy(commands::deploy::DeployArgs),
     /// Generate a security report
     Report {
         /// Output file path
@@ -40,6 +42,10 @@ fn main() -> anyhow::Result<()> {
             } else {
                 println!("Report printed to stdout.");
             }
+        }
+        Commands::Deploy(args) => {
+            branding::print_logo();
+            commands::deploy::exec(args)?;
         }
         Commands::Init(args) => {
             commands::init::exec(args, None)?;
