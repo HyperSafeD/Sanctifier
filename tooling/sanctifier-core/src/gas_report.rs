@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-
-=======
 // tooling/sanctifier-core/src/gas_report.rs
 //
 // Aggregated gas/instruction report for the Sanctifier CLI.
@@ -189,4 +186,4 @@ mod tests {
         assert!(text.contains("LOW"));
     }
 }
->>>>>>> 1a54220 (Update Soroban SDK to v20 and enhance security analysis tools.)
+
