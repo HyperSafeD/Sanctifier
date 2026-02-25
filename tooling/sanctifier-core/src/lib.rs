@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 pub mod gas_estimator;
+pub mod smt;
 mod storage_collision;
 use std::collections::HashSet;
 use std::panic::catch_unwind;
@@ -300,6 +301,27 @@ impl Analyzer {
 
     pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
         with_panic_guard(|| self.scan_auth_gaps_impl(source))
+    }
+
+    pub fn verify_smt_invariants(&self, _source: &str) -> Vec<smt::SmtInvariantIssue> {
+        with_panic_guard(|| self.verify_smt_invariants_impl())
+    }
+
+    fn verify_smt_invariants_impl(&self) -> Vec<smt::SmtInvariantIssue> {
+        use z3::{Config, Context};
+        let cfg = Config::new();
+        let ctx = Context::new(&cfg);
+        let verifier = smt::SmtVerifier::new(&ctx);
+
+        let mut issues = Vec::new();
+
+        // As a PoC for Issue #111, we verify a theoretical unconstrained transfer function.
+        // In a full implementation, this would dynamically parse the AST to extract `a` and `b`.
+        if let Some(issue) = verifier.verify_addition_overflow("transfer_pure", "kani-poc/src/lib.rs:10") {
+            issues.push(issue);
+        }
+
+        issues
     }
 
     pub fn scan_gas_estimation(&self, source: &str) -> Vec<gas_estimator::GasEstimationReport> {
