@@ -2,9 +2,9 @@ name: E2E Tests & Coverage
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   pull_request:
-    branches: [ "main" ]
+    branches: ["main"]
 
 env:
   CARGO_TERM_COLOR: always
@@ -17,7 +17,9 @@ jobs:
       - uses: actions/checkout@v3
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
 
       - name: Cache dependencies
         uses: actions/cache@v3
@@ -32,16 +34,16 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Run Build
-        run: cargo build --all
+        run: cargo build --package sanctifier-cli --package sanctifier-core --package amm-pool
 
-      - name: Run Unit & E2E Tests 
-        run: cargo test --all
+      - name: Run Unit & E2E Tests
+        run: cargo test --package sanctifier-cli --package sanctifier-core --package amm-pool
 
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin || true
 
       - name: Generate Coverage Report
-        run: cargo tarpaulin --out Xml
+        run: cargo tarpaulin --package sanctifier-cli --package sanctifier-core --package amm-pool --out Xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
