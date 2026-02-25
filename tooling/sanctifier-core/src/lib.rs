@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 pub mod gas_estimator;
+pub mod rules;
 mod storage_collision;
 use std::collections::HashSet;
 use std::panic::catch_unwind;
@@ -7,10 +8,10 @@ use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{parse_str, Fields, File, Item, Meta, Type};
 
+pub use rules::{Rule, RuleRegistry, RuleViolation, Severity};
+
 use soroban_sdk::Env;
 use thiserror::Error;
-
-const DEFAULT_APPROACHING_THRESHOLD: f64 = 0.8;
 
 fn with_panic_guard<F, R>(f: F) -> R
 where
@@ -280,11 +281,34 @@ fn classify_size(
 
 pub struct Analyzer {
     pub config: SanctifyConfig,
+    rule_registry: RuleRegistry,
 }
 
 impl Analyzer {
     pub fn new(config: SanctifyConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            rule_registry: RuleRegistry::default(),
+        }
+    }
+
+    pub fn with_rules(config: SanctifyConfig, registry: RuleRegistry) -> Self {
+        Self {
+            config,
+            rule_registry: registry,
+        }
+    }
+
+    pub fn run_rules(&self, source: &str) -> Vec<RuleViolation> {
+        self.rule_registry.run_all(source)
+    }
+
+    pub fn run_rule(&self, source: &str, name: &str) -> Vec<RuleViolation> {
+        self.rule_registry.run_by_name(source, name)
+    }
+
+    pub fn available_rules(&self) -> Vec<&str> {
+        self.rule_registry.available_rules()
     }
 
     pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
@@ -551,7 +575,7 @@ impl Analyzer {
 
     fn analyze_ledger_size_impl(&self, source: &str) -> Vec<SizeWarning> {
         let limit = self.config.ledger_limit;
-        let _approaching = (limit as f64 * DEFAULT_APPROACHING_THRESHOLD) as usize;
+        let _approaching = (limit as f64 * self.config.approaching_threshold) as usize;
         let _strict = self.config.strict_mode;
         let _strict_threshold = limit / 2;
 
@@ -1677,5 +1701,62 @@ mod tests {
         assert!(issues
             .iter()
             .any(|i| i.issue_type == EventIssueType::OptimizableTopic));
+    }
+
+    #[test]
+    fn test_rule_registry_default_rules() {
+        let registry = RuleRegistry::default();
+        let rules = registry.available_rules();
+        assert!(rules.contains(&"auth_gap"));
+        assert!(rules.contains(&"ledger_size"));
+        assert!(rules.contains(&"panic_detection"));
+        assert!(rules.contains(&"arithmetic_overflow"));
+        assert!(rules.contains(&"unhandled_result"));
+    }
+
+    #[test]
+    fn test_rule_run_all() {
+        let registry = RuleRegistry::default();
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn unsafe_fn(env: Env) {
+                    panic!("Something went wrong");
+                }
+            }
+        "#;
+        let violations = registry.run_all(source);
+        assert!(!violations.is_empty());
+    }
+
+    #[test]
+    fn test_rule_run_by_name() {
+        let registry = RuleRegistry::default();
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn risky(env: Env, a: u64, b: u64) -> u64 {
+                    a + b
+                }
+            }
+        "#;
+        let violations = registry.run_by_name(source, "arithmetic_overflow");
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_name, "arithmetic_overflow");
+    }
+
+    #[test]
+    fn test_analyzer_run_rules() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn add(env: Env, a: u64, b: u64) -> u64 {
+                    a + b
+                }
+            }
+        "#;
+        let violations = analyzer.run_rules(source);
+        assert!(!violations.is_empty());
     }
 }
