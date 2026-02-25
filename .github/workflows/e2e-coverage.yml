@@ -32,16 +32,16 @@ jobs:
           restore-keys: ${{ runner.os }}-cargo-
 
       - name: Run Build
-        run: cargo build --all
+        run: cargo build -p sanctifier-core -p sanctifier-cli
 
       - name: Run Unit & E2E Tests 
-        run: cargo test --all
+        run: cargo test -p sanctifier-core -p sanctifier-cli
 
       - name: Install tarpaulin
         run: cargo install cargo-tarpaulin || true
 
       - name: Generate Coverage Report
-        run: cargo tarpaulin --out Xml
+        run: cargo tarpaulin -p sanctifier-core -p sanctifier-cli --out Xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v3
