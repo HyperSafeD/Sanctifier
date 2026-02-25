@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(config.ledger_limit, 64000);
 
         // Verify strict_mode
-        assert_eq!(config.strict_mode, false);
+        assert!(!config.strict_mode);
 
         // Verify approaching_threshold
         assert_eq!(config.approaching_threshold, 0.8);
@@ -286,7 +286,7 @@ mod tests {
         // Create existing file
         fs::write(&config_path, "existing content").unwrap();
 
-        let args = InitArgs { force: false };
+        let _args = InitArgs { force: false };
 
         // Change to temp directory
         let original_dir = std::env::current_dir().unwrap();

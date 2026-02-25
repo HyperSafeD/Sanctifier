@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install stable Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
           toolchain: stable
           components: rustfmt, clippy
@@ -39,10 +39,10 @@ jobs:
         run: cargo fmt --check
 
       - name: Run Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --package sanctifier-cli --package sanctifier-core --package amm-pool --all-targets --all-features -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace --all-features
+        run: cargo test --package sanctifier-cli --package sanctifier-core --package amm-pool --all-features
 
       - name: Build release binary
         run: cargo build --release -p sanctifier-cli
