@@ -2185,4 +2185,357 @@ mod tests {
         let issues = analyzer.scan_unhandled_results(source);
         assert!(issues.is_empty());
     }
+
+    #[test]
+    fn test_gas_estimator_simple_function() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn simple(env: Env) -> u32 {
+                    42
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].function_name, "simple");
+        assert_eq!(reports[0].estimated_instructions, 50);
+    }
+
+    #[test]
+    fn test_gas_estimator_binary_operations() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn add(env: Env, a: u32, b: u32) -> u32 {
+                    a + b
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 50);
+    }
+
+    #[test]
+    fn test_gas_estimator_function_call() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn caller(env: Env) {
+                    helper();
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 70);
+    }
+
+    #[test]
+    fn test_gas_estimator_storage_operations() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn store(env: Env, key: Symbol, val: u32) {
+                    env.storage().persistent().set(&key, &val);
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 1050);
+    }
+
+    #[test]
+    fn test_gas_estimator_multiple_storage_ops() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn multi_store(env: Env, key: Symbol, val: u32) {
+                    env.storage().persistent().set(&key, &val);
+                    let exists = env.storage().persistent().has(&key);
+                    env.storage().persistent().remove(&key);
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 3050);
+    }
+
+    #[test]
+    fn test_gas_estimator_require_auth() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn secured(env: Env, addr: Address) {
+                    addr.require_auth();
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 550);
+    }
+
+    #[test]
+    fn test_gas_estimator_for_loop() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn iterate(env: Env, n: u32) {
+                    for i in 0..n {
+                        let x = i + 1;
+                    }
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 100);
+    }
+
+    #[test]
+    fn test_gas_estimator_while_loop() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn while_loop(env: Env, mut count: u32) {
+                    while count > 0 {
+                        count -= 1;
+                    }
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 100);
+    }
+
+    #[test]
+    fn test_gas_estimator_nested_loops() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn nested(env: Env, n: u32) {
+                    for i in 0..n {
+                        for j in 0..n {
+                            let _ = i + j;
+                        }
+                    }
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 500);
+    }
+
+    #[test]
+    fn test_gas_estimator_local_variables() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn locals(env: Env) {
+                    let a: u32 = 1;
+                    let b: u64 = 2;
+                    let c: u128 = 3;
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_memory_bytes > 32);
+    }
+
+    #[test]
+    fn test_gas_estimator_vec_macro() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn with_vec(env: Env) {
+                    let v = vec![&env, 1, 2, 3];
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_memory_bytes >= 160);
+    }
+
+    #[test]
+    fn test_gas_estimator_symbol_macro() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn with_symbol(env: Env) {
+                    let s = symbol_short!("key");
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 60);
+    }
+
+    #[test]
+    fn test_gas_estimator_multiple_functions() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn func_a(env: Env) -> u32 {
+                    1
+                }
+
+                pub fn func_b(env: Env) -> u32 {
+                    2
+                }
+
+                fn private_func(env: Env) -> u32 {
+                    3
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 2);
+        let names: Vec<&str> = reports.iter().map(|r| r.function_name.as_str()).collect();
+        assert!(names.contains(&"func_a"));
+        assert!(names.contains(&"func_b"));
+    }
+
+    #[test]
+    fn test_gas_estimator_complex_function() {
+        let source = r#"
+            #[contractimpl]
+            impl Token {
+                pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+                    from.require_auth();
+                    to.require_auth();
+                    let balance_from: i128 = env.storage().persistent().get(&from).unwrap_or(0);
+                    let balance_to: i128 = env.storage().persistent().get(&to).unwrap_or(0);
+                    env.storage().persistent().set(&from, &(balance_from - amount));
+                    env.storage().persistent().set(&to, &(balance_to + amount));
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 3000);
+    }
+
+    #[test]
+    fn test_gas_estimator_empty_source() {
+        let source = "";
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn test_gas_estimator_invalid_syntax() {
+        let source = "this is not valid rust code";
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn test_gas_estimator_no_impl_block() {
+        let source = r#"
+            pub fn standalone() -> u32 {
+                42
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn test_gas_estimator_impl_without_pub() {
+        let source = r#"
+            impl MyContract {
+                fn private(env: Env) -> u32 {
+                    42
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn test_gas_estimator_memory_estimation() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn memory_test(env: Env) {
+                    let small: u32 = 1;
+                    let medium: u64 = 2;
+                    let large: u128 = 3;
+                    let addr: Address = Address::from_str(&env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+                    let bytes: Bytes = Bytes::new(&env);
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_memory_bytes > 100);
+    }
+
+    #[test]
+    fn test_gas_estimator_conditional_logic() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn conditional(env: Env, val: u32) -> u32 {
+                    if val > 10 {
+                        val + 1
+                    } else {
+                        val - 1
+                    }
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 50);
+    }
+
+    #[test]
+    fn test_gas_estimator_match_expression() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn match_test(env: Env, action: u32) -> u32 {
+                    match action {
+                        0 => 1,
+                        1 => 2,
+                        _ => 0,
+                    }
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].function_name, "match_test");
+        assert!(reports[0].estimated_instructions >= 50);
+    }
+
+    #[test]
+    fn test_gas_estimator_known_soroban_limits() {
+        let source = r#"
+            #[contractimpl]
+            impl HeavyContract {
+                pub fn heavy_storage(env: Env) {
+                    env.storage().persistent().set(&Symbol::new(&env, "key1"), &1u64);
+                    env.storage().persistent().set(&Symbol::new(&env, "key2"), &2u64);
+                    env.storage().persistent().set(&Symbol::new(&env, "key3"), &3u64);
+                    env.storage().persistent().set(&Symbol::new(&env, "key4"), &4u64);
+                    env.storage().persistent().set(&Symbol::new(&env, "key5"), &5u64);
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 5000);
+    }
 }
