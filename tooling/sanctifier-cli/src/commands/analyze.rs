@@ -85,6 +85,14 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                 arithmetic_issues.extend(analyzer.scan_arithmetic_overflow(&content));
                 custom_matches.extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
             }
+    } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+        if let Ok(content) = fs::read_to_string(path) {
+            collisions.extend(analyzer.scan_storage_collisions(&content));
+            size_warnings.extend(analyzer.analyze_ledger_size(&content));
+            unsafe_patterns.extend(analyzer.analyze_unsafe_patterns(&content));
+            auth_gaps.extend(analyzer.scan_auth_gaps(&content));
+            panic_issues.extend(analyzer.scan_panics(&content));
+            arithmetic_issues.extend(analyzer.scan_arithmetic_overflow(&content));
         }
     }
 
@@ -196,6 +204,7 @@ fn load_config(path: &Path) -> SanctifyConfig {
     SanctifyConfig::default()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk_dir(
     dir: &Path,
     analyzer: &Analyzer,

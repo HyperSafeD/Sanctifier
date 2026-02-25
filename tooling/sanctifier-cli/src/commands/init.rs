@@ -133,7 +133,7 @@ mod tests {
         assert_eq!(config.ledger_limit, 64000);
 
         // Verify strict_mode
-        assert_eq!(config.strict_mode, false);
+        assert!(!config.strict_mode);
 
         // Verify approaching_threshold
         assert_eq!(config.approaching_threshold, 0.8);
