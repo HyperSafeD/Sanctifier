@@ -1,9 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::panic::catch_unwind;
 pub mod gas_estimator;
 pub mod smt;
 mod storage_collision;
 use std::collections::HashSet;
-use std::panic::catch_unwind;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{parse_str, Fields, File, Item, Meta, Type};
