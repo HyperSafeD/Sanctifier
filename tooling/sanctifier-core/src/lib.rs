@@ -1618,6 +1618,4 @@ mod tests {
         // Location should include function name
         assert!(issues[0].location.starts_with("risky:"));
     }
-
-
 }
