@@ -16,7 +16,7 @@ impl VulnerableContract {
 
     // ✅ Secure version
     pub fn set_admin_secure(env: Env, new_admin: Symbol) {
-        let admin: Symbol = env
+        let _admin: Symbol = env
             .storage()
             .instance()
             .get(&symbol_short!("admin"))

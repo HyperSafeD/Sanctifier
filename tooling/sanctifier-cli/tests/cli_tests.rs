@@ -8,7 +8,7 @@ fn test_cli_help() {
     cmd.arg("--help")
         .assert()
         .success()
-        .stdout(predicate::str::contains("Usage: sanctifier"));
+        .stdout(predicates::str::contains("Usage: sanctifier"));
 }
 
 #[test]
@@ -22,9 +22,11 @@ fn test_analyze_valid_contract() {
         .arg(fixture_path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("Static analysis complete."))
-        .stdout(predicate::str::contains("No ledger size issues found."))
-        .stdout(predicate::str::contains("No upgrade pattern issues found."));
+        .stdout(predicates::str::contains("Static analysis complete."))
+        .stdout(predicates::str::contains("No ledger size issues found."))
+        .stdout(predicates::str::contains(
+            "No storage key collisions found.",
+        ));
 }
 
 #[test]
@@ -38,9 +40,13 @@ fn test_analyze_vulnerable_contract() {
         .arg(fixture_path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("Found potential Authentication Gaps!"))
-        .stdout(predicate::str::contains("Found explicit Panics/Unwraps!"))
-        .stdout(predicate::str::contains("Found unchecked Arithmetic Operations!"));
+        .stdout(predicates::str::contains(
+            "Found potential Authentication Gaps!",
+        ))
+        .stdout(predicates::str::contains("Found explicit Panics/Unwraps!"))
+        .stdout(predicates::str::contains(
+            "Found unchecked Arithmetic Operations!",
+        ));
 }
 
 #[test]
@@ -50,15 +56,16 @@ fn test_analyze_json_output() {
         .unwrap()
         .join("tests/fixtures/valid_contract.rs");
 
-    let assert = cmd.arg("analyze")
+    let assert = cmd
+        .arg("analyze")
         .arg(fixture_path)
         .arg("--format")
         .arg("json")
         .assert()
         .success();
-    
+
     // JSON starts with {
-    assert.stdout(predicate::str::starts_with("{"));
+    assert.stdout(predicates::str::starts_with("{"));
 }
 
 #[test]
@@ -72,5 +79,5 @@ fn test_analyze_empty_macro_heavy() {
         .arg(fixture_path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("Static analysis complete."));
+        .stdout(predicates::str::contains("Static analysis complete."));
 }
