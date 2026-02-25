@@ -1,7 +1,6 @@
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
-use std::panic::{self, AssertUnwindSafe};
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{parse_str, Fields, File, Item, Meta, Type};
@@ -94,6 +93,7 @@ impl UpgradeReport {
     }
 }
 
+#[allow(dead_code)]
 fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| {
         if let Meta::Path(path) = &attr.meta {
