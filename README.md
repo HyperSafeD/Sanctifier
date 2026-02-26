@@ -47,6 +47,13 @@ Run the analysis suite on your Soroban project:
 sanctifier analyze ./contracts/my-token
 ```
 
+### Notify Webhooks on Scan Completion
+Send scan completion notifications to one or more webhook endpoints:
+
+```bash
+sanctifier analyze ./contracts/my-token --webhook-url https://hooks.slack.com/services/XXX/YYY/ZZZ --webhook-url https://discord.com/api/webhooks/ID/TOKEN
+```
+
 ### Update Sanctifier
 Check for and download the latest Sanctifier binary:
 
