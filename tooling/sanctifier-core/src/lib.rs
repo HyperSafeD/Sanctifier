@@ -340,7 +340,9 @@ impl Analyzer {
 
         // As a PoC for Issue #111, we verify a theoretical unconstrained transfer function.
         // In a full implementation, this would dynamically parse the AST to extract `a` and `b`.
-        if let Some(issue) = verifier.verify_addition_overflow("transfer_pure", "kani-poc/src/lib.rs:10") {
+        if let Some(issue) =
+            verifier.verify_addition_overflow("transfer_pure", "kani-poc/src/lib.rs:10")
+        {
             issues.push(issue);
         }
 
