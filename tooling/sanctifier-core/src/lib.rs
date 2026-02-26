@@ -189,18 +189,13 @@ pub struct UnhandledResultIssue {
 }
 
 // ── Configuration ─────────────────────────────────────────────────────────────
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RuleSeverity {
     Info,
+    #[default]
     Warning,
     Error,
-}
-
-impl Default for RuleSeverity {
-    fn default() -> Self {
-        Self::Warning
-    }
 }
 
 /// User-defined regex-based rule. Defined in .sanctify.toml under [[custom_rules]].
@@ -350,7 +345,9 @@ impl Analyzer {
 
         // As a PoC for Issue #111, we verify a theoretical unconstrained transfer function.
         // In a full implementation, this would dynamically parse the AST to extract `a` and `b`.
-        if let Some(issue) = verifier.verify_addition_overflow("transfer_pure", "kani-poc/src/lib.rs:10") {
+        if let Some(issue) =
+            verifier.verify_addition_overflow("transfer_pure", "kani-poc/src/lib.rs:10")
+        {
             issues.push(issue);
         }
 
@@ -1374,7 +1371,7 @@ impl UnhandledResultVisitor {
 
     fn is_handled(expr: &syn::Expr) -> bool {
         match expr {
-            syn::Expr::Try(e) => true,
+            syn::Expr::Try(_) => true,
             syn::Expr::Match(_) => true,
             syn::Expr::If(e) => {
                 if let syn::Expr::Try(_) = &*e.cond {
@@ -1976,7 +1973,10 @@ mod tests {
         let matches = analyzer.analyze_custom_rules(source, &analyzer.config.custom_rules);
         assert_eq!(matches.len(), 2);
 
-        let todo_match = matches.iter().find(|m| m.rule_name == "todo_comment").unwrap();
+        let todo_match = matches
+            .iter()
+            .find(|m| m.rule_name == "todo_comment")
+            .unwrap();
         assert_eq!(todo_match.severity, RuleSeverity::Info);
 
         let unsafe_match = matches.iter().find(|m| m.rule_name == "no_unsafe").unwrap();
@@ -2618,5 +2618,53 @@ mod tests {
         "#;
         let violations = analyzer.run_rules(source);
         assert!(!violations.is_empty());
+    }
+
+    #[test]
+    fn test_storage_collision_detects_within_same_storage_type() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn write_a(env: Env) {
+                    env.storage().persistent().set(&"USER", &1u32);
+                }
+
+                pub fn write_b(env: Env) {
+                    env.storage().persistent().set(&"USER", &2u32);
+                }
+            }
+        "#;
+
+        let collisions = analyzer.scan_storage_collisions(source);
+        assert_eq!(collisions.len(), 2);
+        assert!(collisions.iter().all(|c| c.key_value == "USER"));
+        assert!(collisions
+            .iter()
+            .all(|c| c.message.contains("persistent storage key collision")));
+    }
+
+    #[test]
+    fn test_storage_collision_ignores_cross_storage_type_key_reuse() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn set_persistent(env: Env) {
+                    env.storage().persistent().set(&"SESSION", &1u32);
+                }
+
+                pub fn set_temporary(env: Env) {
+                    env.storage().temporary().set(&"SESSION", &2u32);
+                }
+
+                pub fn set_instance(env: Env) {
+                    env.storage().instance().set(&"SESSION", &3u32);
+                }
+            }
+        "#;
+
+        let collisions = analyzer.scan_storage_collisions(source);
+        assert!(collisions.is_empty());
     }
 }

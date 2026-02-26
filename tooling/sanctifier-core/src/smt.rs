@@ -25,10 +25,14 @@ impl<'ctx> SmtVerifier<'ctx> {
 
     /// Proof-of-Concept: Uses Z3 to prove if `a + b` can overflow a 64-bit integer
     /// under unconstrained conditions.
-    pub fn verify_addition_overflow(&self, fn_name: &str, location: &str) -> Option<SmtInvariantIssue> {
+    pub fn verify_addition_overflow(
+        &self,
+        fn_name: &str,
+        location: &str,
+    ) -> Option<SmtInvariantIssue> {
         let a = Int::new_const(self.ctx, "a");
         let b = Int::new_const(self.ctx, "b");
-        
+
         // u64 bounds
         let zero = Int::from_u64(self.ctx, 0);
         let max_u64 = Int::from_u64(self.ctx, u64::MAX);
@@ -48,7 +52,8 @@ impl<'ctx> SmtVerifier<'ctx> {
             // A model exists where a + b > u64::MAX, meaning an overflow is mathematically possible
             Some(SmtInvariantIssue {
                 function_name: fn_name.to_string(),
-                description: "SMT Solver (Z3) proved that this addition can overflow u64 bounds.".to_string(),
+                description: "SMT Solver (Z3) proved that this addition can overflow u64 bounds."
+                    .to_string(),
                 location: location.to_string(),
             })
         } else {

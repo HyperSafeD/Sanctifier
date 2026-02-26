@@ -11,6 +11,12 @@ impl UnhandledResultRule {
     }
 }
 
+impl Default for UnhandledResultRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for UnhandledResultRule {
     fn name(&self) -> &str {
         "unhandled_result"
