@@ -3,6 +3,7 @@ use crate::commands::webhook::{
 };
 use clap::Args;
 use colored::*;
+use sanctifier_core::finding_codes;
 use sanctifier_core::{Analyzer, SanctifyConfig, SizeWarningLevel};
 use serde_json;
 use std::fs;
@@ -142,6 +143,7 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                 "project_path": path.display().to_string(),
                 "format": "sanctifier-ci-v1",
             },
+            "error_codes": finding_codes::all_finding_codes(),
             "summary": {
                 "total_findings": total_findings,
                 "storage_collisions": collisions.len(),
@@ -155,13 +157,50 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                 "has_high": has_high,
             },
             "findings": {
-                "storage_collisions": collisions,
-                "ledger_size_warnings": size_warnings,
-                "unsafe_patterns": unsafe_patterns,
-                "auth_gaps": auth_gaps,
-                "panic_issues": panic_issues,
-                "arithmetic_issues": arithmetic_issues,
-                "custom_rules": custom_matches,
+                "storage_collisions": collisions.iter().map(|c| serde_json::json!({
+                    "code": finding_codes::STORAGE_COLLISION,
+                    "key_value": c.key_value,
+                    "key_type": c.key_type,
+                    "location": c.location,
+                    "message": c.message,
+                })).collect::<Vec<_>>(),
+                "ledger_size_warnings": size_warnings.iter().map(|w| serde_json::json!({
+                    "code": finding_codes::LEDGER_SIZE_RISK,
+                    "struct_name": w.struct_name,
+                    "estimated_size": w.estimated_size,
+                    "limit": w.limit,
+                    "level": w.level,
+                })).collect::<Vec<_>>(),
+                "unsafe_patterns": unsafe_patterns.iter().map(|p| serde_json::json!({
+                    "code": finding_codes::UNSAFE_PATTERN,
+                    "pattern_type": p.pattern_type,
+                    "line": p.line,
+                    "snippet": p.snippet,
+                })).collect::<Vec<_>>(),
+                "auth_gaps": auth_gaps.iter().map(|g| serde_json::json!({
+                    "code": finding_codes::AUTH_GAP,
+                    "function": g,
+                })).collect::<Vec<_>>(),
+                "panic_issues": panic_issues.iter().map(|p| serde_json::json!({
+                    "code": finding_codes::PANIC_USAGE,
+                    "function_name": p.function_name,
+                    "issue_type": p.issue_type,
+                    "location": p.location,
+                })).collect::<Vec<_>>(),
+                "arithmetic_issues": arithmetic_issues.iter().map(|a| serde_json::json!({
+                    "code": finding_codes::ARITHMETIC_OVERFLOW,
+                    "function_name": a.function_name,
+                    "operation": a.operation,
+                    "suggestion": a.suggestion,
+                    "location": a.location,
+                })).collect::<Vec<_>>(),
+                "custom_rules": custom_matches.iter().map(|m| serde_json::json!({
+                    "code": finding_codes::CUSTOM_RULE_MATCH,
+                    "rule_name": m.rule_name,
+                    "line": m.line,
+                    "snippet": m.snippet,
+                    "severity": m.severity,
+                })).collect::<Vec<_>>(),
             },
         });
         println!("{}", serde_json::to_string_pretty(&report)?);
@@ -180,7 +219,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             "⚠️".yellow()
         );
         for collision in collisions {
-            println!("   {} Value: {}", "->".red(), collision.key_value.bold());
+            println!(
+                "   {} [{}] Value: {}",
+                "->".red(),
+                finding_codes::STORAGE_COLLISION.bold(),
+                collision.key_value.bold()
+            );
             println!("      Type: {}", collision.key_type);
             println!("      Location: {}", collision.location);
             println!("      Message: {}", collision.message);
@@ -192,7 +236,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     } else {
         println!("\n{} Found potential Authentication Gaps!", "⚠️".yellow());
         for gap in auth_gaps {
-            println!("   {} Function: {}", "->".red(), gap.bold());
+            println!(
+                "   {} [{}] Function: {}",
+                "->".red(),
+                finding_codes::AUTH_GAP.bold(),
+                gap.bold()
+            );
         }
     }
 
@@ -201,7 +250,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     } else {
         println!("\n{} Found explicit Panics/Unwraps!", "⚠️".yellow());
         for issue in panic_issues {
-            println!("   {} Type: {}", "->".red(), issue.issue_type.bold());
+            println!(
+                "   {} [{}] Type: {}",
+                "->".red(),
+                finding_codes::PANIC_USAGE.bold(),
+                issue.issue_type.bold()
+            );
             println!("      Location: {}", issue.location);
         }
     }
@@ -211,7 +265,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     } else {
         println!("\n{} Found unchecked Arithmetic Operations!", "⚠️".yellow());
         for issue in arithmetic_issues {
-            println!("   {} Op: {}", "->".red(), issue.operation.bold());
+            println!(
+                "   {} [{}] Op: {}",
+                "->".red(),
+                finding_codes::ARITHMETIC_OVERFLOW.bold(),
+                issue.operation.bold()
+            );
             println!("      Location: {}", issue.location);
         }
     }
@@ -221,7 +280,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     } else {
         println!("\n{} Found Ledger Size Warnings!", "⚠️".yellow());
         for warning in size_warnings {
-            println!("   {} Struct: {}", "->".red(), warning.struct_name.bold());
+            println!(
+                "   {} [{}] Struct: {}",
+                "->".red(),
+                finding_codes::LEDGER_SIZE_RISK.bold(),
+                warning.struct_name.bold()
+            );
             println!("      Size: {} bytes", warning.estimated_size);
         }
     }
@@ -234,7 +298,13 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                 sanctifier_core::RuleSeverity::Warning => "⚠️".yellow(),
                 sanctifier_core::RuleSeverity::Info => "ℹ️".blue(),
             };
-            println!("   {} [{}]: {}", sev_icon, m.rule_name.bold(), m.snippet);
+            println!(
+                "   {} [{}|{}]: {}",
+                sev_icon,
+                finding_codes::CUSTOM_RULE_MATCH.bold(),
+                m.rule_name.bold(),
+                m.snippet
+            );
         }
     }
 
