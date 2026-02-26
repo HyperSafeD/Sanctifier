@@ -53,7 +53,10 @@ export function SanctityScore({ findings }: SanctityScoreProps) {
         Sanctity Score
       </h3>
       <div className="flex items-center justify-center">
-        <svg width="180" height="110" viewBox="0 0 180 110">
+        <svg
+          viewBox="0 0 180 110"
+          className="w-full h-auto max-w-[180px]"
+        >
           {/* Background arc */}
           <path
             d={`M ${90 - radius} 95 A ${radius} ${radius} 0 0 1 ${90 + radius} 95`}
