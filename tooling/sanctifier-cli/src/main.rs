@@ -14,6 +14,8 @@ struct Cli {
 pub enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
     Analyze(commands::analyze::AnalyzeArgs),
+    /// Generate a dynamic Sanctifier status badge
+    Badge(commands::badge::BadgeArgs),
     /// Generate a security report
     Report {
         /// Output file path
@@ -35,6 +37,9 @@ fn main() -> anyhow::Result<()> {
                 branding::print_logo();
             }
             commands::analyze::exec(args)?;
+        }
+        Commands::Badge(args) => {
+            commands::badge::exec(args)?;
         }
         Commands::Report { output } => {
             if let Some(p) = output {
