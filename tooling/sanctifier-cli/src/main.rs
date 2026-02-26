@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 mod branding;
 mod commands;
+pub mod vulndb;
 
 #[derive(Parser)]
 #[command(name = "sanctifier")]
