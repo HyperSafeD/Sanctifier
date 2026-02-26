@@ -81,7 +81,15 @@ export default function DashboardPage() {
           </Link>
           <span className="text-zinc-500 dark:text-zinc-400 theme-high-contrast:text-white">Security Dashboard</span>
         </div>
-        <ThemeToggle />
+        <div className="flex items-center gap-4">
+          <Link
+            href="/terminal"
+            className="text-sm font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-zinc-50 transition-colors"
+          >
+            Live Terminal
+          </Link>
+          <ThemeToggle />
+        </div>
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
@@ -138,21 +146,19 @@ export default function DashboardPage() {
             <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-700 theme-high-contrast:border-white">
               <button
                 onClick={() => setActiveTab("findings")}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === "findings"
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "findings"
                     ? "border-zinc-900 dark:border-zinc-100 theme-high-contrast:border-yellow-300 text-zinc-900 dark:text-zinc-100 theme-high-contrast:text-yellow-300"
                     : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 theme-high-contrast:text-white theme-high-contrast:hover:text-yellow-300"
-                }`}
+                  }`}
               >
                 Findings
               </button>
               <button
                 onClick={() => setActiveTab("callgraph")}
-                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-                  activeTab === "callgraph"
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${activeTab === "callgraph"
                     ? "border-zinc-900 dark:border-zinc-100 theme-high-contrast:border-yellow-300 text-zinc-900 dark:text-zinc-100 theme-high-contrast:text-yellow-300"
                     : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 theme-high-contrast:text-white theme-high-contrast:hover:text-yellow-300"
-                }`}
+                  }`}
               >
                 Call Graph
               </button>
