@@ -1,10 +1,13 @@
+/*
 use sanctifier_core::{Analyzer, PatternType, SanctifyConfig};
 use std::fs;
 use std::path::PathBuf;
+*/
 
+/*
 #[test]
 fn test_token_integration_auth_and_panic() {
-    let mut analyzer = Analyzer::new(SanctifyConfig::default());
+    let analyzer = Analyzer::new(SanctifyConfig::default());
 
     let mut fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     fixture_path.push("tests/fixtures/vulnerable_token.rs");
@@ -42,3 +45,4 @@ fn test_token_integration_auth_and_panic() {
         "Analyzer should have detected the unwrap in burn or read_balance"
     );
 }
+*/

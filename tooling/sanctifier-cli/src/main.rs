@@ -4,6 +4,9 @@ use serde::Deserialize;
 use sanctifier_core::{callgraph_to_dot, Analyzer, ArithmeticIssue, CustomRuleMatch, SanctifyConfig, SizeWarning, UnsafePattern, UpgradeReport};
 use std::fs;
 use std::path::{Path, PathBuf};
+mod branding;
+mod commands;
+pub mod vulndb;
 
 #[derive(Parser)]
 #[command(name = "sanctifier")]
@@ -14,26 +17,16 @@ struct Cli {
 }
 
 #[derive(Subcommand)]
-enum Commands {
+pub enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
-    Analyze {
-        /// Path to the contract directory or Cargo.toml
-        #[arg(default_value = ".")]
-        path: PathBuf,
-
-        /// Output format (text, json)
-        #[arg(short, long, default_value = "text")]
-        format: String,
-
-        /// Limit for ledger entry size in bytes
-        #[arg(short, long, default_value = "64000")]
-        limit: usize,
-    },
+    Analyze(commands::analyze::AnalyzeArgs),
+    /// Generate a dynamic Sanctifier status badge
+    Badge(commands::badge::BadgeArgs),
     /// Generate a security report
     Report {
         /// Output file path
         #[arg(short, long)]
-        output: Option<PathBuf>,
+        output: Option<std::path::PathBuf>,
     },
     /// Initialize Sanctifier in a new project
     Init,
@@ -48,9 +41,12 @@ enum Commands {
         #[arg(short, long, default_value = "callgraph.dot")]
         output: PathBuf,
     },
+    Init(commands::init::InitArgs),
+    /// Check for and download the latest Sanctifier binary
+    Update,
 }
 
-fn main() {
+fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
@@ -270,10 +266,17 @@ fn main() {
                 } else {
                     println!("\nNo upgrade pattern issues found.");
                 }
+    match cli.command {
+        Commands::Analyze(args) => {
+            if args.format != "json" {
+                branding::print_logo();
             }
+            commands::analyze::exec(args)?;
+        }
+        Commands::Badge(args) => {
+            commands::badge::exec(args)?;
         }
         Commands::Report { output } => {
-            println!("{} Generating report...", "📄".yellow());
             if let Some(p) = output {
                 println!("Report saved to {:?}", p);
             } else {
@@ -468,34 +471,13 @@ fn analyze_directory(
                     }
                 }
             }
+        Commands::Init(args) => {
+            commands::init::exec(args, None)?;
+        }
+        Commands::Update => {
+            commands::update::exec()?;
         }
     }
-}
 
-fn load_config(path: &Path) -> SanctifyConfig {
-    find_config_path(path)
-        .and_then(|p| fs::read_to_string(p).ok())
-        .and_then(|content| toml::from_str(&content).ok())
-        .unwrap_or_default()
-}
-
-fn find_config_path(start_path: &Path) -> Option<PathBuf> {
-    let mut current = if start_path.is_dir() {
-        Some(start_path.to_path_buf())
-    } else {
-        start_path.parent().map(|p| p.to_path_buf())
-    };
-
-    while let Some(path) = current {
-        let config_path = path.join(".sanctify.toml");
-        if config_path.exists() {
-            return Some(config_path);
-        }
-        current = if path.parent().is_some() {
-            path.parent().map(|p| p.to_path_buf())
-        } else {
-            None
-        }
-    }
-    None
+    Ok(())
 }

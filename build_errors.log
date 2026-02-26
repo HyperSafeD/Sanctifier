@@ -1,0 +1,133 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/wilfred/Soroban/Sanctifier/Sanctifier/contracts/kani-poc/Cargo.toml
+workspace: /home/wilfred/Soroban/Sanctifier/Sanctifier/Cargo.toml
+    Checking memchr v2.8.0
+    Checking regex-syntax v0.8.9
+   Compiling anyhow v1.0.102
+    Checking vulnerable-contract v0.1.0 (/home/wilfred/Soroban/Sanctifier/Sanctifier/contracts/vulnerable-contract)
+    Checking kani-poc-contract v0.1.0 (/home/wilfred/Soroban/Sanctifier/Sanctifier/contracts/kani-poc)
+warning: unexpected `cfg` condition value: `testutils`
+ --> contracts/vulnerable-contract/src/lib.rs:4:1
+  |
+4 | #[contract]
+  | ^^^^^^^^^^^
+  |
+  = note: no expected values for `feature`
+  = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `contract` crate for guidance on how handle this unexpected cfg
+  = help: the attribute macro `contract` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: `#[warn(unexpected_cfgs)]` on by default
+  = note: this warning originates in the attribute macro `contract` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `testutils`
+ --> contracts/vulnerable-contract/src/lib.rs:7:1
+  |
+7 | #[contractimpl]
+  | ^^^^^^^^^^^^^^^
+  |
+  = note: no expected values for `feature`
+  = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `contractimpl` crate for guidance on how handle this unexpected cfg
+  = help: the attribute macro `contractimpl` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: this warning originates in the attribute macro `contractimpl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `testutils`
+ --> contracts/vulnerable-contract/src/lib.rs:7:1
+  |
+7 | #[contractimpl]
+  | ^^^^^^^^^^^^^^^
+  |
+  = note: no expected values for `feature`
+  = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+  = help: try referring to `soroban_sdk::contractclient` crate for guidance on how handle this unexpected cfg
+  = help: the attribute macro `soroban_sdk::contractclient` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+  = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+  = note: this warning originates in the attribute macro `soroban_sdk::contractclient` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `testutils`
+  --> contracts/kani-poc/src/lib.rs:52:1
+   |
+52 | #[contract]
+   | ^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `contract` crate for guidance on how handle this unexpected cfg
+   = help: the attribute macro `contract` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: requested on the command line with `-W unexpected-cfgs`
+   = note: this warning originates in the attribute macro `contract` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `testutils`
+  --> contracts/kani-poc/src/lib.rs:55:1
+   |
+55 | #[contractimpl]
+   | ^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `contractimpl` crate for guidance on how handle this unexpected cfg
+   = help: the attribute macro `contractimpl` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the attribute macro `contractimpl` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unexpected `cfg` condition value: `testutils`
+  --> contracts/kani-poc/src/lib.rs:55:1
+   |
+55 | #[contractimpl]
+   | ^^^^^^^^^^^^^^^
+   |
+   = note: no expected values for `feature`
+   = note: using a cfg inside a attribute macro will use the cfgs from the destination crate and not the ones from the defining crate
+   = help: try referring to `soroban_sdk::contractclient` crate for guidance on how handle this unexpected cfg
+   = help: the attribute macro `soroban_sdk::contractclient` may come from an old version of the `soroban_sdk_macros` crate, try updating your dependency with `cargo update -p soroban_sdk_macros`
+   = note: see <https://doc.rust-lang.org/nightly/rustc/check-cfg/cargo-specifics.html> for more information about checking conditional configuration
+   = note: this warning originates in the attribute macro `soroban_sdk::contractclient` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `admin`
+  --> contracts/vulnerable-contract/src/lib.rs:19:13
+   |
+19 |         let admin: Symbol = env
+   |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_admin`
+   |
+   = note: `#[warn(unused_variables)]` on by default
+
+warning: `kani-poc-contract` (lib) generated 3 warnings
+warning: `vulnerable-contract` (lib) generated 4 warnings
+    Checking aho-corasick v1.1.4
+    Checking regex-automata v0.4.14
+    Checking regex v1.12.3
+    Checking sanctifier-core v0.1.0 (/home/wilfred/Soroban/Sanctifier/Sanctifier/tooling/sanctifier-core)
+error[E0422]: cannot find struct, variant or union type `EventVisitor` in this scope
+   --> tooling/sanctifier-core/src/lib.rs:598:27
+    |
+598 |         let mut visitor = EventVisitor {
+    |                           ^^^^^^^^^^^^ not found in this scope
+
+error[E0404]: expected trait, found struct `std::panic::AssertUnwindSafe`
+    --> tooling/sanctifier-core/src/lib.rs:1330:24
+     |
+1330 |     F: FnOnce() -> R + std::panic::AssertUnwindSafe,
+     |                        ^^^^^^^^^^^^----------------
+     |                                    |
+     |                                    help: a trait with a similar name exists: `RefUnwindSafe`
+     |
+    ::: /home/wilfred/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/src/rust/library/core/src/panic/unwind_safe.rs:108:1
+     |
+ 108 | pub auto trait RefUnwindSafe {}
+     | ---------------------------- similarly named trait `RefUnwindSafe` defined here
+
+warning: unused imports: `AssertUnwindSafe` and `self`
+ --> tooling/sanctifier-core/src/lib.rs:4:18
+  |
+4 | use std::panic::{self, AssertUnwindSafe};
+  |                  ^^^^  ^^^^^^^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` on by default
+
+Some errors have detailed explanations: E0404, E0422.
+For more information about an error, try `rustc --explain E0404`.
+warning: `sanctifier-core` (lib) generated 1 warning
+error: could not compile `sanctifier-core` (lib) due to 2 previous errors; 1 warning emitted
