@@ -123,9 +123,13 @@ mod verification {
         kani::assume(balance_from <= i128::MAX);
         kani::assume(balance_to >= 0);
         kani::assume(balance_to <= i128::MAX - amount);
+        // Ensure the conservation assert itself (new_from + new_to) doesn't overflow.
+        // new_from = balance_from - amount, new_to = balance_to + amount
+        // new_from + new_to = balance_from + balance_to, so we need total to fit.
+        kani::assume(balance_from <= i128::MAX - balance_to);
 
         let Ok((new_from, new_to)) = transfer_pure(balance_from, balance_to, amount) else {
-            kani::unreachable();
+            panic!("transfer_pure failed despite valid preconditions");
         };
 
         assert!(new_from == balance_from - amount);
@@ -136,17 +140,38 @@ mod verification {
         );
     }
 
+    /// **Property**: Transfer fails when `amount <= 0`.
+    ///
+    /// `transfer_pure` explicitly guards against non-positive amounts.
+    /// Kani proves this guard always fires for every non-positive `amount`.
     #[kani::proof]
-    fn verify_transfer_pure_insufficient_balance() {
+    fn verify_transfer_pure_rejects_non_positive_amount() {
+        let balance_from: i128 = kani::any();
+        let balance_to: i128 = kani::any();
+        let amount: i128 = kani::any();
+
+        kani::assume(amount <= 0);
+
+        let result = transfer_pure(balance_from, balance_to, amount);
+        assert!(result.is_err(), "transfer must fail when amount <= 0");
+    }
+
+    /// **Property**: Transfer fails when subtraction would underflow `i128`.
+    ///
+    /// `checked_sub` returns `None` (and `transfer_pure` returns `Err`) only
+    /// when `balance_from - amount < i128::MIN`, i.e. true integer underflow.
+    #[kani::proof]
+    fn verify_transfer_pure_rejects_underflow() {
         let balance_from: i128 = kani::any();
         let balance_to: i128 = kani::any();
         let amount: i128 = kani::any();
 
         kani::assume(amount > 0);
-        kani::assume(balance_from < amount);
+        // Underflow condition: balance_from - amount < i128::MIN
+        kani::assume(balance_from < i128::MIN + amount);
 
         let result = transfer_pure(balance_from, balance_to, amount);
-        assert!(result.is_err());
+        assert!(result.is_err(), "transfer must fail on i128 underflow");
     }
 
     #[kani::proof]
@@ -159,7 +184,7 @@ mod verification {
         kani::assume(balance <= i128::MAX - amount);
 
         let Ok(new_balance) = mint_pure(balance, amount) else {
-            kani::unreachable();
+            panic!("mint_pure failed despite valid preconditions");
         };
 
         assert!(new_balance == balance + amount);
@@ -174,7 +199,7 @@ mod verification {
         kani::assume(balance >= amount);
 
         let Ok(new_balance) = burn_pure(balance, amount) else {
-            kani::unreachable();
+            panic!("burn_pure failed despite valid preconditions");
         };
 
         assert!(new_balance == balance - amount);
