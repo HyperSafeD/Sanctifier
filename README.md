@@ -57,5 +57,8 @@ sanctifier update
 ## 🤝 Contributing
 We welcome contributions from the Stellar community! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
+## 🔎 Finding Codes
+Unified finding codes (`S001`...`S007`) are documented in [docs/error-codes.md](docs/error-codes.md).
+
 ## 📄 License
 MIT
