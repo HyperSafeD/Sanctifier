@@ -70,6 +70,12 @@ Confirm the installation succeeded:
 sanctifier --version
 ```
 
+Update to the latest Sanctifier binary at any time:
+
+```bash
+sanctifier update
+```
+
 ---
 
 ## 3. Running Your First Scan
@@ -134,10 +140,12 @@ strict_mode   = false
 [[custom_rules]]
 name    = "no_unsafe_block"
 pattern = "unsafe\\s*\\{"
+severity = "error"
 
 [[custom_rules]]
 name    = "no_mem_forget"
 pattern = "std::mem::forget"
+severity = "warning"
 ```
 
 Adjust `enabled_rules` to enable or disable specific checks, and add entries to `[[custom_rules]]` to enforce your own patterns.
@@ -225,5 +233,7 @@ Sanctifier checks for upgrade-related patterns (e.g. `Wasm::upgrade`, missing `i
 ## 6. Next Steps
 
 - **Formal Verification** — See [`docs/kani-integration.md`](./kani-integration.md) to add model-checking with the Kani verifier.
+- **Runtime Guards** — See [`docs/runtime-guards-integration.md`](./runtime-guards-integration.md) to add runtime invariant wrappers in your existing Soroban contract.
+- **Video Tutorials** — See [`docs/formal-verification-video-series.md`](./formal-verification-video-series.md) for short walkthrough episodes on report reading and Kani proofs.
 - **CI Integration** — Use `--format json` and pipe the output to your pipeline's static analysis step to fail builds on new findings.
 - **Contributing** — Bug reports and new rule ideas are welcome. See `CONTRIBUTING.md` for guidelines.

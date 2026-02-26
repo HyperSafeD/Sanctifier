@@ -3,10 +3,18 @@ members = [
     "tooling/sanctifier-cli",
     "tooling/sanctifier-core",
     "contracts/vulnerable-contract",
+    "contracts/token-with-bugs",
     "contracts/kani-poc",
-    "contracts/runtime-guard-wrapper",
+    "contracts/amm-pool",
+    "contracts/reentrancy-guard",
 ]
 resolver = "2"
+
+[workspace.dependencies]
+soroban-sdk = { version = "20.5.0" }
+
+[workspace.package]
+rust-version = "1.78"
 
 [profile.release]
 opt-level = "z"

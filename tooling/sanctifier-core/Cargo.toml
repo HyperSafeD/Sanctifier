@@ -6,7 +6,7 @@ description = "Core analysis logic for Sanctifier"
 license = "MIT"
 
 [dependencies]
-soroban-sdk = "20.0.0" # Target latest Soroban SDK
+soroban-sdk = "20.5.0" # Target latest Soroban SDK
 syn = { version = "2.0", features = ["full", "extra-traits", "visit"] }
 quote = "1.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
@@ -14,3 +14,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
 regex = "1.10.3"
+z3 = "0.12.1"
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "benchmark"
+harness = false

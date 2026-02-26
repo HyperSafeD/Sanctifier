@@ -1,3 +1,5 @@
 pub mod analyze;
-pub mod deploy;
+pub mod badge;
 pub mod init;
+pub mod update;
+pub mod webhook;

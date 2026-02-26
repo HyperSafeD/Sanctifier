@@ -1,31 +1,17 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useTheme } from "../providers/theme-provider";
 
 export function ThemeToggle() {
-  const [dark, setDark] = useState(false);
-
-  useEffect(() => {
-    const isDark =
-      typeof window !== "undefined" &&
-      (document.documentElement.classList.contains("dark") ||
-        window.matchMedia("(prefers-color-scheme: dark)").matches);
-    setDark(isDark);
-    if (isDark) document.documentElement.classList.add("dark");
-  }, []);
-
-  const toggle = () => {
-    document.documentElement.classList.toggle("dark");
-    setDark(document.documentElement.classList.contains("dark"));
-  };
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <button
-      onClick={toggle}
+      onClick={toggleTheme}
       className="rounded-lg border border-zinc-300 dark:border-zinc-600 px-3 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800"
-      aria-label="Toggle dark mode"
+      aria-label="Toggle theme"
     >
-      {dark ? "☀️ Light" : "🌙 Dark"}
+      {theme === "dark" ? "Switch to Light" : "Switch to Dark"}
     </button>
   );
 }

@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 mod branding;
 mod commands;
+pub mod vulndb;
 
 #[derive(Parser)]
 #[command(name = "sanctifier")]
@@ -14,8 +15,8 @@ struct Cli {
 pub enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
     Analyze(commands::analyze::AnalyzeArgs),
-    /// Deploy a contract to Soroban testnet with runtime guards
-    Deploy(commands::deploy::DeployArgs),
+    /// Generate a dynamic Sanctifier status badge
+    Badge(commands::badge::BadgeArgs),
     /// Generate a security report
     Report {
         /// Output file path
@@ -24,6 +25,8 @@ pub enum Commands {
     },
     /// Initialize Sanctifier in a new project
     Init(commands::init::InitArgs),
+    /// Check for and download the latest Sanctifier binary
+    Update,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -36,9 +39,8 @@ fn main() -> anyhow::Result<()> {
             }
             commands::analyze::exec(args)?;
         }
-        Commands::Deploy(args) => {
-            branding::print_logo();
-            commands::deploy::exec(args)?;
+        Commands::Badge(args) => {
+            commands::badge::exec(args)?;
         }
         Commands::Report { output } => {
             if let Some(p) = output {
@@ -49,6 +51,9 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Init(args) => {
             commands::init::exec(args, None)?;
+        }
+        Commands::Update => {
+            commands::update::exec()?;
         }
     }
 

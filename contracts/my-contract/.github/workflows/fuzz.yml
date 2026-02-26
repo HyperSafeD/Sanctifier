@@ -1,0 +1,25 @@
+name: Fuzzing
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  bolero-fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-bolero
+      - run: cargo bolero test fuzz_raw_bytes_no_panic --time 60s
+      - run: cargo bolero test fuzz_structured_message_no_panic --time 60s
+
+  cargo-fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - run: cargo install cargo-fuzz
+      - run: cargo fuzz run fuzz_cross_contract -- -max_total_time=120

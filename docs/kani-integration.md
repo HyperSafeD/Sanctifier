@@ -48,10 +48,11 @@ To leverage Kani effectively, we recommend a **"Core Logic Separation"** pattern
 
 ### Example: Standard Token Contract
 
-In `contracts/kani-poc/src/lib.rs`, we extract pure balance logic from a standard Soroban token:
+In `contracts/kani-poc/src/lib.rs`, we extract pure balance and initialisation logic from a standard Soroban token:
 
 ```rust
 // Verified with Kani — pure primitives only
+pub fn initialize_pure(is_initialized: bool) -> Result<(), &'static str> { ... }
 pub fn transfer_pure(balance_from: i128, balance_to: i128, amount: i128) -> Result<(i128, i128), &'static str> { ... }
 pub fn mint_pure(balance: i128, amount: i128) -> Result<i128, &'static str> { ... }
 pub fn burn_pure(balance: i128, amount: i128) -> Result<i128, &'static str> { ... }
@@ -70,6 +71,9 @@ The Kani harnesses in `contracts/kani-poc` prove:
 
 | Harness                         | Property                                                  |
 |---------------------------------|-----------------------------------------------------------|
+| `verify_initialize_fails_when_already_initialized` | `initialize` **always** returns `Err` when the contract is already set up |
+| `verify_initialize_succeeds_when_not_initialized`   | `initialize` **always** returns `Ok` on a fresh contract  |
+| `verify_initialize_idempotency_guarantee`           | Exhaustive over all boolean states: double-initialisation is mathematically impossible |
 | `verify_transfer_pure_conservation` | Transfer preserves total supply: `new_from + new_to == balance_from + balance_to` |
 | `verify_transfer_pure_insufficient_balance` | Transfer fails with `Err` when `balance_from < amount`     |
 | `verify_mint_pure`              | Mint correctly adds `amount` to `balance`                 |
@@ -89,3 +93,22 @@ Then run:
 ```bash
 cargo kani --package kani-poc-contract
 ```
+
+## SMT Solver Latency Benchmarking
+
+To compare proof strategy cost in CI/local testing, Sanctifier now includes an ignored benchmark test in `sanctifier-core`:
+
+```bash
+cargo test -p sanctifier-core --test smt_latency_benchmark -- --ignored
+```
+
+This runs a set of SMT proof strategies repeatedly and writes `target/smt-latency-report.json` with:
+- per-strategy min/avg/max latency (microseconds)
+- p95 latency
+- a sortable summary for identifying the most expensive strategy
+
+## Tutorial Videos
+
+For a step-by-step walkthrough format, including how to read reports and write your first harness, see:
+
+- [`docs/formal-verification-video-series.md`](./formal-verification-video-series.md)
