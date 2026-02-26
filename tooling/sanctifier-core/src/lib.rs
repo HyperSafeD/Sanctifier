@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::panic::catch_unwind;
+pub mod finding_codes;
 pub mod gas_estimator;
 pub mod rules;
 pub mod smt;
@@ -1614,7 +1615,7 @@ mod tests {
     fn test_analyze_with_limit() {
         let config = SanctifyConfig {
             ledger_limit: 50,
-            ..Default::default()
+
         };
         let analyzer = Analyzer::new(config);
         let source = r#"
@@ -1933,6 +1934,44 @@ mod tests {
         assert!(issues[0].suggestion.contains("checked_add"));
         // Location should include function name
         assert!(issues[0].location.starts_with("risky:"));
+    }
+    #[test]
+    fn test_custom_rules_with_severity() {
+        let config = SanctifyConfig {
+            custom_rules: vec![
+                CustomRule {
+                    name: "no_unsafe".to_string(),
+                    pattern: "unsafe".to_string(),
+                    severity: RuleSeverity::Error,
+                },
+                CustomRule {
+                    name: "todo_comment".to_string(),
+                    pattern: "TODO".to_string(),
+                    severity: RuleSeverity::Info,
+                },
+            ],
+            ..Default::default()
+        };
+        let analyzer = Analyzer::new(config);
+        let source = r#"
+            pub fn my_fn() {
+                // TODO: implement this
+                unsafe {
+                    let x = 1;
+                }
+            }
+        "#;
+        let matches = analyzer.analyze_custom_rules(source, &analyzer.config.custom_rules);
+        assert_eq!(matches.len(), 2);
+
+        let todo_match = matches
+            .iter()
+            .find(|m| m.rule_name == "todo_comment")
+            .unwrap();
+        assert_eq!(todo_match.severity, RuleSeverity::Info);
+
+        let unsafe_match = matches.iter().find(|m| m.rule_name == "no_unsafe").unwrap();
+        assert_eq!(unsafe_match.severity, RuleSeverity::Error);
     }
 
     #[test]
@@ -2570,5 +2609,53 @@ mod tests {
         "#;
         let violations = analyzer.run_rules(source);
         assert!(!violations.is_empty());
+    }
+
+    #[test]
+    fn test_storage_collision_detects_within_same_storage_type() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn write_a(env: Env) {
+                    env.storage().persistent().set(&"USER", &1u32);
+                }
+
+                pub fn write_b(env: Env) {
+                    env.storage().persistent().set(&"USER", &2u32);
+                }
+            }
+        "#;
+
+        let collisions = analyzer.scan_storage_collisions(source);
+        assert_eq!(collisions.len(), 2);
+        assert!(collisions.iter().all(|c| c.key_value == "USER"));
+        assert!(collisions
+            .iter()
+            .all(|c| c.message.contains("persistent storage key collision")));
+    }
+
+    #[test]
+    fn test_storage_collision_ignores_cross_storage_type_key_reuse() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn set_persistent(env: Env) {
+                    env.storage().persistent().set(&"SESSION", &1u32);
+                }
+
+                pub fn set_temporary(env: Env) {
+                    env.storage().temporary().set(&"SESSION", &2u32);
+                }
+
+                pub fn set_instance(env: Env) {
+                    env.storage().instance().set(&"SESSION", &3u32);
+                }
+            }
+        "#;
+
+        let collisions = analyzer.scan_storage_collisions(source);
+        assert!(collisions.is_empty());
     }
 }

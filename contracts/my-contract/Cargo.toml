@@ -1,0 +1,11 @@
+[package]
+name = "my-contract"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+borsh = "1.3"
+
+[dev-dependencies]
+bolero = "0.10"
+bolero-generator = "0.10"

@@ -29,8 +29,8 @@ Sanctifier scans your Rust/Soroban code before deployment to detect:
 
 ### 2. Runtime Guardians
 A library of hook-based guards that you can integrate into your contracts:
-*   `Sanctifier::guard_invariant(|ctx| ...)`: Enforce state invariants.
-*   `Sanctifier::monitor_events()`: Ensure critical events are emitted.
+*   Runtime invariant checks via `SanctifiedGuard`.
+*   Step-by-step integration guide: [`docs/runtime-guards-integration.md`](docs/runtime-guards-integration.md)
 
 ## 📦 Installation (CLI)
 
@@ -47,8 +47,33 @@ Run the analysis suite on your Soroban project:
 sanctifier analyze ./contracts/my-token
 ```
 
+### Notify Webhooks on Scan Completion
+Send scan completion notifications to one or more webhook endpoints:
+
+```bash
+sanctifier analyze ./contracts/my-token --webhook-url https://hooks.slack.com/services/XXX/YYY/ZZZ --webhook-url https://discord.com/api/webhooks/ID/TOKEN
+```
+
+### Update Sanctifier
+Check for and download the latest Sanctifier binary:
+
+```bash
+sanctifier update
+```
+
+### Generate a README Security Badge
+Create an SVG badge and markdown snippet from a JSON scan report:
+
+```bash
+sanctifier analyze . --format json > sanctifier-report.json
+sanctifier badge --report sanctifier-report.json --svg-output badges/sanctifier-security.svg --markdown-output badges/sanctifier-security.md
+```
+
 ## 🤝 Contributing
 We welcome contributions from the Stellar community! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
+
+## 🔎 Finding Codes
+Unified finding codes (`S001`...`S007`) are documented in [docs/error-codes.md](docs/error-codes.md).
 
 ## 📄 License
 MIT
