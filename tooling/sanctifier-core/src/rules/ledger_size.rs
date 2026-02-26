@@ -15,7 +15,15 @@ impl LedgerSizeRule {
             strict_mode: false,
         }
     }
+}
 
+impl Default for LedgerSizeRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LedgerSizeRule {
     pub fn with_limit(mut self, limit: usize) -> Self {
         self.ledger_limit = limit;
         self
@@ -32,11 +40,6 @@ impl LedgerSizeRule {
     }
 }
 
-impl Default for LedgerSizeRule {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizeWarningLevel {

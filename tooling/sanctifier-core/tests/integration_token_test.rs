@@ -1,4 +1,10 @@
 /*
+use sanctifier_core::{Analyzer, PatternType, SanctifyConfig};
+use std::fs;
+use std::path::PathBuf;
+*/
+
+/*
 #[test]
 fn test_token_integration_auth_and_panic() {
     let analyzer = Analyzer::new(SanctifyConfig::default());

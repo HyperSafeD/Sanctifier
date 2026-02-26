@@ -133,10 +133,10 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             auth_gaps.extend(analyzer.scan_auth_gaps(&content));
             panic_issues.extend(analyzer.scan_panics(&content));
             arithmetic_issues.extend(analyzer.scan_arithmetic_overflow(&content));
-            custom_matches.extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
+            custom_matches.extend(
+                analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules),
+            );
             vuln_matches.extend(vuln_db.scan(&content, &file_name));
-            custom_matches
-                .extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
         }
     }
 

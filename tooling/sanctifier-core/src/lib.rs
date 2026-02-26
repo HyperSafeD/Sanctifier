@@ -111,11 +111,7 @@ impl UpgradeReport {
 #[allow(dead_code)]
 fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| {
-        if let Meta::Path(path) = &attr.meta {
-            path.is_ident(name) || path.segments.iter().any(|s| s.ident == name)
-        } else {
-            false
-        }
+        matches!(&attr.meta, Meta::Path(path) if path.is_ident(name) || path.segments.iter().any(|s| s.ident == name))
     })
 }
 
@@ -269,13 +265,7 @@ impl Default for SanctifyConfig {
 }
 
 fn has_contracttype(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(|attr| {
-        if let Meta::Path(path) = &attr.meta {
-            path.is_ident("contracttype") || path.segments.iter().any(|s| s.ident == "contracttype")
-        } else {
-            false
-        }
-    })
+    has_attr(attrs, "contracttype")
 }
 
 fn classify_size(

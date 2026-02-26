@@ -6,4 +6,4 @@
 
 .env.local
 .env
-node_modules
+node_modulessanc/
