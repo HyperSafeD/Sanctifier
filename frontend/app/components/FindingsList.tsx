@@ -9,10 +9,10 @@ interface FindingsListProps {
 }
 
 const severityColors: Record<Severity, string> = {
-  critical: "bg-red-500/10 border-red-500/50 text-red-700 dark:text-red-400",
-  high: "bg-orange-500/10 border-orange-500/50 text-orange-700 dark:text-orange-400",
-  medium: "bg-amber-500/10 border-amber-500/50 text-amber-700 dark:text-amber-400",
-  low: "bg-zinc-500/10 border-zinc-500/50 text-zinc-700 dark:text-zinc-400",
+  critical: "bg-red-500/10 border-red-500/50 text-red-700 dark:text-red-400 theme-high-contrast:bg-black theme-high-contrast:border-white theme-high-contrast:text-white",
+  high: "bg-orange-500/10 border-orange-500/50 text-orange-700 dark:text-orange-400 theme-high-contrast:bg-black theme-high-contrast:border-white theme-high-contrast:text-white",
+  medium: "bg-amber-500/10 border-amber-500/50 text-amber-700 dark:text-amber-400 theme-high-contrast:bg-black theme-high-contrast:border-white theme-high-contrast:text-white",
+  low: "bg-zinc-500/10 border-zinc-500/50 text-zinc-700 dark:text-zinc-400 theme-high-contrast:bg-black theme-high-contrast:border-white theme-high-contrast:text-yellow-300",
 };
 
 export function FindingsList({ findings, severityFilter }: FindingsListProps) {
@@ -24,7 +24,7 @@ export function FindingsList({ findings, severityFilter }: FindingsListProps) {
   return (
     <div className="space-y-4">
       {filtered.length === 0 ? (
-        <p className="text-zinc-500 dark:text-zinc-400 py-8 text-center">
+        <p className="text-zinc-500 dark:text-zinc-400 theme-high-contrast:text-white py-8 text-center">
           No findings match the selected filter.
         </p>
       ) : (
@@ -45,7 +45,7 @@ export function FindingsList({ findings, severityFilter }: FindingsListProps) {
                 )}
               </div>
               <span
-                className={`shrink-0 rounded px-2 py-1 text-xs font-medium ${
+                className={`shrink-0 rounded px-2 py-1 text-xs font-medium border ${
                   severityColors[f.severity]
                 }`}
               >

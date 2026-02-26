@@ -32,6 +32,12 @@ impl LedgerSizeRule {
     }
 }
 
+impl Default for LedgerSizeRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizeWarningLevel {
     ExceedsLimit,
@@ -112,9 +118,7 @@ impl Rule for LedgerSizeRule {
 
 impl LedgerSizeRule {
     fn classify_size(&self, size: usize, strict_threshold: usize) -> Option<SizeWarningLevel> {
-        if size >= self.ledger_limit {
-            Some(SizeWarningLevel::ExceedsLimit)
-        } else if self.strict_mode && size >= strict_threshold {
+        if size >= self.ledger_limit || (self.strict_mode && size >= strict_threshold) {
             Some(SizeWarningLevel::ExceedsLimit)
         } else if size as f64 >= self.ledger_limit as f64 * self.approaching_threshold {
             Some(SizeWarningLevel::ApproachingLimit)

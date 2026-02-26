@@ -1,5 +1,4 @@
 use crate::rules::{Rule, RuleViolation, Severity};
-use syn::visit::Visit;
 use syn::{parse_str, File, Item};
 
 pub struct AuthGapRule;
@@ -7,6 +6,12 @@ pub struct AuthGapRule;
 impl AuthGapRule {
     pub fn new() -> Self {
         Self
+    }
+}
+
+impl Default for AuthGapRule {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

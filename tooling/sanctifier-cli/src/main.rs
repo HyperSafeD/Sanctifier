@@ -15,6 +15,8 @@ struct Cli {
 pub enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
     Analyze(commands::analyze::AnalyzeArgs),
+    /// Generate a dynamic Sanctifier status badge
+    Badge(commands::badge::BadgeArgs),
     /// Generate a security report
     Report {
         /// Output file path
@@ -23,6 +25,8 @@ pub enum Commands {
     },
     /// Initialize Sanctifier in a new project
     Init(commands::init::InitArgs),
+    /// Check for and download the latest Sanctifier binary
+    Update,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -35,6 +39,9 @@ fn main() -> anyhow::Result<()> {
             }
             commands::analyze::exec(args)?;
         }
+        Commands::Badge(args) => {
+            commands::badge::exec(args)?;
+        }
         Commands::Report { output } => {
             if let Some(p) = output {
                 println!("Report saved to {:?}", p);
@@ -44,6 +51,9 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Init(args) => {
             commands::init::exec(args, None)?;
+        }
+        Commands::Update => {
+            commands::update::exec()?;
         }
     }
 

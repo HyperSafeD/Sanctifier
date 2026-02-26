@@ -1,6 +1,10 @@
+use crate::commands::webhook::{
+    send_scan_completed_webhooks, ScanWebhookPayload, ScanWebhookSummary,
+};
 use clap::Args;
 use colored::*;
-use sanctifier_core::{Analyzer, SanctifyConfig};
+use sanctifier_core::finding_codes;
+use sanctifier_core::{Analyzer, SanctifyConfig, SizeWarningLevel};
 use serde_json;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -24,6 +28,9 @@ pub struct AnalyzeArgs {
     /// Path to a custom vulnerability database JSON file
     #[arg(long)]
     pub vuln_db: Option<PathBuf>,
+    /// Webhook endpoint(s) to notify when scan completes (Discord/Slack/Teams/custom)
+    #[arg(long = "webhook-url")]
+    pub webhook_urls: Vec<String>,
 }
 
 pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
@@ -33,11 +40,19 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     let is_json = format == "json";
 
     if !is_soroban_project(path) {
-        eprintln!(
-            "{} Error: {:?} is not a valid Soroban project. (Missing Cargo.toml with 'soroban-sdk' dependency)",
-            "❌".red(),
-            path
-        );
+        if is_json {
+            let err = serde_json::json!({
+                "error": format!("{:?} is not a valid Soroban project", path),
+                "success": false,
+            });
+            println!("{}", serde_json::to_string_pretty(&err)?);
+        } else {
+            eprintln!(
+                "{} Error: {:?} is not a valid Soroban project. (Missing Cargo.toml with 'soroban-sdk' dependency)",
+                "❌".red(),
+                path
+            );
+        }
         std::process::exit(1);
     }
 
@@ -118,7 +133,41 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             arithmetic_issues.extend(analyzer.scan_arithmetic_overflow(&content));
             custom_matches.extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
             vuln_matches.extend(vuln_db.scan(&content, &file_name));
+            custom_matches
+                .extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
         }
+    }
+
+    let total_findings = collisions.len()
+        + size_warnings.len()
+        + unsafe_patterns.len()
+        + auth_gaps.len()
+        + panic_issues.len()
+        + arithmetic_issues.len()
+        + custom_matches.len();
+
+    let has_critical =
+        !auth_gaps.is_empty() || panic_issues.iter().any(|p| p.issue_type == "panic!");
+    let has_high = !arithmetic_issues.is_empty()
+        || !panic_issues.is_empty()
+        || size_warnings
+            .iter()
+            .any(|w| w.level == SizeWarningLevel::ExceedsLimit);
+    let timestamp = chrono_timestamp();
+
+    let webhook_payload = ScanWebhookPayload {
+        event: "scan.completed",
+        project_path: path.display().to_string(),
+        timestamp_unix: timestamp.clone(),
+        summary: ScanWebhookSummary {
+            total_findings,
+            has_critical,
+            has_high,
+        },
+    };
+
+    if let Err(err) = send_scan_completed_webhooks(&args.webhook_urls, &webhook_payload) {
+        eprintln!("⚠️ Failed to initialize webhook client: {}", err);
     }
 
     if is_json {
@@ -132,8 +181,77 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             "custom_rules": custom_matches,
             "vulnerability_db_matches": vuln_matches,
             "vulnerability_db_version": vuln_db.version,
+            "metadata": {
+                "version": env!("CARGO_PKG_VERSION"),
+                "timestamp": timestamp,
+                "project_path": path.display().to_string(),
+                "format": "sanctifier-ci-v1",
+            },
+            "error_codes": finding_codes::all_finding_codes(),
+            "summary": {
+                "total_findings": total_findings,
+                "storage_collisions": collisions.len(),
+                "auth_gaps": auth_gaps.len(),
+                "panic_issues": panic_issues.len(),
+                "arithmetic_issues": arithmetic_issues.len(),
+                "size_warnings": size_warnings.len(),
+                "unsafe_patterns": unsafe_patterns.len(),
+                "custom_rule_matches": custom_matches.len(),
+                "has_critical": has_critical,
+                "has_high": has_high,
+            },
+            "findings": {
+                "storage_collisions": collisions.iter().map(|c| serde_json::json!({
+                    "code": finding_codes::STORAGE_COLLISION,
+                    "key_value": c.key_value,
+                    "key_type": c.key_type,
+                    "location": c.location,
+                    "message": c.message,
+                })).collect::<Vec<_>>(),
+                "ledger_size_warnings": size_warnings.iter().map(|w| serde_json::json!({
+                    "code": finding_codes::LEDGER_SIZE_RISK,
+                    "struct_name": w.struct_name,
+                    "estimated_size": w.estimated_size,
+                    "limit": w.limit,
+                    "level": w.level,
+                })).collect::<Vec<_>>(),
+                "unsafe_patterns": unsafe_patterns.iter().map(|p| serde_json::json!({
+                    "code": finding_codes::UNSAFE_PATTERN,
+                    "pattern_type": p.pattern_type,
+                    "line": p.line,
+                    "snippet": p.snippet,
+                })).collect::<Vec<_>>(),
+                "auth_gaps": auth_gaps.iter().map(|g| serde_json::json!({
+                    "code": finding_codes::AUTH_GAP,
+                    "function": g,
+                })).collect::<Vec<_>>(),
+                "panic_issues": panic_issues.iter().map(|p| serde_json::json!({
+                    "code": finding_codes::PANIC_USAGE,
+                    "function_name": p.function_name,
+                    "issue_type": p.issue_type,
+                    "location": p.location,
+                })).collect::<Vec<_>>(),
+                "arithmetic_issues": arithmetic_issues.iter().map(|a| serde_json::json!({
+                    "code": finding_codes::ARITHMETIC_OVERFLOW,
+                    "function_name": a.function_name,
+                    "operation": a.operation,
+                    "suggestion": a.suggestion,
+                    "location": a.location,
+                })).collect::<Vec<_>>(),
+                "custom_rules": custom_matches.iter().map(|m| serde_json::json!({
+                    "code": finding_codes::CUSTOM_RULE_MATCH,
+                    "rule_name": m.rule_name,
+                    "line": m.line,
+                    "snippet": m.snippet,
+                    "severity": m.severity,
+                })).collect::<Vec<_>>(),
+            },
         });
         println!("{}", serde_json::to_string_pretty(&report)?);
+
+        if has_critical || has_high {
+            std::process::exit(1);
+        }
         return Ok(());
     }
 
@@ -145,7 +263,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             "⚠️".yellow()
         );
         for collision in collisions {
-            println!("   {} Value: {}", "->".red(), collision.key_value.bold());
+            println!(
+                "   {} [{}] Value: {}",
+                "->".red(),
+                finding_codes::STORAGE_COLLISION.bold(),
+                collision.key_value.bold()
+            );
             println!("      Type: {}", collision.key_type);
             println!("      Location: {}", collision.location);
             println!("      Message: {}", collision.message);
@@ -157,7 +280,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     } else {
         println!("\n{} Found potential Authentication Gaps!", "⚠️".yellow());
         for gap in auth_gaps {
-            println!("   {} Function: {}", "->".red(), gap.bold());
+            println!(
+                "   {} [{}] Function: {}",
+                "->".red(),
+                finding_codes::AUTH_GAP.bold(),
+                gap.bold()
+            );
         }
     }
 
@@ -166,7 +294,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     } else {
         println!("\n{} Found explicit Panics/Unwraps!", "⚠️".yellow());
         for issue in panic_issues {
-            println!("   {} Type: {}", "->".red(), issue.issue_type.bold());
+            println!(
+                "   {} [{}] Type: {}",
+                "->".red(),
+                finding_codes::PANIC_USAGE.bold(),
+                issue.issue_type.bold()
+            );
             println!("      Location: {}", issue.location);
         }
     }
@@ -176,7 +309,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     } else {
         println!("\n{} Found unchecked Arithmetic Operations!", "⚠️".yellow());
         for issue in arithmetic_issues {
-            println!("   {} Op: {}", "->".red(), issue.operation.bold());
+            println!(
+                "   {} [{}] Op: {}",
+                "->".red(),
+                finding_codes::ARITHMETIC_OVERFLOW.bold(),
+                issue.operation.bold()
+            );
             println!("      Location: {}", issue.location);
         }
     }
@@ -186,7 +324,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     } else {
         println!("\n{} Found Ledger Size Warnings!", "⚠️".yellow());
         for warning in size_warnings {
-            println!("   {} Struct: {}", "->".red(), warning.struct_name.bold());
+            println!(
+                "   {} [{}] Struct: {}",
+                "->".red(),
+                finding_codes::LEDGER_SIZE_RISK.bold(),
+                warning.struct_name.bold()
+            );
             println!("      Size: {} bytes", warning.estimated_size);
         }
     }
@@ -199,7 +342,13 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                 sanctifier_core::RuleSeverity::Warning => "⚠️".yellow(),
                 sanctifier_core::RuleSeverity::Info => "ℹ️".blue(),
             };
-            println!("   {} [{}]: {}", sev_icon, m.rule_name.bold(), m.snippet);
+            println!(
+                "   {} [{}|{}]: {}",
+                sev_icon,
+                finding_codes::CUSTOM_RULE_MATCH.bold(),
+                m.rule_name.bold(),
+                m.snippet
+            );
         }
     }
 
@@ -242,9 +391,20 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     Ok(())
 }
 
+fn chrono_timestamp() -> String {
+    let now = std::time::SystemTime::now();
+    let duration = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = duration.as_secs();
+    format!("{}", secs)
+}
+
 fn load_config(path: &Path) -> SanctifyConfig {
     let mut current = if path.is_file() {
-        path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."))
+        path.parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."))
     } else {
         path.to_path_buf()
     };
@@ -284,7 +444,11 @@ fn walk_dir(
         let path = entry.path();
         if path.is_dir() {
             // Skip ignore_paths
-            let is_ignored = analyzer.config.ignore_paths.iter().any(|p| path.ends_with(p));
+            let is_ignored = analyzer
+                .config
+                .ignore_paths
+                .iter()
+                .any(|p| path.ends_with(p));
             if is_ignored {
                 continue;
             }
@@ -337,7 +501,8 @@ fn walk_dir(
                     arithmetic_issues.push(i.clone());
                 }
 
-                let mut custom = analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules);
+                let mut custom =
+                    analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules);
                 for m in &mut custom {
                     m.snippet = format!("{}:{}: {}", file_name, m.line, m.snippet);
                 }

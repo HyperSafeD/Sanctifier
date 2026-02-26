@@ -70,6 +70,12 @@ Confirm the installation succeeded:
 sanctifier --version
 ```
 
+Update to the latest Sanctifier binary at any time:
+
+```bash
+sanctifier update
+```
+
 ---
 
 ## 3. Running Your First Scan
@@ -227,5 +233,6 @@ Sanctifier checks for upgrade-related patterns (e.g. `Wasm::upgrade`, missing `i
 ## 6. Next Steps
 
 - **Formal Verification** — See [`docs/kani-integration.md`](./kani-integration.md) to add model-checking with the Kani verifier.
+- **Runtime Guards** — See [`docs/runtime-guards-integration.md`](./runtime-guards-integration.md) to add runtime invariant wrappers in your existing Soroban contract.
 - **CI Integration** — Use `--format json` and pipe the output to your pipeline's static analysis step to fail builds on new findings.
 - **Contributing** — Bug reports and new rule ideas are welcome. See `CONTRIBUTING.md` for guidelines.

@@ -9,6 +9,12 @@ impl PanicDetectionRule {
     }
 }
 
+impl Default for PanicDetectionRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct PanicIssue {
     pub function_name: String,
