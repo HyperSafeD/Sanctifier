@@ -17,10 +17,7 @@ where
     F: FnOnce() -> R + std::panic::UnwindSafe,
     R: Default,
 {
-    match catch_unwind(f) {
-        Ok(res) => res,
-        Err(_) => R::default(),
-    }
+    catch_unwind(f).unwrap_or_default()
 }
 
 // ── Existing types ────────────────────────────────────────────────────────────
@@ -110,11 +107,7 @@ impl UpgradeReport {
 
 fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| {
-        if let Meta::Path(path) = &attr.meta {
-            path.is_ident(name) || path.segments.iter().any(|s| s.ident == name)
-        } else {
-            false
-        }
+        matches!(&attr.meta, Meta::Path(path) if path.is_ident(name) || path.segments.iter().any(|s| s.ident == name))
     })
 }
 
@@ -249,13 +242,7 @@ impl Default for SanctifyConfig {
 }
 
 fn has_contracttype(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(|attr| {
-        if let Meta::Path(path) = &attr.meta {
-            path.is_ident("contracttype") || path.segments.iter().any(|s| s.ident == "contracttype")
-        } else {
-            false
-        }
-    })
+    has_attr(attrs, "contracttype")
 }
 
 fn classify_size(
@@ -265,9 +252,7 @@ fn classify_size(
     strict: bool,
     strict_threshold: usize,
 ) -> Option<SizeWarningLevel> {
-    if size >= limit {
-        Some(SizeWarningLevel::ExceedsLimit)
-    } else if strict && size >= strict_threshold {
+    if size >= limit || (strict && size >= strict_threshold) {
         Some(SizeWarningLevel::ExceedsLimit)
     } else if size as f64 >= limit as f64 * approaching {
         Some(SizeWarningLevel::ApproachingLimit)
@@ -749,7 +734,7 @@ impl Analyzer {
 
                 event_schemas
                     .entry(event_name.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(topic_count);
 
                 if !line.contains("symbol_short!") && topic_count > 0 {
@@ -979,6 +964,7 @@ impl Analyzer {
 
 // ── EventVisitor ──────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 struct EventVisitor {
     issues: Vec<EventIssue>,
     current_fn: Option<String>,
@@ -1017,6 +1003,7 @@ impl<'ast> Visit<'ast> for EventVisitor {
     }
 }
 
+#[allow(dead_code)]
 impl EventVisitor {
     fn analyze_publish_call(&mut self, i: &syn::ExprMethodCall, fn_name: &str) {
         if i.args.len() < 2 {
@@ -1298,8 +1285,10 @@ mod tests {
 
     #[test]
     fn test_analyze_with_limit() {
-        let mut config = SanctifyConfig::default();
-        config.ledger_limit = 50;
+        let config = SanctifyConfig {
+            ledger_limit: 50,
+            ..Default::default()
+        };
         let analyzer = Analyzer::new(config);
         let source = r#"
             #[contracttype]
@@ -1618,6 +1607,4 @@ mod tests {
         // Location should include function name
         assert!(issues[0].location.starts_with("risky:"));
     }
-
-
 }
