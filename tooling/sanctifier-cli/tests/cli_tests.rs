@@ -85,6 +85,16 @@ fn test_analyze_empty_macro_heavy() {
 }
 
 #[test]
+fn test_update_help() {
+    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
+    cmd.arg("update")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("latest Sanctifier binary"));
+}
+
+#[test]
 fn test_init_creates_sanctify_toml_in_current_directory() {
     let temp_dir = tempdir().unwrap();
     let mut cmd = Command::cargo_bin("sanctifier").unwrap();
