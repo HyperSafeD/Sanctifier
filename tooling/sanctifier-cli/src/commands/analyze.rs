@@ -1,3 +1,6 @@
+use crate::commands::webhook::{
+    send_scan_completed_webhooks, ScanWebhookPayload, ScanWebhookSummary,
+};
 use clap::Args;
 use colored::*;
 use sanctifier_core::{Analyzer, SanctifyConfig, SizeWarningLevel};
@@ -18,6 +21,10 @@ pub struct AnalyzeArgs {
     /// Limit for ledger entry size in bytes
     #[arg(short, long, default_value = "64000")]
     pub limit: usize,
+
+    /// Webhook endpoint(s) to notify when scan completes (Discord/Slack/Teams/custom)
+    #[arg(long = "webhook-url")]
+    pub webhook_urls: Vec<String>,
 }
 
 pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
@@ -110,12 +117,28 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
         || size_warnings
             .iter()
             .any(|w| w.level == SizeWarningLevel::ExceedsLimit);
+    let timestamp = chrono_timestamp();
+
+    let webhook_payload = ScanWebhookPayload {
+        event: "scan.completed",
+        project_path: path.display().to_string(),
+        timestamp_unix: timestamp.clone(),
+        summary: ScanWebhookSummary {
+            total_findings,
+            has_critical,
+            has_high,
+        },
+    };
+
+    if let Err(err) = send_scan_completed_webhooks(&args.webhook_urls, &webhook_payload) {
+        eprintln!("⚠️ Failed to initialize webhook client: {}", err);
+    }
 
     if is_json {
         let report = serde_json::json!({
             "metadata": {
                 "version": env!("CARGO_PKG_VERSION"),
-                "timestamp": chrono_timestamp(),
+                "timestamp": timestamp,
                 "project_path": path.display().to_string(),
                 "format": "sanctifier-ci-v1",
             },
