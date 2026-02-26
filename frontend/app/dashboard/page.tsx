@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import type { AnalysisReport, Finding, Severity } from "../types";
-import { transformReport } from "../lib/transform";
+import { useState, useCallback, useMemo } from "react";
+import type { AnalysisReport, CallGraphNode, CallGraphEdge, Finding, Severity } from "../types";
+import { transformReport, extractCallGraph } from "../lib/transform";
 import { exportToPdf } from "../lib/export-pdf";
 import { SeverityFilter } from "../components/SeverityFilter";
 import { FindingsList } from "../components/FindingsList";
 import { SummaryChart } from "../components/SummaryChart";
+import { SanctityScore } from "../components/SanctityScore";
+import { CallGraph } from "../components/CallGraph";
 import { ThemeToggle } from "../components/ThemeToggle";
 import Link from "next/link";
 
@@ -18,22 +20,42 @@ const SAMPLE_JSON = `{
   "arithmetic_issues": []
 }`;
 
+type Tab = "findings" | "callgraph";
+
 export default function DashboardPage() {
   const [findings, setFindings] = useState<Finding[]>([]);
+  const [callGraphNodes, setCallGraphNodes] = useState<CallGraphNode[]>([]);
+  const [callGraphEdges, setCallGraphEdges] = useState<CallGraphEdge[]>([]);
   const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
   const [error, setError] = useState<string | null>(null);
   const [jsonInput, setJsonInput] = useState("");
+  const [activeTab, setActiveTab] = useState<Tab>("findings");
 
-  const loadReport = useCallback(() => {
+  const parseReport = useCallback((text: string) => {
     setError(null);
     try {
-      const parsed = JSON.parse(jsonInput || SAMPLE_JSON) as AnalysisReport;
-      setFindings(transformReport(parsed));
+      const parsed = JSON.parse(text || SAMPLE_JSON) as AnalysisReport;
+
+      // Handle new CI/CD format with nested "findings" key
+      const report = (parsed as Record<string, unknown>).findings
+        ? ((parsed as Record<string, unknown>).findings as AnalysisReport)
+        : parsed;
+
+      setFindings(transformReport(report));
+      const { nodes, edges } = extractCallGraph(report);
+      setCallGraphNodes(nodes);
+      setCallGraphEdges(edges);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid JSON");
       setFindings([]);
+      setCallGraphNodes([]);
+      setCallGraphEdges([]);
     }
-  }, [jsonInput]);
+  }, []);
+
+  const loadReport = useCallback(() => {
+    parseReport(jsonInput);
+  }, [jsonInput, parseReport]);
 
   const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -42,38 +64,34 @@ export default function DashboardPage() {
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
       setJsonInput(text);
-      setError(null);
-      try {
-        const parsed = JSON.parse(text) as AnalysisReport;
-        setFindings(transformReport(parsed));
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Invalid JSON");
-      }
+      parseReport(text);
     };
     reader.readAsText(file);
     e.target.value = "";
-  }, []);
+  }, [parseReport]);
+
+  const hasData = findings.length > 0;
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
-      <header className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 theme-high-contrast:bg-black theme-high-contrast:text-white">
+      <header className="border-b border-zinc-200 dark:border-zinc-800 theme-high-contrast:border-b-white bg-white dark:bg-zinc-900 theme-high-contrast:bg-black px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <Link href="/" className="font-bold text-lg">
+          <Link href="/" className="font-bold text-lg theme-high-contrast:text-yellow-300">
             Sanctifier
           </Link>
-          <span className="text-zinc-500 dark:text-zinc-400">Security Dashboard</span>
+          <span className="text-zinc-500 dark:text-zinc-400 theme-high-contrast:text-white">Security Dashboard</span>
         </div>
         <ThemeToggle />
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
-        <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-6">
-          <h2 className="text-lg font-semibold mb-4">Load Analysis Report</h2>
-          <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
-            Paste JSON from <code className="bg-zinc-100 dark:bg-zinc-800 px-1 rounded">sanctifier analyze --format json</code> or upload a file.
+        <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 theme-high-contrast:border-white bg-white dark:bg-zinc-900 theme-high-contrast:bg-black p-6">
+          <h2 className="text-lg font-semibold mb-4 theme-high-contrast:text-yellow-300">Load Analysis Report</h2>
+          <p className="text-sm text-zinc-600 dark:text-zinc-400 theme-high-contrast:text-white mb-4">
+            Paste JSON from <code className="bg-zinc-100 dark:bg-zinc-800 theme-high-contrast:bg-zinc-900 px-1 rounded">sanctifier analyze --format json</code> or upload a file.
           </p>
           <div className="flex flex-wrap gap-4">
-            <label className="cursor-pointer rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800">
+            <label className="cursor-pointer rounded-lg border border-zinc-300 dark:border-zinc-600 theme-high-contrast:border-white px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 theme-high-contrast:hover:bg-zinc-900">
               Upload JSON
               <input
                 type="file"
@@ -84,7 +102,7 @@ export default function DashboardPage() {
             </label>
             <button
               onClick={loadReport}
-              className="rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 px-4 py-2 text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200"
+              className="rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 theme-high-contrast:bg-white theme-high-contrast:text-black px-4 py-2 text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 theme-high-contrast:hover:bg-zinc-300"
             >
               Parse JSON
             </button>
@@ -92,8 +110,8 @@ export default function DashboardPage() {
               onClick={() => {
                 exportToPdf(findings);
               }}
-              disabled={findings.length === 0}
-              className="rounded-lg border border-zinc-300 dark:border-zinc-600 px-4 py-2 text-sm disabled:opacity-50 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+              disabled={!hasData}
+              className="rounded-lg border border-zinc-300 dark:border-zinc-600 theme-high-contrast:border-white px-4 py-2 text-sm disabled:opacity-50 hover:bg-zinc-100 dark:hover:bg-zinc-800 theme-high-contrast:hover:bg-zinc-900"
             >
               Export PDF
             </button>
@@ -109,25 +127,60 @@ export default function DashboardPage() {
           />
         </section>
 
-        {findings.length > 0 && (
+        {hasData && (
           <>
-            <section>
+            <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <SanctityScore findings={findings} />
               <SummaryChart findings={findings} />
             </section>
 
-            <section>
-              <h2 className="text-lg font-semibold mb-4">Filter by Severity</h2>
-              <SeverityFilter selected={severityFilter} onChange={setSeverityFilter} />
-            </section>
+            {/* Tab navigation */}
+            <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-700 theme-high-contrast:border-white">
+              <button
+                onClick={() => setActiveTab("findings")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "findings"
+                    ? "border-zinc-900 dark:border-zinc-100 theme-high-contrast:border-yellow-300 text-zinc-900 dark:text-zinc-100 theme-high-contrast:text-yellow-300"
+                    : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 theme-high-contrast:text-white theme-high-contrast:hover:text-yellow-300"
+                }`}
+              >
+                Findings
+              </button>
+              <button
+                onClick={() => setActiveTab("callgraph")}
+                className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === "callgraph"
+                    ? "border-zinc-900 dark:border-zinc-100 theme-high-contrast:border-yellow-300 text-zinc-900 dark:text-zinc-100 theme-high-contrast:text-yellow-300"
+                    : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 theme-high-contrast:text-white theme-high-contrast:hover:text-yellow-300"
+                }`}
+              >
+                Call Graph
+              </button>
+            </div>
 
-            <section>
-              <h2 className="text-lg font-semibold mb-4">Findings</h2>
-              <FindingsList findings={findings} severityFilter={severityFilter} />
-            </section>
+            {activeTab === "findings" && (
+              <>
+                <section>
+                  <h2 className="text-lg font-semibold mb-4">Filter by Severity</h2>
+                  <SeverityFilter selected={severityFilter} onChange={setSeverityFilter} />
+                </section>
+
+                <section>
+                  <h2 className="text-lg font-semibold mb-4">Findings</h2>
+                  <FindingsList findings={findings} severityFilter={severityFilter} />
+                </section>
+              </>
+            )}
+
+            {activeTab === "callgraph" && (
+              <section>
+                <CallGraph nodes={callGraphNodes} edges={callGraphEdges} />
+              </section>
+            )}
           </>
         )}
 
-        {findings.length === 0 && !error && (
+        {!hasData && !error && (
           <p className="text-center text-zinc-500 dark:text-zinc-400 py-12">
             Load a report to view findings.
           </p>

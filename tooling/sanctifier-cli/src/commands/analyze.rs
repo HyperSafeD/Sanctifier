@@ -1,6 +1,6 @@
 use clap::Args;
 use colored::*;
-use sanctifier_core::{Analyzer, SanctifyConfig};
+use sanctifier_core::{Analyzer, SanctifyConfig, SizeWarningLevel};
 use serde_json;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -27,11 +27,19 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     let is_json = format == "json";
 
     if !is_soroban_project(path) {
-        eprintln!(
-            "{} Error: {:?} is not a valid Soroban project. (Missing Cargo.toml with 'soroban-sdk' dependency)",
-            "❌".red(),
-            path
-        );
+        if is_json {
+            let err = serde_json::json!({
+                "error": format!("{:?} is not a valid Soroban project", path),
+                "success": false,
+            });
+            println!("{}", serde_json::to_string_pretty(&err)?);
+        } else {
+            eprintln!(
+                "{} Error: {:?} is not a valid Soroban project. (Missing Cargo.toml with 'soroban-sdk' dependency)",
+                "❌".red(),
+                path
+            );
+        }
         std::process::exit(1);
     }
 
@@ -51,7 +59,7 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
         println!("{} Analyzing contract at {:?}...", "🔍".blue(), path);
     }
 
-    let config = SanctifyConfig::default();
+    let config = load_config(path);
     let analyzer = Analyzer::new(config);
 
     let mut collisions = Vec::new();
@@ -60,6 +68,7 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     let mut auth_gaps = Vec::new();
     let mut panic_issues = Vec::new();
     let mut arithmetic_issues = Vec::new();
+    let mut custom_matches = Vec::new();
 
     if path.is_dir() {
         walk_dir(
@@ -71,30 +80,72 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             &mut auth_gaps,
             &mut panic_issues,
             &mut arithmetic_issues,
+            &mut custom_matches,
         )?;
-    } else {
-        if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-            if let Ok(content) = fs::read_to_string(path) {
-                collisions.extend(analyzer.scan_storage_collisions(&content));
-                size_warnings.extend(analyzer.analyze_ledger_size(&content));
-                unsafe_patterns.extend(analyzer.analyze_unsafe_patterns(&content));
-                auth_gaps.extend(analyzer.scan_auth_gaps(&content));
-                panic_issues.extend(analyzer.scan_panics(&content));
-                arithmetic_issues.extend(analyzer.scan_arithmetic_overflow(&content));
-            }
+    } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+        if let Ok(content) = fs::read_to_string(path) {
+            collisions.extend(analyzer.scan_storage_collisions(&content));
+            size_warnings.extend(analyzer.analyze_ledger_size(&content));
+            unsafe_patterns.extend(analyzer.analyze_unsafe_patterns(&content));
+            auth_gaps.extend(analyzer.scan_auth_gaps(&content));
+            panic_issues.extend(analyzer.scan_panics(&content));
+            arithmetic_issues.extend(analyzer.scan_arithmetic_overflow(&content));
+            custom_matches
+                .extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
         }
     }
 
+    let total_findings = collisions.len()
+        + size_warnings.len()
+        + unsafe_patterns.len()
+        + auth_gaps.len()
+        + panic_issues.len()
+        + arithmetic_issues.len()
+        + custom_matches.len();
+
+    let has_critical =
+        !auth_gaps.is_empty() || panic_issues.iter().any(|p| p.issue_type == "panic!");
+    let has_high = !arithmetic_issues.is_empty()
+        || !panic_issues.is_empty()
+        || size_warnings
+            .iter()
+            .any(|w| w.level == SizeWarningLevel::ExceedsLimit);
+
     if is_json {
         let report = serde_json::json!({
-            "storage_collisions": collisions,
-            "ledger_size_warnings": size_warnings,
-            "unsafe_patterns": unsafe_patterns,
-            "auth_gaps": auth_gaps,
-            "panic_issues": panic_issues,
-            "arithmetic_issues": arithmetic_issues,
+            "metadata": {
+                "version": env!("CARGO_PKG_VERSION"),
+                "timestamp": chrono_timestamp(),
+                "project_path": path.display().to_string(),
+                "format": "sanctifier-ci-v1",
+            },
+            "summary": {
+                "total_findings": total_findings,
+                "storage_collisions": collisions.len(),
+                "auth_gaps": auth_gaps.len(),
+                "panic_issues": panic_issues.len(),
+                "arithmetic_issues": arithmetic_issues.len(),
+                "size_warnings": size_warnings.len(),
+                "unsafe_patterns": unsafe_patterns.len(),
+                "custom_rule_matches": custom_matches.len(),
+                "has_critical": has_critical,
+                "has_high": has_high,
+            },
+            "findings": {
+                "storage_collisions": collisions,
+                "ledger_size_warnings": size_warnings,
+                "unsafe_patterns": unsafe_patterns,
+                "auth_gaps": auth_gaps,
+                "panic_issues": panic_issues,
+                "arithmetic_issues": arithmetic_issues,
+                "custom_rules": custom_matches,
+            },
         });
         println!("{}", serde_json::to_string_pretty(&report)?);
+
+        if has_critical || has_high {
+            std::process::exit(1);
+        }
         return Ok(());
     }
 
@@ -152,11 +203,58 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
         }
     }
 
+    if !custom_matches.is_empty() {
+        println!("\n{} Found Custom Rule matches!", "⚠️".yellow());
+        for m in custom_matches {
+            let sev_icon = match m.severity {
+                sanctifier_core::RuleSeverity::Error => "❌".red(),
+                sanctifier_core::RuleSeverity::Warning => "⚠️".yellow(),
+                sanctifier_core::RuleSeverity::Info => "ℹ️".blue(),
+            };
+            println!("   {} [{}]: {}", sev_icon, m.rule_name.bold(), m.snippet);
+        }
+    }
+
     println!("\n{} Static analysis complete.", "✨".green());
 
     Ok(())
 }
 
+fn chrono_timestamp() -> String {
+    let now = std::time::SystemTime::now();
+    let duration = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = duration.as_secs();
+    format!("{}", secs)
+}
+
+fn load_config(path: &Path) -> SanctifyConfig {
+    let mut current = if path.is_file() {
+        path.parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."))
+    } else {
+        path.to_path_buf()
+    };
+
+    loop {
+        let config_path = current.join(".sanctify.toml");
+        if config_path.exists() {
+            if let Ok(content) = fs::read_to_string(&config_path) {
+                if let Ok(config) = toml::from_str(&content) {
+                    return config;
+                }
+            }
+        }
+        if !current.pop() {
+            break;
+        }
+    }
+    SanctifyConfig::default()
+}
+
+#[allow(clippy::too_many_arguments)]
 fn walk_dir(
     dir: &Path,
     analyzer: &Analyzer,
@@ -166,11 +264,22 @@ fn walk_dir(
     auth_gaps: &mut Vec<String>,
     panic_issues: &mut Vec<sanctifier_core::PanicIssue>,
     arithmetic_issues: &mut Vec<sanctifier_core::ArithmeticIssue>,
+    custom_matches: &mut Vec<sanctifier_core::CustomRuleMatch>,
 ) -> anyhow::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
+            // Skip ignore_paths
+            let is_ignored = analyzer
+                .config
+                .ignore_paths
+                .iter()
+                .any(|p| path.ends_with(p));
+            if is_ignored {
+                continue;
+            }
+
             walk_dir(
                 &path,
                 analyzer,
@@ -180,6 +289,7 @@ fn walk_dir(
                 auth_gaps,
                 panic_issues,
                 arithmetic_issues,
+                custom_matches,
             )?;
         } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
             if let Ok(content) = fs::read_to_string(&path) {
@@ -215,6 +325,13 @@ fn walk_dir(
                     i.location = format!("{}:{}", file_name, i.location);
                     arithmetic_issues.push(i.clone());
                 }
+
+                let mut custom =
+                    analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules);
+                for m in &mut custom {
+                    m.snippet = format!("{}:{}: {}", file_name, m.line, m.snippet);
+                }
+                custom_matches.extend(custom);
             }
         }
     }

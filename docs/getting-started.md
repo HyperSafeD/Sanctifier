@@ -70,6 +70,12 @@ Confirm the installation succeeded:
 sanctifier --version
 ```
 
+Update to the latest Sanctifier binary at any time:
+
+```bash
+sanctifier update
+```
+
 ---
 
 ## 3. Running Your First Scan
@@ -134,10 +140,12 @@ strict_mode   = false
 [[custom_rules]]
 name    = "no_unsafe_block"
 pattern = "unsafe\\s*\\{"
+severity = "error"
 
 [[custom_rules]]
 name    = "no_mem_forget"
 pattern = "std::mem::forget"
+severity = "warning"
 ```
 
 Adjust `enabled_rules` to enable or disable specific checks, and add entries to `[[custom_rules]]` to enforce your own patterns.

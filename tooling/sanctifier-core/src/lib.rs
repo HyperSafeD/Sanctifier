@@ -1,26 +1,25 @@
 use serde::{Deserialize, Serialize};
 use std::panic::catch_unwind;
 pub mod gas_estimator;
+pub mod rules;
+pub mod smt;
 mod storage_collision;
 use std::collections::HashSet;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{parse_str, Fields, File, Item, Meta, Type};
 
+pub use rules::{Rule, RuleRegistry, RuleViolation, Severity};
+
 use soroban_sdk::Env;
 use thiserror::Error;
-
-const DEFAULT_APPROACHING_THRESHOLD: f64 = 0.8;
 
 fn with_panic_guard<F, R>(f: F) -> R
 where
     F: FnOnce() -> R + std::panic::UnwindSafe,
     R: Default,
 {
-    match catch_unwind(f) {
-        Ok(res) => res,
-        Err(_) => R::default(),
-    }
+    catch_unwind(f).unwrap_or_default()
 }
 
 // ── Existing types ────────────────────────────────────────────────────────────
@@ -181,13 +180,31 @@ pub struct EventIssue {
     pub location: String,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct UnhandledResultIssue {
+    pub function_name: String,
+    pub call_expression: String,
+    pub message: String,
+    pub location: String,
+}
+
 // ── Configuration ─────────────────────────────────────────────────────────────
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum RuleSeverity {
+    Info,
+    #[default]
+    Warning,
+    Error,
+}
 
 /// User-defined regex-based rule. Defined in .sanctify.toml under [[custom_rules]].
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CustomRule {
     pub name: String,
     pub pattern: String,
+    #[serde(default)]
+    pub severity: RuleSeverity,
 }
 
 /// A match from a custom regex rule.
@@ -196,6 +213,7 @@ pub struct CustomRuleMatch {
     pub rule_name: String,
     pub line: usize,
     pub snippet: String,
+    pub severity: RuleSeverity,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -266,9 +284,7 @@ fn classify_size(
     strict: bool,
     strict_threshold: usize,
 ) -> Option<SizeWarningLevel> {
-    if size >= limit {
-        Some(SizeWarningLevel::ExceedsLimit)
-    } else if strict && size >= strict_threshold {
+    if size >= limit || (strict && size >= strict_threshold) {
         Some(SizeWarningLevel::ExceedsLimit)
     } else if size as f64 >= limit as f64 * approaching {
         Some(SizeWarningLevel::ApproachingLimit)
@@ -281,15 +297,61 @@ fn classify_size(
 
 pub struct Analyzer {
     pub config: SanctifyConfig,
+    rule_registry: RuleRegistry,
 }
 
 impl Analyzer {
     pub fn new(config: SanctifyConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            rule_registry: RuleRegistry::default(),
+        }
+    }
+
+    pub fn with_rules(config: SanctifyConfig, registry: RuleRegistry) -> Self {
+        Self {
+            config,
+            rule_registry: registry,
+        }
+    }
+
+    pub fn run_rules(&self, source: &str) -> Vec<RuleViolation> {
+        self.rule_registry.run_all(source)
+    }
+
+    pub fn run_rule(&self, source: &str, name: &str) -> Vec<RuleViolation> {
+        self.rule_registry.run_by_name(source, name)
+    }
+
+    pub fn available_rules(&self) -> Vec<&str> {
+        self.rule_registry.available_rules()
     }
 
     pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
         with_panic_guard(|| self.scan_auth_gaps_impl(source))
+    }
+
+    pub fn verify_smt_invariants(&self, _source: &str) -> Vec<smt::SmtInvariantIssue> {
+        with_panic_guard(|| self.verify_smt_invariants_impl())
+    }
+
+    fn verify_smt_invariants_impl(&self) -> Vec<smt::SmtInvariantIssue> {
+        use z3::{Config, Context};
+        let cfg = Config::new();
+        let ctx = Context::new(&cfg);
+        let verifier = smt::SmtVerifier::new(&ctx);
+
+        let mut issues = Vec::new();
+
+        // As a PoC for Issue #111, we verify a theoretical unconstrained transfer function.
+        // In a full implementation, this would dynamically parse the AST to extract `a` and `b`.
+        if let Some(issue) =
+            verifier.verify_addition_overflow("transfer_pure", "kani-poc/src/lib.rs:10")
+        {
+            issues.push(issue);
+        }
+
+        issues
     }
 
     pub fn scan_gas_estimation(&self, source: &str) -> Vec<gas_estimator::GasEstimationReport> {
@@ -552,7 +614,7 @@ impl Analyzer {
 
     fn analyze_ledger_size_impl(&self, source: &str) -> Vec<SizeWarning> {
         let limit = self.config.ledger_limit;
-        let _approaching = (limit as f64 * DEFAULT_APPROACHING_THRESHOLD) as usize;
+        let _approaching = (limit as f64 * self.config.approaching_threshold) as usize;
         let _strict = self.config.strict_mode;
         let _strict_threshold = limit / 2;
 
@@ -750,7 +812,7 @@ impl Analyzer {
 
                 event_schemas
                     .entry(event_name.clone())
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(topic_count);
 
                 if !line.contains("symbol_short!") && topic_count > 0 {
@@ -841,6 +903,7 @@ impl Analyzer {
                         rule_name: rule.name.clone(),
                         line: line_num,
                         snippet: line.trim().to_string(),
+                        severity: rule.severity.clone(),
                     });
                 }
             }
@@ -866,6 +929,25 @@ impl Analyzer {
         visitor.visit_file(&file);
         visitor.final_check();
         visitor.collisions
+    }
+
+    pub fn scan_unhandled_results(&self, source: &str) -> Vec<UnhandledResultIssue> {
+        with_panic_guard(|| self.scan_unhandled_results_impl(source))
+    }
+
+    fn scan_unhandled_results_impl(&self, source: &str) -> Vec<UnhandledResultIssue> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+
+        let mut visitor = UnhandledResultVisitor {
+            issues: Vec::new(),
+            current_fn: None,
+            is_public_fn: false,
+        };
+        visitor.visit_file(&file);
+        visitor.issues
     }
 
     // ── Size estimation helpers ───────────────────────────────────────────────
@@ -980,6 +1062,7 @@ impl Analyzer {
 
 // ── EventVisitor ──────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 struct EventVisitor {
     issues: Vec<EventIssue>,
     current_fn: Option<String>,
@@ -1018,6 +1101,7 @@ impl<'ast> Visit<'ast> for EventVisitor {
     }
 }
 
+#[allow(dead_code)]
 impl EventVisitor {
     fn analyze_publish_call(&mut self, i: &syn::ExprMethodCall, fn_name: &str) {
         if i.args.len() < 2 {
@@ -1261,6 +1345,245 @@ fn is_string_literal(expr: &syn::Expr) -> bool {
     )
 }
 
+struct UnhandledResultVisitor {
+    issues: Vec<UnhandledResultIssue>,
+    current_fn: Option<String>,
+    is_public_fn: bool,
+}
+
+impl UnhandledResultVisitor {
+    fn is_result_type(ty: &Type) -> bool {
+        if let Type::Path(tp) = ty {
+            if let Some(seg) = tp.path.segments.last() {
+                return seg.ident == "Result";
+            }
+        }
+        false
+    }
+
+    fn is_result_returning_fn(sig: &syn::Signature) -> bool {
+        if let syn::ReturnType::Type(_, ty) = &sig.output {
+            Self::is_result_type(ty)
+        } else {
+            false
+        }
+    }
+
+    fn is_handled(expr: &syn::Expr) -> bool {
+        match expr {
+            syn::Expr::Try(_) => true,
+            syn::Expr::Match(_) => true,
+            syn::Expr::If(e) => {
+                if let syn::Expr::Try(_) = &*e.cond {
+                    return true;
+                }
+                if let Some((_, else_expr)) = &e.else_branch {
+                    Self::is_handled(else_expr);
+                }
+                false
+            }
+            syn::Expr::Let(e) => {
+                if let syn::Expr::Try(_) = &*e.expr {
+                    return true;
+                }
+                false
+            }
+            syn::Expr::MethodCall(m) => {
+                let method = m.method.to_string();
+                matches!(
+                    method.as_str(),
+                    "unwrap"
+                        | "expect"
+                        | "unwrap_or"
+                        | "unwrap_or_else"
+                        | "unwrap_or_default"
+                        | "ok"
+                        | "err"
+                        | "is_ok"
+                        | "is_err"
+                        | "map"
+                        | "map_err"
+                        | "and_then"
+                        | "or_else"
+                        | "unwrap_unchecked"
+                        | "expect_unchecked"
+                )
+            }
+            syn::Expr::Assign(a) => Self::is_handled(&a.right),
+            syn::Expr::Call(c) => {
+                if let syn::Expr::Path(p) = &*c.func {
+                    if let Some(seg) = p.path.segments.last() {
+                        if seg.ident == "Ok" || seg.ident == "Err" {
+                            return true;
+                        }
+                    }
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+
+    fn expr_to_string(expr: &syn::Expr) -> String {
+        let s = quote::quote!(#expr).to_string();
+        if s.len() > 80 {
+            format!("{}...", &s[..77])
+        } else {
+            s
+        }
+    }
+}
+
+impl<'ast> Visit<'ast> for UnhandledResultVisitor {
+    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        let prev_fn = self.current_fn.take();
+        let prev_public = self.is_public_fn;
+
+        self.current_fn = Some(node.sig.ident.to_string());
+        self.is_public_fn = matches!(node.vis, syn::Visibility::Public(_));
+
+        let fn_returns_result = Self::is_result_returning_fn(&node.sig);
+
+        for stmt in &node.block.stmts {
+            self.check_statement_for_unhandled_result(stmt, fn_returns_result);
+        }
+
+        self.current_fn = prev_fn;
+        self.is_public_fn = prev_public;
+    }
+
+    fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
+        let prev_fn = self.current_fn.take();
+        let prev_public = self.is_public_fn;
+
+        self.current_fn = Some(node.sig.ident.to_string());
+        self.is_public_fn = matches!(node.vis, syn::Visibility::Public(_));
+
+        let fn_returns_result = Self::is_result_returning_fn(&node.sig);
+
+        for stmt in &node.block.stmts {
+            self.check_statement_for_unhandled_result(stmt, fn_returns_result);
+        }
+
+        self.current_fn = prev_fn;
+        self.is_public_fn = prev_public;
+    }
+}
+
+impl UnhandledResultVisitor {
+    fn check_statement_for_unhandled_result(&mut self, stmt: &syn::Stmt, fn_returns_result: bool) {
+        match stmt {
+            syn::Stmt::Expr(expr, _) => {
+                self.check_expr_for_unhandled_result(expr, fn_returns_result);
+            }
+            syn::Stmt::Local(local) => {
+                if let Some(init) = &local.init {
+                    self.check_expr_for_unhandled_result(&init.expr, fn_returns_result);
+                }
+            }
+            syn::Stmt::Macro(_) => {}
+            _ => {}
+        }
+    }
+
+    fn check_expr_for_unhandled_result(&mut self, expr: &syn::Expr, fn_returns_result: bool) {
+        match expr {
+            syn::Expr::Call(call) => {
+                if Self::is_handled(expr) {
+                    return;
+                }
+                if Self::call_returns_result(call) && !fn_returns_result && self.is_public_fn {
+                    if let Some(fn_name) = &self.current_fn {
+                        let line = expr.span().start().line;
+                        self.issues.push(UnhandledResultIssue {
+                            function_name: fn_name.clone(),
+                            call_expression: Self::expr_to_string(expr),
+                            message: "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.".to_string(),
+                            location: format!("{}:{}", fn_name, line),
+                        });
+                    }
+                }
+                for arg in &call.args {
+                    self.check_expr_for_unhandled_result(arg, fn_returns_result);
+                }
+            }
+            syn::Expr::MethodCall(m) => {
+                if !Self::is_handled(expr) {
+                    self.check_expr_for_unhandled_result(&m.receiver, fn_returns_result);
+                }
+                for arg in &m.args {
+                    self.check_expr_for_unhandled_result(arg, fn_returns_result);
+                }
+            }
+            syn::Expr::Try(e) => {
+                self.check_expr_for_unhandled_result(&e.expr, true);
+            }
+            syn::Expr::Match(m) => {
+                for arm in &m.arms {
+                    self.check_expr_for_unhandled_result(&arm.body, fn_returns_result);
+                }
+            }
+            syn::Expr::If(i) => {
+                self.check_expr_for_unhandled_result(&i.cond, fn_returns_result);
+                self.check_block_for_unhandled_result(&i.then_branch, fn_returns_result);
+                if let Some((_, else_expr)) = &i.else_branch {
+                    self.check_expr_for_unhandled_result(else_expr, fn_returns_result);
+                }
+            }
+            syn::Expr::Block(b) => {
+                self.check_block_for_unhandled_result(&b.block, fn_returns_result);
+            }
+            syn::Expr::Closure(c) => {
+                self.check_expr_for_unhandled_result(&c.body, fn_returns_result);
+            }
+            syn::Expr::Assign(a) => {
+                self.check_expr_for_unhandled_result(&a.right, fn_returns_result);
+            }
+            syn::Expr::Binary(b) => {
+                self.check_expr_for_unhandled_result(&b.left, fn_returns_result);
+                self.check_expr_for_unhandled_result(&b.right, fn_returns_result);
+            }
+            syn::Expr::Tuple(t) => {
+                for elem in &t.elems {
+                    self.check_expr_for_unhandled_result(elem, fn_returns_result);
+                }
+            }
+            syn::Expr::Array(a) => {
+                for elem in &a.elems {
+                    self.check_expr_for_unhandled_result(elem, fn_returns_result);
+                }
+            }
+            syn::Expr::Struct(s) => {
+                for field in &s.fields {
+                    self.check_expr_for_unhandled_result(&field.expr, fn_returns_result);
+                }
+            }
+            syn::Expr::Return(r) => {
+                if let Some(expr) = &r.expr {
+                    self.check_expr_for_unhandled_result(expr, true);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn check_block_for_unhandled_result(&mut self, block: &syn::Block, fn_returns_result: bool) {
+        for stmt in &block.stmts {
+            self.check_statement_for_unhandled_result(stmt, fn_returns_result);
+        }
+    }
+
+    fn call_returns_result(call: &syn::ExprCall) -> bool {
+        if let syn::Expr::Path(p) = &*call.func {
+            if let Some(seg) = p.path.segments.last() {
+                let name = seg.ident.to_string();
+                return !matches!(name.as_str(), "Ok" | "Err" | "Some" | "None" | "panic");
+            }
+        }
+        false
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1299,8 +1622,10 @@ mod tests {
 
     #[test]
     fn test_analyze_with_limit() {
-        let mut config = SanctifyConfig::default();
-        config.ledger_limit = 50;
+        let config = SanctifyConfig {
+            ledger_limit: 50,
+
+        };
         let analyzer = Analyzer::new(config);
         let source = r#"
             #[contracttype]
@@ -1618,5 +1943,728 @@ mod tests {
         assert!(issues[0].suggestion.contains("checked_add"));
         // Location should include function name
         assert!(issues[0].location.starts_with("risky:"));
+    }
+    #[test]
+    fn test_custom_rules_with_severity() {
+        let config = SanctifyConfig {
+            custom_rules: vec![
+                CustomRule {
+                    name: "no_unsafe".to_string(),
+                    pattern: "unsafe".to_string(),
+                    severity: RuleSeverity::Error,
+                },
+                CustomRule {
+                    name: "todo_comment".to_string(),
+                    pattern: "TODO".to_string(),
+                    severity: RuleSeverity::Info,
+                },
+            ],
+            ..Default::default()
+        };
+        let analyzer = Analyzer::new(config);
+        let source = r#"
+            pub fn my_fn() {
+                // TODO: implement this
+                unsafe {
+                    let x = 1;
+                }
+            }
+        "#;
+        let matches = analyzer.analyze_custom_rules(source, &analyzer.config.custom_rules);
+        assert_eq!(matches.len(), 2);
+
+        let todo_match = matches
+            .iter()
+            .find(|m| m.rule_name == "todo_comment")
+            .unwrap();
+        assert_eq!(todo_match.severity, RuleSeverity::Info);
+
+        let unsafe_match = matches.iter().find(|m| m.rule_name == "no_unsafe").unwrap();
+        assert_eq!(unsafe_match.severity, RuleSeverity::Error);
+    }
+
+    #[test]
+    fn test_unhandled_result_basic() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn internal_fn() -> Result<u32, Error> {
+                Ok(42)
+            }
+
+            #[contractimpl]
+            impl MyContract {
+                pub fn public_fn(env: Env) -> u32 {
+                    internal_fn()
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].message.contains("not handled"));
+    }
+
+    #[test]
+    fn test_unhandled_result_with_try_operator() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn internal_fn() -> Result<u32, Error> {
+                Ok(42)
+            }
+
+            #[contractimpl]
+            impl MyContract {
+                pub fn public_fn(env: Env) -> Result<u32, Error> {
+                    internal_fn()
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_unhandled_result_with_unwrap() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn internal_fn() -> Result<u32, Error> {
+                Ok(42)
+            }
+
+            #[contractimpl]
+            impl MyContract {
+                pub fn public_fn(env: Env) -> u32 {
+                    internal_fn().unwrap()
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_unhandled_result_with_expect() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn internal_fn() -> Result<u32, Error> {
+                Ok(42)
+            }
+
+            #[contractimpl]
+            impl MyContract {
+                pub fn public_fn(env: Env) -> u32 {
+                    internal_fn().expect("should succeed")
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_unhandled_result_with_match() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn internal_fn() -> Result<u32, Error> {
+                Ok(42)
+            }
+
+            #[contractimpl]
+            impl MyContract {
+                pub fn public_fn(env: Env) -> u32 {
+                    match internal_fn() {
+                        Ok(v) => v,
+                        Err(_) => 0,
+                    }
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_unhandled_result_with_map() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn internal_fn() -> Result<u32, Error> {
+                Ok(42)
+            }
+
+            #[contractimpl]
+            impl MyContract {
+                pub fn public_fn(env: Env) {
+                    internal_fn().map(|v| v + 1);
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_unhandled_result_private_fn() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn internal_fn() -> Result<u32, Error> {
+                Ok(42)
+            }
+
+            impl MyContract {
+                fn private_fn(env: Env) -> u32 {
+                    internal_fn()
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_unhandled_result_multiple_calls() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn fn_a() -> Result<u32, Error> { Ok(1) }
+            fn fn_b() -> Result<u32, Error> { Ok(2) }
+
+            #[contractimpl]
+            impl MyContract {
+                pub fn public_fn(env: Env) {
+                    fn_a();
+                    fn_b().unwrap();
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert_eq!(issues.len(), 1);
+        assert!(issues[0].call_expression.contains("fn_a"));
+    }
+
+    #[test]
+    fn test_unhandled_result_nested_calls() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn inner() -> Result<u32, Error> { Ok(42) }
+
+            #[contractimpl]
+            impl MyContract {
+                pub fn public_fn(env: Env) {
+                    let x = inner();
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert_eq!(issues.len(), 1);
+    }
+
+    #[test]
+    fn test_unhandled_result_ok_err_wrapped() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn internal_fn() -> Result<u32, Error> {
+                Ok(42)
+            }
+
+            #[contractimpl]
+            impl MyContract {
+                pub fn public_fn(env: Env) -> Result<u32, Error> {
+                    Ok(internal_fn()?)
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_unhandled_result_with_unwrap_or() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            fn internal_fn() -> Result<u32, Error> {
+                Ok(42)
+            }
+
+            #[contractimpl]
+            impl MyContract {
+                pub fn public_fn(env: Env) -> u32 {
+                    internal_fn().unwrap_or(0)
+                }
+            }
+        "#;
+        let issues = analyzer.scan_unhandled_results(source);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_unhandled_result_empty_source() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = "";
+        let issues = analyzer.scan_unhandled_results(source);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_unhandled_result_invalid_syntax() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = "this is not valid rust";
+        let issues = analyzer.scan_unhandled_results(source);
+        assert!(issues.is_empty());
+    }
+
+    #[test]
+    fn test_gas_estimator_simple_function() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn simple(env: Env) -> u32 {
+                    42
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].function_name, "simple");
+        assert_eq!(reports[0].estimated_instructions, 50);
+    }
+
+    #[test]
+    fn test_gas_estimator_binary_operations() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn add(env: Env, a: u32, b: u32) -> u32 {
+                    a + b
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 50);
+    }
+
+    #[test]
+    fn test_gas_estimator_function_call() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn caller(env: Env) {
+                    helper();
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 70);
+    }
+
+    #[test]
+    fn test_gas_estimator_storage_operations() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn store(env: Env, key: Symbol, val: u32) {
+                    env.storage().persistent().set(&key, &val);
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 1050);
+    }
+
+    #[test]
+    fn test_gas_estimator_multiple_storage_ops() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn multi_store(env: Env, key: Symbol, val: u32) {
+                    env.storage().persistent().set(&key, &val);
+                    let exists = env.storage().persistent().has(&key);
+                    env.storage().persistent().remove(&key);
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 3050);
+    }
+
+    #[test]
+    fn test_gas_estimator_require_auth() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn secured(env: Env, addr: Address) {
+                    addr.require_auth();
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 550);
+    }
+
+    #[test]
+    fn test_gas_estimator_for_loop() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn iterate(env: Env, n: u32) {
+                    for i in 0..n {
+                        let x = i + 1;
+                    }
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 100);
+    }
+
+    #[test]
+    fn test_gas_estimator_while_loop() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn while_loop(env: Env, mut count: u32) {
+                    while count > 0 {
+                        count -= 1;
+                    }
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 100);
+    }
+
+    #[test]
+    fn test_gas_estimator_nested_loops() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn nested(env: Env, n: u32) {
+                    for i in 0..n {
+                        for j in 0..n {
+                            let _ = i + j;
+                        }
+                    }
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 500);
+    }
+
+    #[test]
+    fn test_gas_estimator_local_variables() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn locals(env: Env) {
+                    let a: u32 = 1;
+                    let b: u64 = 2;
+                    let c: u128 = 3;
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_memory_bytes > 32);
+    }
+
+    #[test]
+    fn test_gas_estimator_vec_macro() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn with_vec(env: Env) {
+                    let v = vec![&env, 1, 2, 3];
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_memory_bytes >= 160);
+    }
+
+    #[test]
+    fn test_gas_estimator_symbol_macro() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn with_symbol(env: Env) {
+                    let s = symbol_short!("key");
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 60);
+    }
+
+    #[test]
+    fn test_gas_estimator_multiple_functions() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn func_a(env: Env) -> u32 {
+                    1
+                }
+
+                pub fn func_b(env: Env) -> u32 {
+                    2
+                }
+
+                fn private_func(env: Env) -> u32 {
+                    3
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 2);
+        let names: Vec<&str> = reports.iter().map(|r| r.function_name.as_str()).collect();
+        assert!(names.contains(&"func_a"));
+        assert!(names.contains(&"func_b"));
+    }
+
+    #[test]
+    fn test_gas_estimator_complex_function() {
+        let source = r#"
+            #[contractimpl]
+            impl Token {
+                pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+                    from.require_auth();
+                    to.require_auth();
+                    let balance_from: i128 = env.storage().persistent().get(&from).unwrap_or(0);
+                    let balance_to: i128 = env.storage().persistent().get(&to).unwrap_or(0);
+                    env.storage().persistent().set(&from, &(balance_from - amount));
+                    env.storage().persistent().set(&to, &(balance_to + amount));
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 3000);
+    }
+
+    #[test]
+    fn test_gas_estimator_empty_source() {
+        let source = "";
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn test_gas_estimator_invalid_syntax() {
+        let source = "this is not valid rust code";
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn test_gas_estimator_no_impl_block() {
+        let source = r#"
+            pub fn standalone() -> u32 {
+                42
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn test_gas_estimator_impl_without_pub() {
+        let source = r#"
+            impl MyContract {
+                fn private(env: Env) -> u32 {
+                    42
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert!(reports.is_empty());
+    }
+
+    #[test]
+    fn test_gas_estimator_memory_estimation() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn memory_test(env: Env) {
+                    let small: u32 = 1;
+                    let medium: u64 = 2;
+                    let large: u128 = 3;
+                    let addr: Address = Address::from_str(&env, "GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+                    let bytes: Bytes = Bytes::new(&env);
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_memory_bytes > 100);
+    }
+
+    #[test]
+    fn test_gas_estimator_conditional_logic() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn conditional(env: Env, val: u32) -> u32 {
+                    if val > 10 {
+                        val + 1
+                    } else {
+                        val - 1
+                    }
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions > 50);
+    }
+
+    #[test]
+    fn test_gas_estimator_match_expression() {
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn match_test(env: Env, action: u32) -> u32 {
+                    match action {
+                        0 => 1,
+                        1 => 2,
+                        _ => 0,
+                    }
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert_eq!(reports[0].function_name, "match_test");
+        assert!(reports[0].estimated_instructions >= 50);
+    }
+
+    #[test]
+    fn test_gas_estimator_known_soroban_limits() {
+        let source = r#"
+            #[contractimpl]
+            impl HeavyContract {
+                pub fn heavy_storage(env: Env) {
+                    env.storage().persistent().set(&Symbol::new(&env, "key1"), &1u64);
+                    env.storage().persistent().set(&Symbol::new(&env, "key2"), &2u64);
+                    env.storage().persistent().set(&Symbol::new(&env, "key3"), &3u64);
+                    env.storage().persistent().set(&Symbol::new(&env, "key4"), &4u64);
+                    env.storage().persistent().set(&Symbol::new(&env, "key5"), &5u64);
+                }
+            }
+        "#;
+        let reports = crate::gas_estimator::GasEstimator::new().estimate_contract(source);
+        assert_eq!(reports.len(), 1);
+        assert!(reports[0].estimated_instructions >= 5000);
+    }
+
+    #[test]
+    fn test_rule_registry_default_rules() {
+        let registry = RuleRegistry::default();
+        let rules = registry.available_rules();
+        assert!(rules.contains(&"auth_gap"));
+        assert!(rules.contains(&"ledger_size"));
+        assert!(rules.contains(&"panic_detection"));
+        assert!(rules.contains(&"arithmetic_overflow"));
+        assert!(rules.contains(&"unhandled_result"));
+    }
+
+    #[test]
+    fn test_rule_run_all() {
+        let registry = RuleRegistry::default();
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn unsafe_fn(env: Env) {
+                    panic!("Something went wrong");
+                }
+            }
+        "#;
+        let violations = registry.run_all(source);
+        assert!(!violations.is_empty());
+    }
+
+    #[test]
+    fn test_rule_run_by_name() {
+        let registry = RuleRegistry::default();
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn risky(env: Env, a: u64, b: u64) -> u64 {
+                    a + b
+                }
+            }
+        "#;
+        let violations = registry.run_by_name(source, "arithmetic_overflow");
+        assert_eq!(violations.len(), 1);
+        assert_eq!(violations[0].rule_name, "arithmetic_overflow");
+    }
+
+    #[test]
+    fn test_analyzer_run_rules() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn add(env: Env, a: u64, b: u64) -> u64 {
+                    a + b
+                }
+            }
+        "#;
+        let violations = analyzer.run_rules(source);
+        assert!(!violations.is_empty());
+    }
+
+    #[test]
+    fn test_storage_collision_detects_within_same_storage_type() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn write_a(env: Env) {
+                    env.storage().persistent().set(&"USER", &1u32);
+                }
+
+                pub fn write_b(env: Env) {
+                    env.storage().persistent().set(&"USER", &2u32);
+                }
+            }
+        "#;
+
+        let collisions = analyzer.scan_storage_collisions(source);
+        assert_eq!(collisions.len(), 2);
+        assert!(collisions.iter().all(|c| c.key_value == "USER"));
+        assert!(collisions
+            .iter()
+            .all(|c| c.message.contains("persistent storage key collision")));
+    }
+
+    #[test]
+    fn test_storage_collision_ignores_cross_storage_type_key_reuse() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn set_persistent(env: Env) {
+                    env.storage().persistent().set(&"SESSION", &1u32);
+                }
+
+                pub fn set_temporary(env: Env) {
+                    env.storage().temporary().set(&"SESSION", &2u32);
+                }
+
+                pub fn set_instance(env: Env) {
+                    env.storage().instance().set(&"SESSION", &3u32);
+                }
+            }
+        "#;
+
+        let collisions = analyzer.scan_storage_collisions(source);
+        assert!(collisions.is_empty());
     }
 }

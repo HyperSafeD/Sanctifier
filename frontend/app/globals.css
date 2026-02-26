@@ -23,4 +23,18 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+/* High Contrast Accessibility Mode */
+.theme-high-contrast {
+  --background: #000000;
+  --foreground: #ffffff;
+  --primary: #ffff00; /* Yellow against black is highly visible for links/buttons */
+  --primary-foreground: #000000;
+  --muted: #000000;
+  --muted-foreground: #ffffff;
+  --border: #ffffff;
+  --input: #ffffff;
+  --ring: #ffff00;
 }
