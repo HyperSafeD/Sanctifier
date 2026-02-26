@@ -54,6 +54,14 @@ Check for and download the latest Sanctifier binary:
 sanctifier update
 ```
 
+### Generate a README Security Badge
+Create an SVG badge and markdown snippet from a JSON scan report:
+
+```bash
+sanctifier analyze . --format json > sanctifier-report.json
+sanctifier badge --report sanctifier-report.json --svg-output badges/sanctifier-security.svg --markdown-output badges/sanctifier-security.md
+```
+
 ## 🤝 Contributing
 We welcome contributions from the Stellar community! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 
