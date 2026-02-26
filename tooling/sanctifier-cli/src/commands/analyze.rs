@@ -57,6 +57,8 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             path
         );
         println!("{} Analyzing contract at {:?}...", "🔍".blue(), path);
+        use std::io::{self, Write};
+        io::stdout().flush().ok();
     }
 
     let config = load_config(path);
