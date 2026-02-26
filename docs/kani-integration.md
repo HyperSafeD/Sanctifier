@@ -106,3 +106,9 @@ This runs a set of SMT proof strategies repeatedly and writes `target/smt-latenc
 - per-strategy min/avg/max latency (microseconds)
 - p95 latency
 - a sortable summary for identifying the most expensive strategy
+
+## Tutorial Videos
+
+For a step-by-step walkthrough format, including how to read reports and write your first harness, see:
+
+- [`docs/formal-verification-video-series.md`](./formal-verification-video-series.md)
