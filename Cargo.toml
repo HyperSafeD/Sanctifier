@@ -5,6 +5,7 @@ members = [
     "contracts/vulnerable-contract",
     "contracts/kani-poc",
     "contracts/amm-pool",
+    "contracts/reentrancy-guard",
 ]
 resolver = "2"
 
