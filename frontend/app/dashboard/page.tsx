@@ -74,24 +74,24 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 theme-high-contrast:bg-black theme-high-contrast:text-white">
-      <header className="border-b border-zinc-200 dark:border-zinc-800 theme-high-contrast:border-b-white bg-white dark:bg-zinc-900 theme-high-contrast:bg-black px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-6">
-          <Link href="/" className="font-bold text-lg theme-high-contrast:text-yellow-300">
+      <header className="border-b border-zinc-200 dark:border-zinc-800 theme-high-contrast:border-b-white bg-white dark:bg-zinc-900 theme-high-contrast:bg-black px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-center gap-4 sm:gap-6">
+          <Link href="/" className="font-bold text-lg theme-high-contrast:text-yellow-300 whitespace-nowrap">
             Sanctifier
           </Link>
-          <span className="text-zinc-500 dark:text-zinc-400 theme-high-contrast:text-white">Security Dashboard</span>
+          <span className="text-zinc-500 dark:text-zinc-400 theme-high-contrast:text-white text-sm sm:text-base">Security Dashboard</span>
         </div>
         <ThemeToggle />
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
         <section className="rounded-lg border border-zinc-200 dark:border-zinc-800 theme-high-contrast:border-white bg-white dark:bg-zinc-900 theme-high-contrast:bg-black p-6">
           <h2 className="text-lg font-semibold mb-4 theme-high-contrast:text-yellow-300">Load Analysis Report</h2>
           <p className="text-sm text-zinc-600 dark:text-zinc-400 theme-high-contrast:text-white mb-4">
             Paste JSON from <code className="bg-zinc-100 dark:bg-zinc-800 theme-high-contrast:bg-zinc-900 px-1 rounded">sanctifier analyze --format json</code> or upload a file.
           </p>
-          <div className="flex flex-wrap gap-4">
-            <label className="cursor-pointer rounded-lg border border-zinc-300 dark:border-zinc-600 theme-high-contrast:border-white px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 theme-high-contrast:hover:bg-zinc-900">
+          <div className="flex flex-wrap gap-2 sm:gap-4">
+            <label className="flex-1 sm:flex-none text-center cursor-pointer rounded-lg border border-zinc-300 dark:border-zinc-600 theme-high-contrast:border-white px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 theme-high-contrast:hover:bg-zinc-900">
               Upload JSON
               <input
                 type="file"
@@ -102,7 +102,7 @@ export default function DashboardPage() {
             </label>
             <button
               onClick={loadReport}
-              className="rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 theme-high-contrast:bg-white theme-high-contrast:text-black px-4 py-2 text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 theme-high-contrast:hover:bg-zinc-300"
+              className="flex-1 sm:flex-none rounded-lg bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 theme-high-contrast:bg-white theme-high-contrast:text-black px-4 py-2 text-sm font-medium hover:bg-zinc-800 dark:hover:bg-zinc-200 theme-high-contrast:hover:bg-zinc-300"
             >
               Parse JSON
             </button>
@@ -111,7 +111,7 @@ export default function DashboardPage() {
                 exportToPdf(findings);
               }}
               disabled={!hasData}
-              className="rounded-lg border border-zinc-300 dark:border-zinc-600 theme-high-contrast:border-white px-4 py-2 text-sm disabled:opacity-50 hover:bg-zinc-100 dark:hover:bg-zinc-800 theme-high-contrast:hover:bg-zinc-900"
+              className="flex-1 sm:flex-none rounded-lg border border-zinc-300 dark:border-zinc-600 theme-high-contrast:border-white px-4 py-2 text-sm disabled:opacity-50 hover:bg-zinc-100 dark:hover:bg-zinc-800 theme-high-contrast:hover:bg-zinc-900"
             >
               Export PDF
             </button>

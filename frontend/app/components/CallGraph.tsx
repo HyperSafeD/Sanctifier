@@ -90,7 +90,7 @@ export function CallGraph({ nodes, edges }: CallGraphProps) {
       <h3 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300 mb-4">
         Contract Call Graph
       </h3>
-      <div className="flex gap-4 mb-4 text-xs text-zinc-500 dark:text-zinc-400">
+      <div className="flex flex-wrap gap-x-4 gap-y-2 mb-4 text-[10px] sm:text-xs text-zinc-500 dark:text-zinc-400">
         <span className="flex items-center gap-1">
           <span className="inline-block w-3 h-3 rounded" style={{ background: NODE_COLORS.function.bg, border: `2px solid ${NODE_COLORS.function.border}` }} />
           Function

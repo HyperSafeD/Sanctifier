@@ -38,15 +38,15 @@ export function SummaryChart({ findings }: SummaryChartProps) {
       </h3>
       <div className="space-y-3">
         {bars.map(({ label, count, color }) => (
-          <div key={label} className="flex items-center gap-3">
-            <span className="w-20 text-xs font-medium capitalize">{label}</span>
+          <div key={label} className="flex items-center gap-2 sm:gap-3">
+            <span className="w-16 sm:w-20 text-[10px] sm:text-xs font-medium capitalize truncate">{label}</span>
             <div className="flex-1 h-6 bg-zinc-100 dark:bg-zinc-800 rounded overflow-hidden">
               <div
                 className={`h-full ${color} transition-all`}
                 style={{ width: `${(count / max) * 100}%` }}
               />
             </div>
-            <span className="w-8 text-right text-sm">{count}</span>
+            <span className="w-6 sm:w-8 text-right text-xs sm:text-sm">{count}</span>
           </div>
         ))}
       </div>
