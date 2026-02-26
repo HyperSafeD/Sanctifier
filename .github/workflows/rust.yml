@@ -45,4 +45,4 @@ jobs:
         run: cargo test --workspace --all-features
 
       - name: Build release binary
-        run: cargo build --release -p sanctifier-cli
+        run: cargo build --release --locked -p sanctifier-cli
