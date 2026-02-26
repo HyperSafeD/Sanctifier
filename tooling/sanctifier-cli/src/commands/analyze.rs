@@ -1,6 +1,6 @@
 use clap::Args;
 use colored::*;
-use sanctifier_core::{Analyzer, SanctifyConfig};
+use sanctifier_core::{Analyzer, SanctifyConfig, SizeWarningLevel};
 use serde_json;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -90,7 +90,8 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             auth_gaps.extend(analyzer.scan_auth_gaps(&content));
             panic_issues.extend(analyzer.scan_panics(&content));
             arithmetic_issues.extend(analyzer.scan_arithmetic_overflow(&content));
-            custom_matches.extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
+            custom_matches
+                .extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
         }
     }
 
@@ -102,11 +103,13 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
         + arithmetic_issues.len()
         + custom_matches.len();
 
-    let has_critical = !auth_gaps.is_empty()
-        || panic_issues.iter().any(|p| p.issue_type == "panic!");
+    let has_critical =
+        !auth_gaps.is_empty() || panic_issues.iter().any(|p| p.issue_type == "panic!");
     let has_high = !arithmetic_issues.is_empty()
         || !panic_issues.is_empty()
-        || size_warnings.iter().any(|w| w.level == "ExceedsLimit");
+        || size_warnings
+            .iter()
+            .any(|w| w.level == SizeWarningLevel::ExceedsLimit);
 
     if is_json {
         let report = serde_json::json!({
@@ -228,7 +231,9 @@ fn chrono_timestamp() -> String {
 
 fn load_config(path: &Path) -> SanctifyConfig {
     let mut current = if path.is_file() {
-        path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."))
+        path.parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| PathBuf::from("."))
     } else {
         path.to_path_buf()
     };
@@ -266,7 +271,11 @@ fn walk_dir(
         let path = entry.path();
         if path.is_dir() {
             // Skip ignore_paths
-            let is_ignored = analyzer.config.ignore_paths.iter().any(|p| path.ends_with(p));
+            let is_ignored = analyzer
+                .config
+                .ignore_paths
+                .iter()
+                .any(|p| path.ends_with(p));
             if is_ignored {
                 continue;
             }
@@ -317,7 +326,8 @@ fn walk_dir(
                     arithmetic_issues.push(i.clone());
                 }
 
-                let mut custom = analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules);
+                let mut custom =
+                    analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules);
                 for m in &mut custom {
                     m.snippet = format!("{}:{}: {}", file_name, m.line, m.snippet);
                 }

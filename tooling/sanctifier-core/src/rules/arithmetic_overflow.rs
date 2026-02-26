@@ -12,6 +12,12 @@ impl ArithmeticOverflowRule {
     }
 }
 
+impl Default for ArithmeticOverflowRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for ArithmeticOverflowRule {
     fn name(&self) -> &str {
         "arithmetic_overflow"
