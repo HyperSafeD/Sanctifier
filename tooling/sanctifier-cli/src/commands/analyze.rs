@@ -9,6 +9,8 @@ use serde_json;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::vulndb::{VulnDatabase, VulnMatch};
+
 #[derive(Args, Debug)]
 pub struct AnalyzeArgs {
     /// Path to the contract directory or Cargo.toml
@@ -23,6 +25,9 @@ pub struct AnalyzeArgs {
     #[arg(short, long, default_value = "64000")]
     pub limit: usize,
 
+    /// Path to a custom vulnerability database JSON file
+    #[arg(long)]
+    pub vuln_db: Option<PathBuf>,
     /// Webhook endpoint(s) to notify when scan completes (Discord/Slack/Teams/custom)
     #[arg(long = "webhook-url")]
     pub webhook_urls: Vec<String>,
@@ -70,6 +75,30 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     let config = load_config(path);
     let analyzer = Analyzer::new(config);
 
+    // Load vulnerability database
+    let vuln_db = match &args.vuln_db {
+        Some(db_path) => {
+            if !is_json {
+                println!(
+                    "{} Loading custom vulnerability database from {:?}",
+                    "📦".blue(),
+                    db_path
+                );
+            }
+            VulnDatabase::load(db_path)?
+        }
+        None => {
+            if !is_json {
+                println!(
+                    "{} Loading built-in vulnerability database (v{})",
+                    "📦".blue(),
+                    VulnDatabase::load_default().version
+                );
+            }
+            VulnDatabase::load_default()
+        }
+    };
+
     let mut collisions = Vec::new();
     let mut size_warnings = Vec::new();
     let mut unsafe_patterns = Vec::new();
@@ -77,11 +106,13 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     let mut panic_issues = Vec::new();
     let mut arithmetic_issues = Vec::new();
     let mut custom_matches = Vec::new();
+    let mut vuln_matches: Vec<VulnMatch> = Vec::new();
 
     if path.is_dir() {
         walk_dir(
             path,
             &analyzer,
+            &vuln_db,
             &mut collisions,
             &mut size_warnings,
             &mut unsafe_patterns,
@@ -89,15 +120,19 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             &mut panic_issues,
             &mut arithmetic_issues,
             &mut custom_matches,
+            &mut vuln_matches,
         )?;
     } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
         if let Ok(content) = fs::read_to_string(path) {
+            let file_name = path.display().to_string();
             collisions.extend(analyzer.scan_storage_collisions(&content));
             size_warnings.extend(analyzer.analyze_ledger_size(&content));
             unsafe_patterns.extend(analyzer.analyze_unsafe_patterns(&content));
             auth_gaps.extend(analyzer.scan_auth_gaps(&content));
             panic_issues.extend(analyzer.scan_panics(&content));
             arithmetic_issues.extend(analyzer.scan_arithmetic_overflow(&content));
+            custom_matches.extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
+            vuln_matches.extend(vuln_db.scan(&content, &file_name));
             custom_matches
                 .extend(analyzer.analyze_custom_rules(&content, &analyzer.config.custom_rules));
         }
@@ -137,6 +172,15 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
 
     if is_json {
         let report = serde_json::json!({
+            "storage_collisions": collisions,
+            "ledger_size_warnings": size_warnings,
+            "unsafe_patterns": unsafe_patterns,
+            "auth_gaps": auth_gaps,
+            "panic_issues": panic_issues,
+            "arithmetic_issues": arithmetic_issues,
+            "custom_rules": custom_matches,
+            "vulnerability_db_matches": vuln_matches,
+            "vulnerability_db_version": vuln_db.version,
             "metadata": {
                 "version": env!("CARGO_PKG_VERSION"),
                 "timestamp": timestamp,
@@ -308,6 +352,40 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
         }
     }
 
+    // Vulnerability database matches
+    if vuln_matches.is_empty() {
+        println!(
+            "{} No known vulnerability patterns matched (DB v{}).",
+            "✅".green(),
+            vuln_db.version
+        );
+    } else {
+        println!(
+            "\n{} Found {} known vulnerability pattern(s) (DB v{})!",
+            "🛡️".red(),
+            vuln_matches.len(),
+            vuln_db.version
+        );
+        for m in &vuln_matches {
+            let sev_icon = match m.severity.as_str() {
+                "critical" => "❌".red(),
+                "high" => "🔴".red(),
+                "medium" => "⚠️".yellow(),
+                _ => "ℹ️".blue(),
+            };
+            println!(
+                "   {} [{}] {} ({})",
+                sev_icon,
+                m.vuln_id.bold(),
+                m.name.bold(),
+                m.severity.to_uppercase()
+            );
+            println!("      File: {}:{}", m.file, m.line);
+            println!("      {}", m.description);
+            println!("      Suggestion: {}", m.recommendation);
+        }
+    }
+
     println!("\n{} Static analysis complete.", "✨".green());
 
     Ok(())
@@ -351,6 +429,7 @@ fn load_config(path: &Path) -> SanctifyConfig {
 fn walk_dir(
     dir: &Path,
     analyzer: &Analyzer,
+    vuln_db: &VulnDatabase,
     collisions: &mut Vec<sanctifier_core::StorageCollisionIssue>,
     size_warnings: &mut Vec<sanctifier_core::SizeWarning>,
     unsafe_patterns: &mut Vec<sanctifier_core::UnsafePattern>,
@@ -358,6 +437,7 @@ fn walk_dir(
     panic_issues: &mut Vec<sanctifier_core::PanicIssue>,
     arithmetic_issues: &mut Vec<sanctifier_core::ArithmeticIssue>,
     custom_matches: &mut Vec<sanctifier_core::CustomRuleMatch>,
+    vuln_matches: &mut Vec<VulnMatch>,
 ) -> anyhow::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -376,6 +456,7 @@ fn walk_dir(
             walk_dir(
                 &path,
                 analyzer,
+                vuln_db,
                 collisions,
                 size_warnings,
                 unsafe_patterns,
@@ -383,6 +464,7 @@ fn walk_dir(
                 panic_issues,
                 arithmetic_issues,
                 custom_matches,
+                vuln_matches,
             )?;
         } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
             if let Ok(content) = fs::read_to_string(&path) {
@@ -425,6 +507,9 @@ fn walk_dir(
                     m.snippet = format!("{}:{}: {}", file_name, m.line, m.snippet);
                 }
                 custom_matches.extend(custom);
+
+                // Scan against vulnerability database
+                vuln_matches.extend(vuln_db.scan(&content, &file_name));
             }
         }
     }
