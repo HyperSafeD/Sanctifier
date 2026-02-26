@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { ThemeToggle } from "./ThemeToggle";
+import { ThemeProvider } from "../providers/theme-provider";
 
 const meta: Meta<typeof ThemeToggle> = {
   title: "Components/ThemeToggle",
@@ -10,10 +11,17 @@ const meta: Meta<typeof ThemeToggle> = {
     docs: {
       description: {
         component:
-          "A button that toggles between light and dark mode by adding or removing the 'dark' class on the document root. Respects the user's system preference on initial load.",
+          "A button that toggles between light and dark mode through the dashboard theme provider.",
       },
     },
   },
+  decorators: [
+    (Story) => (
+      <ThemeProvider>
+        <Story />
+      </ThemeProvider>
+    ),
+  ],
 };
 
 export default meta;
