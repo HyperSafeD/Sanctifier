@@ -93,3 +93,16 @@ Then run:
 ```bash
 cargo kani --package kani-poc-contract
 ```
+
+## SMT Solver Latency Benchmarking
+
+To compare proof strategy cost in CI/local testing, Sanctifier now includes an ignored benchmark test in `sanctifier-core`:
+
+```bash
+cargo test -p sanctifier-core --test smt_latency_benchmark -- --ignored
+```
+
+This runs a set of SMT proof strategies repeatedly and writes `target/smt-latency-report.json` with:
+- per-strategy min/avg/max latency (microseconds)
+- p95 latency
+- a sortable summary for identifying the most expensive strategy
