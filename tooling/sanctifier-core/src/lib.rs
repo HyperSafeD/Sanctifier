@@ -185,18 +185,13 @@ pub struct UnhandledResultIssue {
 }
 
 // ── Configuration ─────────────────────────────────────────────────────────────
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum RuleSeverity {
     Info,
+    #[default]
     Warning,
     Error,
-}
-
-impl Default for RuleSeverity {
-    fn default() -> Self {
-        Self::Warning
-    }
 }
 
 /// User-defined regex-based rule. Defined in .sanctify.toml under [[custom_rules]].

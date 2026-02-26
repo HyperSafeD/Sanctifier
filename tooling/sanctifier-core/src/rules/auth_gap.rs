@@ -10,6 +10,12 @@ impl AuthGapRule {
     }
 }
 
+impl Default for AuthGapRule {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Rule for AuthGapRule {
     fn name(&self) -> &str {
         "auth_gap"
