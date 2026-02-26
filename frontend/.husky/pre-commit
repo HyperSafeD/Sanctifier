@@ -1,0 +1,28 @@
+#!/bin/sh
+. "$(dirname "$0")/_/husky.sh"
+
+echo "Running Pre-commit Checks..."
+
+# 1. Run Node.js frontend checks (assumes husky is running from frontend/)
+echo "Checking frontend formatting and linting..."
+npm run lint
+FRONTEND_STATUS=$?
+
+if [ $FRONTEND_STATUS -ne 0 ]; then
+  echo "Frontend checks failed. Please fix lint errors before committing."
+  exit 1
+fi
+
+# 2. Run Rust backend checks
+echo "Checking backend formatting (cargo fmt)..."
+cd ../
+cargo fmt --all -- --check
+BACKEND_STATUS=$?
+
+if [ $BACKEND_STATUS -ne 0 ]; then
+  echo "Backend formatting failed. Please run 'cargo fmt' before committing."
+  exit 1
+fi
+
+echo "All pre-commit checks passed!"
+exit 0
