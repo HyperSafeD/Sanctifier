@@ -81,3 +81,13 @@ fn test_analyze_empty_macro_heavy() {
         .success()
         .stdout(predicates::str::contains("Static analysis complete."));
 }
+
+#[test]
+fn test_update_help() {
+    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
+    cmd.arg("update")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("latest Sanctifier binary"));
+}

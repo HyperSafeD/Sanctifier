@@ -70,6 +70,12 @@ Confirm the installation succeeded:
 sanctifier --version
 ```
 
+Update to the latest Sanctifier binary at any time:
+
+```bash
+sanctifier update
+```
+
 ---
 
 ## 3. Running Your First Scan

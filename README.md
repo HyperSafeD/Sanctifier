@@ -47,6 +47,13 @@ Run the analysis suite on your Soroban project:
 sanctifier analyze ./contracts/my-token
 ```
 
+### Update Sanctifier
+Check for and download the latest Sanctifier binary:
+
+```bash
+sanctifier update
+```
+
 ## 🤝 Contributing
 We welcome contributions from the Stellar community! Please see our [Contributing Guide](CONTRIBUTING.md) for details.
 

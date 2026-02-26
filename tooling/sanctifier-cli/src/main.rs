@@ -22,6 +22,8 @@ pub enum Commands {
     },
     /// Initialize Sanctifier in a new project
     Init(commands::init::InitArgs),
+    /// Check for and download the latest Sanctifier binary
+    Update,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -43,6 +45,9 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Init(args) => {
             commands::init::exec(args, None)?;
+        }
+        Commands::Update => {
+            commands::update::exec()?;
         }
     }
 
