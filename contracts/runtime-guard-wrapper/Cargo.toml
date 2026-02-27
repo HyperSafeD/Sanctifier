@@ -1,0 +1,16 @@
+[package]
+name = "runtime-guard-wrapper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+soroban-sdk = "20.0.0"
+sanctifier-core = { path = "../../tooling/sanctifier-core" }
+
+[lib]
+crate-type = ["cdylib"]
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1

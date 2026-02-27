@@ -32,6 +32,13 @@ A library of hook-based guards that you can integrate into your contracts:
 *   Runtime invariant checks via `SanctifiedGuard`.
 *   Step-by-step integration guide: [`docs/runtime-guards-integration.md`](docs/runtime-guards-integration.md)
 
+### 3. Automated Deployment & Validation (NEW!)
+Deploy runtime guard wrapper contracts to Soroban testnet with continuous validation:
+*   **CLI Deployment**: One-command contract deployment with `sanctifier deploy`
+*   **Bash Automation**: Production-ready scripts for testnet deployment
+*   **CI/CD Integration**: GitHub Actions workflow for automated deployment and monitoring
+*   **Continuous Validation**: Periodic health checks and execution metrics collection
+
 ## 📦 Installation (CLI)
 
 ```bash
