@@ -11,7 +11,7 @@ anyhow = "1.0"
 sanctifier-core = { version = "0.1.0", path = "../sanctifier-core" }
 toml = "0.8"
 tokio = { version = "1.0", features = ["full"] }
-colored = "2.0"
+colored = "3.1"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 regex = "1.10"
