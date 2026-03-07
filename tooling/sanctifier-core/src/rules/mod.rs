@@ -3,6 +3,7 @@ pub mod auth_gap;
 pub mod ledger_size;
 pub mod panic_detection;
 pub mod unhandled_result;
+pub mod unused_variable;
 
 use serde::Serialize;
 use std::any::Any;
@@ -11,7 +12,20 @@ pub trait Rule: Send + Sync + std::panic::UnwindSafe + std::panic::RefUnwindSafe
     fn name(&self) -> &str;
     fn description(&self) -> &str;
     fn check(&self, source: &str) -> Vec<RuleViolation>;
+    fn fix(&self, _source: &str) -> Vec<Patch> {
+        vec![]
+    }
     fn as_any(&self) -> &dyn Any;
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct Patch {
+    pub start_line: usize,
+    pub start_column: usize,
+    pub end_line: usize,
+    pub end_column: usize,
+    pub replacement: String,
+    pub description: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -22,6 +36,8 @@ pub struct RuleViolation {
     pub location: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub suggestion: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub patches: Vec<Patch>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -39,7 +55,13 @@ impl RuleViolation {
             message,
             location,
             suggestion: None,
+            patches: vec![],
         }
+    }
+
+    pub fn with_patches(mut self, patches: Vec<Patch>) -> Self {
+        self.patches = patches;
+        self
     }
 
     pub fn with_suggestion(mut self, suggestion: String) -> Self {
@@ -93,6 +115,7 @@ impl RuleRegistry {
         registry.register(panic_detection::PanicDetectionRule::new());
         registry.register(arithmetic_overflow::ArithmeticOverflowRule::new());
         registry.register(unhandled_result::UnhandledResultRule::new());
+        registry.register(unused_variable::UnusedVariableRule::new());
         registry
     }
 }

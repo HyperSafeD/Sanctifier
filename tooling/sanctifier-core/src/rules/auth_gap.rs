@@ -62,6 +62,61 @@ impl Rule for AuthGapRule {
         gaps
     }
 
+    fn fix(&self, source: &str) -> Vec<Patch> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+
+        let mut patches = Vec::new();
+        for item in &file.items {
+            if let Item::Impl(i) = item {
+                for impl_item in &i.items {
+                    if let syn::ImplItem::Fn(f) = impl_item {
+                        if let syn::Visibility::Public(_) = f.vis {
+                            let mut has_mutation = false;
+                            let mut has_read = false;
+                            let mut has_auth = false;
+                            check_fn_body(&f.block, &mut has_mutation, &mut has_read, &mut has_auth);
+                            if has_mutation && !has_read && !has_auth {
+                                // Add require_auth() as the first statement in the function
+                                if let Some(first_stmt) = f.block.stmts.first() {
+                                    let span = first_stmt.span();
+                                    patches.push(Patch {
+                                        start_line: span.start().line,
+                                        start_column: span.start().column,
+                                        end_line: span.start().line,
+                                        end_column: span.start().column,
+                                        replacement: "env.require_auth();\n    ".to_string(),
+                                        description: format!(
+                                            "Add require_auth() to function '{}'",
+                                            f.sig.ident
+                                        ),
+                                    });
+                                } else {
+                                    // Empty body, just insert at the start of block
+                                    let span = f.block.span();
+                                    patches.push(Patch {
+                                        start_line: span.start().line,
+                                        start_column: span.start().column + 1,
+                                        end_line: span.start().line,
+                                        end_column: span.start().column + 1,
+                                        replacement: "\n        env.require_auth();".to_string(),
+                                        description: format!(
+                                            "Add require_auth() to function '{}'",
+                                            f.sig.ident
+                                        ),
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        patches
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
