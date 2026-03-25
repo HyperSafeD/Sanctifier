@@ -23,6 +23,7 @@ jobs:
         with:
           toolchain: stable
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
 
       - name: Cache cargo registry & build artifacts
         uses: actions/cache@v4
@@ -40,6 +41,13 @@ jobs:
 
       - name: Run Clippy
         run: cargo clippy --package sanctifier-cli --package sanctifier-core --package amm-pool --all-targets --all-features -- -D warnings
+
+      - name: Clippy — contract crates (wasm32 target)
+        run: |
+          cargo clippy -p runtime-guard-wrapper --target wasm32-unknown-unknown -- -D warnings
+          cargo clippy -p my-contract --target wasm32-unknown-unknown -- -D warnings
+          cargo clippy -p reentrancy-guard --target wasm32-unknown-unknown -- -D warnings
+          cargo clippy -p amm-pool --target wasm32-unknown-unknown -- -D warnings
 
       - name: Run tests
         run: cargo test --package sanctifier-cli --package sanctifier-core --package amm-pool --all-features
