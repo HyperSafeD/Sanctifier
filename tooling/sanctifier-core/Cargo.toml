@@ -27,7 +27,7 @@ regex = "1.10.3"
 z3 = { version = "0.12.1", optional = true }
 
 [dev-dependencies]
-criterion = "0.5.1"
+criterion = "0.8.2"
 
 [[bench]]
 name = "benchmark"

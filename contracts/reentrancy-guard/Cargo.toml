@@ -11,7 +11,7 @@ crate-type = ["rlib"]
 soroban-sdk = "20.5.0"
 
 [dev-dependencies]
-criterion = "0.5.1"
+criterion = "0.8.2"
 soroban-sdk = { version = "20.5.0", features = ["testutils"] }
 
 [features]
