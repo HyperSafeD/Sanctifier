@@ -87,6 +87,7 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
 
     if is_json {
         let report = serde_json::json!({
+            "sanctifier_version": env!("CARGO_PKG_VERSION"),
             "storage_collisions": collisions,
             "ledger_size_warnings": size_warnings,
             "unsafe_patterns": unsafe_patterns,
@@ -94,6 +95,7 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
             "panic_issues": panic_issues,
             "arithmetic_issues": arithmetic_issues,
         });
+
         println!("{}", serde_json::to_string_pretty(&report)?);
         return Ok(());
     }

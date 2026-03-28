@@ -21,6 +21,12 @@ assert_cmd = "2.0"
 predicates = "3.1"
 tempfile = "3.8"
 
+[build-dependencies]
+vergen = { version = "8.3", features = ["build", "cargo", "git", "gitcl", "rustc", "si"] }
+regex = "1.10"
+semver = "1.0"
+
+
 
 [[bin]]
 name = "sanctifier"

@@ -5,10 +5,20 @@ mod commands;
 #[derive(Parser)]
 #[command(name = "sanctifier")]
 #[command(about = "Stellar Soroban Security & Formal Verification Suite", long_about = None)]
+#[command(version = concat!(
+    env!("CARGO_PKG_VERSION"),
+    "\nCommit: ", env!("VERGEN_GIT_SHA"), " (", env!("VERGEN_GIT_COMMIT_DATE"), ")",
+    "\nBuild date: ", env!("VERGEN_BUILD_DATE"),
+    "\nTarget: ", env!("VERGEN_CARGO_TARGET_TRIPLE"),
+    "\nBuilt with: rustc ", env!("VERGEN_RUSTC_SEMVER")
+))]
+
 struct Cli {
     #[command(subcommand)]
     command: Commands,
 }
+
+
 
 #[derive(Subcommand)]
 pub enum Commands {
@@ -45,6 +55,8 @@ fn main() -> anyhow::Result<()> {
             commands::init::exec(args, None)?;
         }
     }
+
+
 
     Ok(())
 }
