@@ -27,8 +27,6 @@ struct Cli {
     command: Commands,
 }
 
-
-
 #[derive(Subcommand)]
 pub enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
@@ -139,8 +137,6 @@ fn run() -> anyhow::Result<()> {
             commands::update::exec()?;
         }
     }
-
-
 
     Ok(())
 }
