@@ -21,7 +21,6 @@ pub mod vulndb;
     "\nTarget: ", env!("VERGEN_CARGO_TARGET_TRIPLE"),
     "\nBuilt with: rustc ", env!("VERGEN_RUSTC_SEMVER")
 ))]
-
 struct Cli {
     #[command(subcommand)]
     command: Commands,
