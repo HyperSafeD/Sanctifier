@@ -26,12 +26,13 @@ export function SeverityFilter({ selected, onChange }: SeverityFilterProps) {
   const options: (Severity | "all")[] = ["all", "critical", "high", "medium", "low"];
 
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="flex flex-wrap gap-2" role="group" aria-label="Filter by severity">
       {options.map((s) => (
         <button
           key={s}
           onClick={() => onChange(s)}
-          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+          aria-pressed={selected === s}
+          className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 ${
             selected === s
               ? s === "all"
                 ? "bg-zinc-800 dark:bg-zinc-700 text-white"

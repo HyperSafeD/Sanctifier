@@ -1,0 +1,145 @@
+warning: profiles for the non root package will be ignored, specify profiles at the workspace root:
+package:   /home/rampop/Sanctifier/contracts/amm-pool/Cargo.toml
+workspace: /home/rampop/Sanctifier/Cargo.toml
+    Checking sanctifier-core v0.1.0 (/home/rampop/Sanctifier/tooling/sanctifier-core)
+error: you should consider adding a `Default` implementation for `ArithmeticOverflowRule`
+  --> tooling/sanctifier-core/src/rules/arithmetic_overflow.rs:10:5
+   |
+10 | /     pub fn new() -> Self {
+11 | |         Self
+12 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#new_without_default
+   = note: `-D clippy::new-without-default` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::new_without_default)]`
+help: try adding this
+   |
+ 9 + impl Default for ArithmeticOverflowRule {
+10 +     fn default() -> Self {
+11 +         Self::new()
+12 +     }
+13 + }
+   |
+
+error: you should consider adding a `Default` implementation for `AuthGapRule`
+  --> tooling/sanctifier-core/src/rules/auth_gap.rs:8:5
+   |
+ 8 | /     pub fn new() -> Self {
+ 9 | |         Self
+10 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#new_without_default
+help: try adding this
+   |
+ 7 + impl Default for AuthGapRule {
+ 8 +     fn default() -> Self {
+ 9 +         Self::new()
+10 +     }
+11 + }
+   |
+
+error: you should consider adding a `Default` implementation for `LedgerSizeRule`
+  --> tooling/sanctifier-core/src/rules/ledger_size.rs:11:5
+   |
+11 | /     pub fn new() -> Self {
+12 | |         Self {
+13 | |             ledger_limit: 64000,
+14 | |             approaching_threshold: 0.8,
+...  |
+17 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#new_without_default
+help: try adding this
+   |
+10 + impl Default for LedgerSizeRule {
+11 +     fn default() -> Self {
+12 +         Self::new()
+13 +     }
+14 + }
+   |
+
+error: this `if` has identical blocks
+   --> tooling/sanctifier-core/src/rules/ledger_size.rs:115:38
+    |
+115 |   ...   if size >= self.ledger_limit {
+    |  ____________________________________^
+116 | | ...       Some(SizeWarningLevel::Exceed...
+117 | | ...   } else if self.strict_mode && siz...
+    | |_______^
+    |
+note: same as this
+   --> tooling/sanctifier-core/src/rules/ledger_size.rs:117:64
+    |
+117 |           } else if self.strict_mode && size >= strict_threshold {
+    |  ________________________________________________________________^
+118 | |             Some(SizeWarningLevel::ExceedsLimit)
+119 | |         } else if size as f64 >= self.ledger_limit as f64 * self.ap...
+    | |_________^
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#if_same_then_else
+    = note: `-D clippy::if-same-then-else` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::if_same_then_else)]`
+
+error: you should consider adding a `Default` implementation for `PanicDetectionRule`
+ --> tooling/sanctifier-core/src/rules/panic_detection.rs:7:5
+  |
+7 | /     pub fn new() -> Self {
+8 | |         Self
+9 | |     }
+  | |_____^
+  |
+  = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#new_without_default
+help: try adding this
+  |
+6 + impl Default for PanicDetectionRule {
+7 +     fn default() -> Self {
+8 +         Self::new()
+9 +     }
+10+ }
+  |
+
+error: you should consider adding a `Default` implementation for `UnhandledResultRule`
+  --> tooling/sanctifier-core/src/rules/unhandled_result.rs:9:5
+   |
+ 9 | /     pub fn new() -> Self {
+10 | |         Self
+11 | |     }
+   | |_____^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#new_without_default
+help: try adding this
+   |
+ 8 + impl Default for UnhandledResultRule {
+ 9 +     fn default() -> Self {
+10 +         Self::new()
+11 +     }
+12 + }
+   |
+
+error: this `impl` can be derived
+   --> tooling/sanctifier-core/src/lib.rs:196:1
+    |
+196 | / impl Default for RuleSeverity {
+197 | |     fn default() -> Self {
+198 | |         Self::Warning
+199 | |     }
+200 | | }
+    | |_^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.93.0/index.html#derivable_impls
+    = note: `-D clippy::derivable-impls` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::derivable_impls)]`
+help: replace the manual implementation with a derive attribute and mark the default variant
+    |
+190 + #[derive(Default)]
+191 | pub enum RuleSeverity {
+192 |     Info,
+193 ~     #[default]
+194 ~     Warning,
+    |
+
+error: could not compile `sanctifier-core` (lib) due to 7 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `sanctifier-core` (lib test) due to 7 previous errors

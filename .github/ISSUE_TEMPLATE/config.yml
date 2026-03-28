@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/Centurylong/sanctifier/security/advisories/new
+    about: Please report security vulnerabilities here.
+  - name: Documentation
+    url: https://github.com/Centurylong/sanctifier/wiki
+    about: Check the wiki for documentation.

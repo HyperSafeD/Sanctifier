@@ -69,6 +69,67 @@ pub fn burn_pure(balance: i128, amount: i128) -> Result<i128, &'static str> {
         .ok_or("Insufficient balance to burn")
 }
 
+// ── SEP-41-shaped pure operations (same arithmetic as the standard template) ───
+//
+// The SEP-41 interface uses `transfer`, `transfer_from`, `burn`, and `burn_from`.
+// Allowance / approve do not move tokens and do not change total supply.
+// Administrative mint is not part of the SEP-41 *interface* in many deployments but
+// appears in templates next to these entry points; we model it for supply proofs.
+
+/// `transfer_from` moves `amount` from `balance_from` to `balance_to` — identical
+/// accounting to [`transfer_pure`].
+#[inline]
+pub fn transfer_from_pure(
+    balance_from: i128,
+    balance_to: i128,
+    amount: i128,
+) -> Result<(i128, i128), &'static str> {
+    transfer_pure(balance_from, balance_to, amount)
+}
+
+/// `burn_from` debits `balance_from` like [`burn_pure`].
+#[inline]
+pub fn burn_from_pure(balance_from: i128, amount: i128) -> Result<i128, &'static str> {
+    burn_pure(balance_from, amount)
+}
+
+/// Approve only updates allowance metadata; balances and total supply are unchanged.
+#[inline]
+pub fn approve_pure_no_balance_change(
+    balance_from: i128,
+    balance_to: i128,
+    total_supply: i128,
+    _new_allowance: i128,
+) -> (i128, i128, i128) {
+    (balance_from, balance_to, total_supply)
+}
+
+/// Mint increases both a holder balance and aggregate total supply (template pattern).
+pub fn mint_pure_with_total_supply(
+    total_supply: i128,
+    balance: i128,
+    amount: i128,
+) -> Result<(i128, i128), &'static str> {
+    let new_balance = mint_pure(balance, amount)?;
+    let new_total = total_supply
+        .checked_add(amount)
+        .ok_or("Total supply overflow")?;
+    Ok((new_total, new_balance))
+}
+
+/// Burn decreases both a holder balance and aggregate total supply.
+pub fn burn_pure_with_total_supply(
+    total_supply: i128,
+    balance: i128,
+    amount: i128,
+) -> Result<(i128, i128), &'static str> {
+    let new_balance = burn_pure(balance, amount)?;
+    let new_total = total_supply
+        .checked_sub(amount)
+        .ok_or("Total supply underflow")?;
+    Ok((new_total, new_balance))
+}
+
 // ── Contract (not verified: uses Host types) ────────────────────────────────────
 
 #[contract]
@@ -271,6 +332,178 @@ mod verification {
                 result.is_ok(),
                 "initialize must succeed on a fresh contract"
             );
+        }
+    }
+
+    // ── SEP-41 total supply invariant (two-party model: balances a, b) ────────────
+    //
+    // Invariant: total_supply == a + b.  Proved for each operation class used by
+    // the SEP-41 template: transfer, transfer_from, burn, burn_from, approve,
+    // and optional mint (administrative).
+
+    #[kani::proof]
+    fn verify_transfer_from_equivalent_to_transfer() {
+        let a: i128 = kani::any();
+        let b: i128 = kani::any();
+        let amount: i128 = kani::any();
+        let r1 = transfer_pure(a, b, amount);
+        let r2 = transfer_from_pure(a, b, amount);
+        assert!(r1.is_ok() == r2.is_ok());
+        if let (Ok(x), Ok(y)) = (r1, r2) {
+            assert!(x.0 == y.0 && x.1 == y.1);
+        }
+    }
+
+    #[kani::proof]
+    fn verify_transfer_preserves_two_party_total_supply() {
+        let a: i128 = kani::any();
+        let b: i128 = kani::any();
+        let amount: i128 = kani::any();
+        kani::assume(amount > 0);
+        kani::assume(a >= amount);
+        kani::assume(a >= 0 && b >= 0);
+        kani::assume(b <= i128::MAX - amount);
+        kani::assume(a <= i128::MAX - b);
+
+        let total = a + b;
+        let Ok((na, nb)) = transfer_pure(a, b, amount) else {
+            panic!("unexpected");
+        };
+        assert!(
+            na + nb == total,
+            "transfer must preserve sum(a,b) == total_supply"
+        );
+    }
+
+    #[kani::proof]
+    fn verify_transfer_from_preserves_two_party_total_supply() {
+        let a: i128 = kani::any();
+        let b: i128 = kani::any();
+        let amount: i128 = kani::any();
+        kani::assume(amount > 0);
+        kani::assume(a >= amount);
+        kani::assume(a >= 0 && b >= 0);
+        kani::assume(b <= i128::MAX - amount);
+        kani::assume(a <= i128::MAX - b);
+
+        let total = a + b;
+        let Ok((na, nb)) = transfer_from_pure(a, b, amount) else {
+            panic!("unexpected");
+        };
+        assert!(na + nb == total);
+    }
+
+    #[kani::proof]
+    fn verify_burn_and_burn_from_preserve_invariant_vs_total_supply() {
+        let a: i128 = kani::any();
+        let b: i128 = kani::any();
+        let amount: i128 = kani::any();
+        kani::assume(amount > 0);
+        kani::assume(a >= amount);
+        kani::assume(a >= 0 && b >= 0);
+        kani::assume(a <= i128::MAX - b);
+
+        let total = a + b;
+        let Ok(new_a) = burn_from_pure(a, amount) else {
+            panic!("unexpected");
+        };
+        let Ok((new_total, new_a2)) = burn_pure_with_total_supply(total, a, amount) else {
+            panic!("unexpected");
+        };
+        assert!(new_a == new_a2);
+        assert!(
+            new_total == new_a + b,
+            "after burn, total_supply == sum of balances"
+        );
+    }
+
+    #[kani::proof]
+    fn verify_approve_preserves_total_supply() {
+        let a: i128 = kani::any();
+        let b: i128 = kani::any();
+        let ts: i128 = kani::any();
+        let new_allow: i128 = kani::any();
+        kani::assume(ts == a + b);
+
+        let (a2, b2, ts2) = approve_pure_no_balance_change(a, b, ts, new_allow);
+        assert!(a2 == a && b2 == b && ts2 == ts);
+        assert!(ts2 == a2 + b2);
+    }
+
+    #[kani::proof]
+    fn verify_mint_preserves_invariant_total_equals_sum() {
+        let a: i128 = kani::any();
+        let b: i128 = kani::any();
+        let amount: i128 = kani::any();
+        kani::assume(amount > 0);
+        kani::assume(a >= 0 && b >= 0);
+        kani::assume(a <= i128::MAX - amount);
+        kani::assume(a <= i128::MAX - b);
+
+        let total = a + b;
+        let Ok((new_total, new_a)) = mint_pure_with_total_supply(total, a, amount) else {
+            panic!("unexpected");
+        };
+        assert!(
+            new_total == new_a + b,
+            "mint must increase total_supply and balance coherently"
+        );
+    }
+
+    /// **Master property**: from any state with `total_supply == a + b`, one step of
+    /// each modeled SEP-41 / template operation preserves `total_supply == a + b`
+    /// (or updates both sides coherently for mint/burn).
+    #[kani::proof]
+    fn verify_sep41_total_supply_invariant_all_operations_step() {
+        let mut a: i128 = kani::any();
+        let mut b: i128 = kani::any();
+        kani::assume(a >= 0 && b >= 0);
+        kani::assume(a <= i128::MAX - b);
+
+        let mut total_supply = a + b;
+        let op: u8 = kani::any();
+        kani::assume(op < 5);
+
+        if op == 0 || op == 4 {
+            // 0 = transfer, 4 = transfer_from (same arithmetic)
+            let amount: i128 = kani::any();
+            kani::assume(amount > 0);
+            kani::assume(a >= amount);
+            kani::assume(b <= i128::MAX - amount);
+            let r = if op == 0 {
+                transfer_pure(a, b, amount)
+            } else {
+                transfer_from_pure(a, b, amount)
+            };
+            if let Ok((na, nb)) = r {
+                assert!(na + nb == total_supply);
+            }
+        } else if op == 1 {
+            // burn / burn_from from `a`
+            let amount: i128 = kani::any();
+            kani::assume(amount > 0);
+            kani::assume(a >= amount);
+            if let Ok((nt, na)) = burn_pure_with_total_supply(total_supply, a, amount) {
+                a = na;
+                total_supply = nt;
+                assert!(total_supply == a + b);
+            }
+        } else if op == 2 {
+            // mint to `a`
+            let amount: i128 = kani::any();
+            kani::assume(amount > 0);
+            kani::assume(a <= i128::MAX - amount);
+            kani::assume(total_supply <= i128::MAX - amount);
+            if let Ok((nt, na)) = mint_pure_with_total_supply(total_supply, a, amount) {
+                a = na;
+                total_supply = nt;
+                assert!(total_supply == a + b);
+            }
+        } else {
+            // approve: metadata only
+            let new_allow: i128 = kani::any();
+            let (a2, b2, ts2) = approve_pure_no_balance_change(a, b, total_supply, new_allow);
+            assert!(ts2 == a2 + b2);
         }
     }
 }

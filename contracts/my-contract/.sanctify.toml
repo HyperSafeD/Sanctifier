@@ -1,0 +1,6 @@
+[analysis]
+ledger_limit = 64000
+strict_mode = true
+
+[ignore]
+paths = ["tests/"]

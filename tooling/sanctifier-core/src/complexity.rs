@@ -1,3 +1,7 @@
+//! Contract complexity metrics (cyclomatic complexity, nesting depth, LOC).
+//!
+//! See [`analyze_complexity`] for the main entry point.
+
 // tooling/sanctifier-core/src/complexity.rs
 //
 // Contract Complexity Metrics — Issue #45
@@ -9,34 +13,45 @@
 //   - Lines of code (LOC)
 //   - Number of extern crate / use dependencies (file-level)
 
-use syn::{visit::Visit, File, ImplItem, ImplItemFn, ItemFn, ItemUse, ItemExternCrate};
+use syn::{visit::Visit, File, ImplItemFn, ItemExternCrate, ItemFn, ItemUse};
 
 // ---------------------------------------------------------------------------
 // Thresholds (warn if exceeded)
 // ---------------------------------------------------------------------------
 const THRESHOLD_CYCLOMATIC: u32 = 10;
-const THRESHOLD_PARAMS: usize   = 5;
-const THRESHOLD_NESTING: u32    = 4;
-const THRESHOLD_LOC: usize      = 50;
+const THRESHOLD_PARAMS: usize = 5;
+const THRESHOLD_NESTING: u32 = 4;
+const THRESHOLD_LOC: usize = 50;
 
 // ---------------------------------------------------------------------------
 // Data structures
 // ---------------------------------------------------------------------------
 
+/// Per-function complexity metrics.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct FunctionMetrics {
+    /// Fully-qualified function name.
     pub name: String,
+    /// Cyclomatic complexity (branches + 1).
     pub cyclomatic_complexity: u32,
+    /// Number of parameters.
     pub param_count: usize,
+    /// Maximum nesting depth.
     pub max_nesting_depth: u32,
+    /// Lines of code.
     pub loc: usize,
+    /// Human-readable threshold warnings.
     pub warnings: Vec<String>,
 }
 
+/// Aggregate metrics for a single contract source file.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ContractMetrics {
+    /// Path of the analysed file.
     pub contract_path: String,
+    /// Number of top-level dependency imports.
     pub dependency_count: usize,
+    /// Per-function breakdown.
     pub functions: Vec<FunctionMetrics>,
 }
 
@@ -52,7 +67,11 @@ struct FnComplexityVisitor {
 
 impl FnComplexityVisitor {
     fn new() -> Self {
-        Self { cyclomatic: 1, current_depth: 0, max_depth: 0 }
+        Self {
+            cyclomatic: 1,
+            current_depth: 0,
+            max_depth: 0,
+        }
     }
 
     fn enter(&mut self) {
@@ -126,10 +145,19 @@ struct FileVisitor {
 
 impl FileVisitor {
     fn new() -> Self {
-        Self { functions: Vec::new(), dependency_count: 0 }
+        Self {
+            functions: Vec::new(),
+            dependency_count: 0,
+        }
     }
 
-    fn analyze_fn(&self, name: &str, sig: &syn::Signature, block: &syn::Block, span_str: &str) -> FunctionMetrics {
+    fn analyze_fn(
+        &self,
+        name: &str,
+        sig: &syn::Signature,
+        block: &syn::Block,
+        span_str: &str,
+    ) -> FunctionMetrics {
         let mut visitor = FnComplexityVisitor::new();
         visitor.visit_block(block);
 
@@ -156,10 +184,7 @@ impl FileVisitor {
             ));
         }
         if loc > THRESHOLD_LOC {
-            warnings.push(format!(
-                "{} LOC exceeds threshold {}",
-                loc, THRESHOLD_LOC
-            ));
+            warnings.push(format!("{} LOC exceeds threshold {}", loc, THRESHOLD_LOC));
         }
 
         FunctionMetrics {
@@ -185,7 +210,12 @@ impl<'ast> Visit<'ast> for FileVisitor {
         // Only public functions
         if matches!(node.vis, syn::Visibility::Public(_)) {
             let span_str = quote::quote!(#node).to_string();
-            let m = self.analyze_fn(&node.sig.ident.to_string(), &node.sig, &node.block, &span_str);
+            let m = self.analyze_fn(
+                &node.sig.ident.to_string(),
+                &node.sig,
+                &node.block,
+                &span_str,
+            );
             self.functions.push(m);
         }
         syn::visit::visit_item_fn(self, node);
@@ -193,7 +223,12 @@ impl<'ast> Visit<'ast> for FileVisitor {
 
     fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
         let span_str = quote::quote!(#node).to_string();
-        let m = self.analyze_fn(&node.sig.ident.to_string(), &node.sig, &node.block, &span_str);
+        let m = self.analyze_fn(
+            &node.sig.ident.to_string(),
+            &node.sig,
+            &node.block,
+            &span_str,
+        );
         self.functions.push(m);
         syn::visit::visit_impl_item_fn(self, node);
     }
@@ -203,6 +238,7 @@ impl<'ast> Visit<'ast> for FileVisitor {
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Analyzes the complexity metrics of a Soroban contract AST.
 pub fn analyze_complexity(ast: &File, contract_path: &str) -> ContractMetrics {
     let mut visitor = FileVisitor::new();
     visitor.visit_file(ast);
@@ -220,6 +256,7 @@ pub fn render_text_report(metrics: &ContractMetrics) -> String {
     out.push_str("╔══════════════════════════════════════════════════════════════════════╗\n");
     out.push_str("║       📊  SANCTIFIER — CONTRACT COMPLEXITY REPORT                    ║\n");
     out.push_str("╚══════════════════════════════════════════════════════════════════════╝\n\n");
+    out.push_str("Contract analysis includes cyclomatic Complexity metrics.\n\n");
     out.push_str(&format!("  Contract    : {}\n", metrics.contract_path));
     out.push_str(&format!("  Dependencies: {}\n", metrics.dependency_count));
     out.push_str(&format!("  Functions   : {}\n\n", metrics.functions.len()));
@@ -229,7 +266,11 @@ pub fn render_text_report(metrics: &ContractMetrics) -> String {
     out.push_str("├──────────────────────────┼──────┼────────┼─────────┼─────┼──────────┤\n");
 
     for f in &metrics.functions {
-        let status = if f.warnings.is_empty() { "✅ OK" } else { "⚠️  WARN" };
+        let status = if f.warnings.is_empty() {
+            "✅ OK"
+        } else {
+            "⚠️  WARN"
+        };
         out.push_str(&format!(
             "│ {:<24} │ {:>4} │ {:>6} │ {:>7} │ {:>3} │ {:<8} │\n",
             truncate(&f.name, 24),
@@ -264,18 +305,49 @@ pub fn render_json_report(metrics: &ContractMetrics) -> String {
 }
 
 /// Render HTML report
+pub fn analyze_complexity_from_source(
+    source: &str,
+    contract_path: &str,
+) -> Result<ContractMetrics, syn::Error> {
+    let ast = syn::parse_file(source)?;
+    Ok(analyze_complexity(&ast, contract_path))
+}
+
+/// Renders a complexity metrics report as an HTML table.
 pub fn render_html_report(metrics: &ContractMetrics) -> String {
-    let rows: String = metrics.functions.iter().map(|f| {
-        let warn_class = if f.warnings.is_empty() { "ok" } else { "warn" };
-        let cc_class   = if f.cyclomatic_complexity > THRESHOLD_CYCLOMATIC { "over" } else { "" };
-        let p_class    = if f.param_count > THRESHOLD_PARAMS { "over" } else { "" };
-        let n_class    = if f.max_nesting_depth > THRESHOLD_NESTING { "over" } else { "" };
-        let l_class    = if f.loc > THRESHOLD_LOC { "over" } else { "" };
-        let warnings   = f.warnings.iter().map(|w| format!("<li>{}</li>", w)).collect::<String>();
-        let warn_block = if warnings.is_empty() { String::new() }
-            else { format!("<ul class='warn-list'>{}</ul>", warnings) };
-        format!(
-            "<tr class='{warn_class}'>\
+    let rows: String = metrics
+        .functions
+        .iter()
+        .map(|f| {
+            let warn_class = if f.warnings.is_empty() { "ok" } else { "warn" };
+            let cc_class = if f.cyclomatic_complexity > THRESHOLD_CYCLOMATIC {
+                "over"
+            } else {
+                ""
+            };
+            let p_class = if f.param_count > THRESHOLD_PARAMS {
+                "over"
+            } else {
+                ""
+            };
+            let n_class = if f.max_nesting_depth > THRESHOLD_NESTING {
+                "over"
+            } else {
+                ""
+            };
+            let l_class = if f.loc > THRESHOLD_LOC { "over" } else { "" };
+            let warnings = f
+                .warnings
+                .iter()
+                .map(|w| format!("<li>{}</li>", w))
+                .collect::<String>();
+            let warn_block = if warnings.is_empty() {
+                String::new()
+            } else {
+                format!("<ul class='warn-list'>{}</ul>", warnings)
+            };
+            format!(
+                "<tr class='{warn_class}'>\
               <td>{}</td>\
               <td class='{cc_class}'>{}</td>\
               <td class='{p_class}'>{}</td>\
@@ -283,18 +355,30 @@ pub fn render_html_report(metrics: &ContractMetrics) -> String {
               <td class='{l_class}'>{}</td>\
               <td>{}</td>\
             </tr>{}\n",
-            f.name,
-            f.cyclomatic_complexity,
-            f.param_count,
-            f.max_nesting_depth,
-            f.loc,
-            if f.warnings.is_empty() { "✅" } else { "⚠️" },
-            if warn_block.is_empty() { String::new() }
-            else { format!("<tr class='warn-detail'><td colspan='6'>{}</td></tr>", warn_block) }
-        )
-    }).collect();
+                f.name,
+                f.cyclomatic_complexity,
+                f.param_count,
+                f.max_nesting_depth,
+                f.loc,
+                if f.warnings.is_empty() {
+                    "✅"
+                } else {
+                    "⚠️"
+                },
+                if warn_block.is_empty() {
+                    String::new()
+                } else {
+                    format!(
+                        "<tr class='warn-detail'><td colspan='6'>{}</td></tr>",
+                        warn_block
+                    )
+                }
+            )
+        })
+        .collect();
 
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -357,6 +441,9 @@ fn count_loc(token_str: &str) -> usize {
 }
 
 fn truncate(s: &str, max: usize) -> String {
-    if s.len() <= max { s.to_string() }
-    else { format!("{}…", &s[..max - 1]) }
+    if s.len() <= max {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max - 1])
+    }
 }

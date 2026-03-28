@@ -1,0 +1,46 @@
+name: Soroban Examples Case Study
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  soroban-examples:
+    name: Analyze stellar/soroban-examples
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libz3-dev libdbus-1-dev
+
+      - name: Clone official Soroban examples
+        run: git clone https://github.com/stellar/soroban-examples.git
+
+      - name: Build sanctifier CLI
+        run: cargo build --manifest-path tooling/sanctifier-cli/Cargo.toml --release
+
+      - name: Analyze Soroban examples
+        run: |
+          python scripts/analyze-soroban-examples.py \
+            soroban-examples \
+            target/release/sanctifier \
+            soroban-examples-summary.json
+
+      - name: Upload summary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: soroban-examples-summary
+          path: soroban-examples-summary.json

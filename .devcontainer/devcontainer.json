@@ -1,0 +1,17 @@
+{
+  "name": "Sanctifier Dev",
+  "image": "mcr.microsoft.com/devcontainers/rust:1",
+  "features": {
+    "ghcr.io/devcontainers-contrib/features/wasm-pack:1": {},
+    "ghcr.io/devcontainers-contrib/features/soroban-cli:1": {}
+  },
+  "postCreateCommand": "cargo build --workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml"
+      ]
+    }
+  }
+}

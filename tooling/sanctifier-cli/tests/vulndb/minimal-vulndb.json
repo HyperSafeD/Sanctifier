@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-03-25",
+  "description": "Minimal vulnerability database with a single pattern for testing",
+  "vulnerabilities": [
+    {
+      "id": "TEST-001",
+      "name": "Test Pattern: TODO Comment",
+      "description": "This is a test vulnerability that detects TODO comments in code",
+      "severity": "info",
+      "category": "test",
+      "pattern": "//\\s*TODO",
+      "recommendation": "Resolve or document TODO items before production deployment"
+    }
+  ]
+}

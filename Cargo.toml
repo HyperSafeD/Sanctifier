@@ -1,10 +1,15 @@
 [workspace]
 members = [
-    "tooling/sanctifier-cli",
     "tooling/sanctifier-core",
+    "tooling/sanctifier-cli",
+    "tooling/sanctifier-wasm",
     "contracts/vulnerable-contract",
     "contracts/token-with-bugs",
+    "contracts/amm-pool",
+    "contracts/reentrancy-guard",
+    "contracts/runtime-guard-wrapper",
     "contracts/kani-poc",
+    "contracts/my-contract",
 ]
 resolver = "2"
 

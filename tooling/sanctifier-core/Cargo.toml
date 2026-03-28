@@ -3,7 +3,17 @@ name = "sanctifier-core"
 version = "0.1.0"
 edition = "2021"
 description = "Core analysis logic for Sanctifier"
+homepage = "https://github.com/HyperSafeD/Sanctifier"
+repository = "https://github.com/HyperSafeD/Sanctifier"
 license = "MIT"
+keywords = ["stellar", "soroban", "security", "analysis"]
+categories = ["development-tools", "command-line-utilities"]
+
+[features]
+default = ["smt"]
+## Enables the Z3-backed formal-verification pass. Requires libz3 at compile
+## time. Disable with default-features = false when targeting wasm32.
+smt = ["dep:z3"]
 
 [dependencies]
 soroban-sdk = "20.5.0" # Target latest Soroban SDK
@@ -14,3 +24,11 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "1.0"
 regex = "1.10.3"
+z3 = { version = "0.12.1", optional = true }
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "benchmark"
+harness = false

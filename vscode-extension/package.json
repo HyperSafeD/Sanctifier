@@ -1,0 +1,71 @@
+{
+  "name": "sanctifier-soroban",
+  "displayName": "Sanctifier — Soroban security hints",
+  "description": "Highlights common Soroban smart contract security issues while you edit Rust (panic/unwrap, auth gaps, risky arithmetic).",
+  "version": "0.1.0",
+  "publisher": "sanctifier",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Linters",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "soroban",
+    "stellar",
+    "security",
+    "rust",
+    "smart contracts"
+  ],
+  "activationEvents": [
+    "onLanguage:rust"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "Sanctifier",
+      "properties": {
+        "sanctifier.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run Soroban security analysis in the editor."
+        },
+        "sanctifier.debounceMs": {
+          "type": "number",
+          "default": 400,
+          "minimum": 100,
+          "maximum": 5000,
+          "description": "Delay after typing before re-running analysis."
+        },
+        "sanctifier.sanctifierPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to the `sanctifier` CLI executable. When set, the extension can run a full project scan (see command palette)."
+        },
+        "sanctifier.onlyInSorobanWorkspace": {
+          "type": "boolean",
+          "default": true,
+          "description": "If true, only activate in workspaces whose Cargo.toml references soroban-sdk."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "sanctifier.analyzeWorkspace",
+        "title": "Sanctifier: Analyze workspace with CLI (JSON)"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}

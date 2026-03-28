@@ -1,0 +1,42 @@
+{
+  "version": "1.0.0",
+  "last_updated": "2026-03-25",
+  "description": "Example vulnerability database demonstrating custom patterns for Soroban contracts",
+  "vulnerabilities": [
+    {
+      "id": "CUSTOM-AUTH-001",
+      "name": "Missing Authentication for Admin Functions",
+      "description": "Administrative functions that modify contract state without authentication checks can be exploited by attackers to gain unauthorized control",
+      "severity": "critical",
+      "category": "auth",
+      "pattern": "#\\[pub\\]\\s*fn\\s+admin_\\w+\\s*\\([^)]*\\)\\s*(->\\s*[^{]+)?\\{[^}]*storage\\.",
+      "recommendation": "Always verify caller authentication in admin functions using require_auth() or require_auth_for_args() before modifying storage",
+      "references": [
+        "https://developers.stellar.org/docs/soroban/security/best-practices#authentication",
+        "https://docs.soroban.stellar.org/docs/reference/interfaces/auth"
+      ]
+    },
+    {
+      "id": "CUSTOM-REENTRANCY-001",
+      "name": "Potential Reentrancy in External Call",
+      "description": "External contract calls before state updates can lead to reentrancy attacks where the called contract calls back into the original contract",
+      "severity": "high",
+      "category": "reentrancy",
+      "pattern": "env\\.invoke_contract\\s*\\([^;]+;[^}]*storage\\.",
+      "recommendation": "Update storage state before making external contract calls. Follow the Checks-Effects-Interactions pattern",
+      "references": [
+        "https://docs.soliditylang.org/en/develop/security-considerations.html#re-entrancy"
+      ]
+    },
+    {
+      "id": "CUSTOM-OVERFLOW-001",
+      "name": "Potential Integer Overflow in Balance Update",
+      "description": "Arithmetic operations on token balances without overflow checking can lead to wrapping behavior and unexpected results",
+      "severity": "high",
+      "category": "arithmetic",
+      "pattern": "balance\\.saturating_(add|sub)\\s*\\(",
+      "recommendation": "Use checked arithmetic (checked_add, checked_sub) and handle None cases explicitly. Consider whether saturating arithmetic is appropriate for your use case",
+      "references": []
+    }
+  ]
+}

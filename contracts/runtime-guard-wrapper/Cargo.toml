@@ -1,0 +1,16 @@
+[package]
+name = "runtime-guard-wrapper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1

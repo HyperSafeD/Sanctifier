@@ -1,0 +1,71 @@
+name: Sanctifier Security Analysis
+description: Scan Soroban contracts for vulnerabilities
+author: HyperSafeD
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Contract path to analyze
+    required: false
+    default: "."
+  min-severity:
+    description: Minimum severity to report (critical|high|medium|low)
+    required: false
+    default: high
+  format:
+    description: Output format (text|json|sarif)
+    required: false
+    default: sarif
+  upload-sarif:
+    description: Upload SARIF to GitHub code scanning when format is sarif
+    required: false
+    default: "true"
+  sarif-output:
+    description: Path for generated SARIF report
+    required: false
+    default: sanctifier-results.sarif
+
+outputs:
+  findings-count:
+    description: Total number of findings
+    value: ${{ steps.summarize.outputs.findings-count }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install Sanctifier CLI
+      shell: bash
+      run: cargo install sanctifier-cli --locked
+
+    - name: Analyze project
+      shell: bash
+      run: |
+        if [ "${{ inputs.format }}" = "sarif" ]; then
+          sanctifier analyze "${{ inputs.path }}" \
+            --format sarif \
+            --min-severity "${{ inputs.min-severity }}" \
+            --exit-code > "${{ inputs.sarif-output }}"
+        else
+          sanctifier analyze "${{ inputs.path }}" \
+            --format "${{ inputs.format }}" \
+            --min-severity "${{ inputs.min-severity }}" \
+            --exit-code
+        fi
+
+    - name: Summarize findings
+      id: summarize
+      shell: bash
+      run: |
+        findings_count=0
+        if [ "${{ inputs.format }}" = "json" ]; then
+          findings_count=$(sanctifier analyze "${{ inputs.path }}" --format json | jq -r '.summary.total_findings // 0')
+        fi
+        echo "findings-count=${findings_count}" >> "$GITHUB_OUTPUT"
+
+    - name: Upload SARIF
+      if: ${{ inputs.format == 'sarif' && inputs.upload-sarif == 'true' }}
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ inputs.sarif-output }}

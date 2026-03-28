@@ -1,6 +1,8 @@
+/*
 use sanctifier_core::{Analyzer, PatternType, SanctifyConfig};
 use std::fs;
 use std::path::PathBuf;
+*/
 
 /*
 #[test]

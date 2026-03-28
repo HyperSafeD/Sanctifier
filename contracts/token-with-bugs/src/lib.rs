@@ -15,9 +15,7 @@ impl TokenWithBugs {
     /// `symbol` so that Sanctifier can flag the missing initialisation guard.
     pub fn initialize(e: Env, _admin: Address, _name: String, _symbol: String) {
         // Mark as initialised so re-entrancy can be detected.
-        e.storage()
-            .instance()
-            .set(&symbol_short!("init"), &true);
+        e.storage().instance().set(&symbol_short!("init"), &true);
     }
 
     pub fn balance(e: Env, id: Address) -> i128 {

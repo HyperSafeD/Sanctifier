@@ -1,0 +1,69 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/HyperSafeD/Sanctifier/main/schemas/sanctifier.json",
+  "title": "Sanctifier Configuration",
+  "description": "Configuration schema for Sanctifier security analysis tool",
+  "type": "object",
+  "properties": {
+    "ignore_paths": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of directory or file paths to ignore during scanning (e.g., ['target', '.git'])",
+      "default": ["target", ".git"]
+    },
+    "enabled_rules": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "auth_gaps",
+          "panics",
+          "arithmetic",
+          "ledger_size",
+          "unsafe_patterns",
+          "reentrancy",
+          "integer_overflow"
+        ]
+      },
+      "description": "List of built-in security analysis rules to enable",
+      "default": ["auth_gaps", "panics", "arithmetic", "ledger_size"]
+    },
+    "ledger_limit": {
+      "type": "integer",
+      "description": "Maximum ledger size limit in bytes for the analysis engine",
+      "default": 64000
+    },
+    "strict_mode": {
+      "type": "boolean",
+      "description": "If true, the tool will exit with a non-zero code if any warnings are found",
+      "default": false
+    },
+    "custom_rules": {
+      "type": "array",
+      "description": "Definition of regex-based custom patterns to search for in contract source code",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "A unique, descriptive name for the custom rule"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "A regular expression pattern to match (e.g., 'unsafe\\\\s*\\\\{')"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["info", "warning", "error"],
+            "description": "The severity level reported when a match is found",
+            "default": "warning"
+          }
+        },
+        "required": ["name", "pattern", "severity"]
+      }
+    }
+  },
+  "additionalProperties": false
+}

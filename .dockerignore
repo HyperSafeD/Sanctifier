@@ -1,0 +1,12 @@
+target/
+node_modules/
+frontend/.next/
+.git/
+*.log
+branding/
+docs/
+README.md
+SECURITY.md
+build_errors*.log
+build_all_errors.log
+final_message.md

@@ -1,0 +1,12 @@
+[analysis]
+ledger_limit = 64000
+strict_mode = true
+
+[ignore]
+paths = ["tests/"]
+
+# Expected findings (intentional in this contract for demonstration)
+[[expected_findings]]
+code = "S002"
+function = "token_transfer"
+reason = "Intentional demonstration of panic! usage"
