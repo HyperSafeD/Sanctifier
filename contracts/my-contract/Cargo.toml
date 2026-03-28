@@ -7,9 +7,13 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = { workspace = true, features = ["testutils"] }
+soroban-sdk = { workspace = true }
+
+[features]
+testutils = ["soroban-sdk/testutils"]
 
 [dev-dependencies]
+
 bolero = "0.10"
 bolero-generator = "0.10"
 

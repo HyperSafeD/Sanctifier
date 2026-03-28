@@ -11,7 +11,8 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String};
 
 use my_contract::{Token, TokenClient};
 
-fn fresh_client(env: &Env) -> (TokenClient, Address) {
+fn fresh_client(env: &Env) -> (TokenClient<'_>, Address) {
+
     let admin = Address::generate(env);
     let id = env.register_contract(None, Token);
     let client = TokenClient::new(env, &id);
@@ -33,9 +34,11 @@ fn fuzz_mint_no_panic() {
         .with_generator(gen::<i128>().with().bounds(0i128..=i128::MAX))
         .for_each(|amount| {
             let env = Env::default();
-            let (client, admin) = fresh_client(&env);
+            let (client, _admin) = fresh_client(&env);
+
             let to = Address::generate(&env);
-            let _ = client.try_mint(&admin, &to, amount);
+            let _ = client.try_mint(&to, amount);
+
         });
 }
 
@@ -48,14 +51,16 @@ fn fuzz_transfer_balance_conservation() {
         .with_generator(gen::<(u32, u32)>())
         .for_each(|(mint_amount, transfer_amount)| {
             let env = Env::default();
-            let (client, admin) = fresh_client(&env);
+            let (client, _admin) = fresh_client(&env);
+
             let alice = Address::generate(&env);
             let bob = Address::generate(&env);
 
             let mint_amt = *mint_amount as i128;
             let transfer_amt = *transfer_amount as i128;
 
-            let _ = client.try_mint(&admin, &alice, &mint_amt);
+            let _ = client.try_mint(&alice, &mint_amt);
+
             let balance_before = client.balance(&alice);
 
             if let Ok(Ok(())) = client.try_transfer(&alice, &bob, &transfer_amt) {
@@ -76,7 +81,8 @@ fn fuzz_allowance_monotone_decrease() {
         .with_generator(gen::<(u32, u32)>())
         .for_each(|(approve_amt, draw_amt)| {
             let env = Env::default();
-            let (client, admin) = fresh_client(&env);
+            let (client, _admin) = fresh_client(&env);
+
             let alice = Address::generate(&env);
             let bob = Address::generate(&env);
             let carol = Address::generate(&env);
@@ -84,7 +90,8 @@ fn fuzz_allowance_monotone_decrease() {
             let approve = *approve_amt as i128;
             let draw = *draw_amt as i128;
 
-            let _ = client.try_mint(&admin, &alice, &approve);
+            let _ = client.try_mint(&alice, &approve);
+
             let _ = client.try_approve(&alice, &bob, &approve, &1_000u32);
 
             let allowance_before = client.allowance(&alice, &bob);
@@ -103,10 +110,12 @@ fn fuzz_burn_balance_never_negative() {
         .with_generator(gen::<(u32, u32)>())
         .for_each(|(mint_amt, burn_amt)| {
             let env = Env::default();
-            let (client, admin) = fresh_client(&env);
+            let (client, _admin) = fresh_client(&env);
+
             let alice = Address::generate(&env);
 
-            let _ = client.try_mint(&admin, &alice, &(*mint_amt as i128));
+            let _ = client.try_mint(&alice, &(*mint_amt as i128));
+
 
             if let Ok(Ok(())) = client.try_burn(&alice, &(*burn_amt as i128)) {
                 assert!(
