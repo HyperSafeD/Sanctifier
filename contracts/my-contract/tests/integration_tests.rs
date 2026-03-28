@@ -13,7 +13,6 @@ use my_contract::{Token, TokenClient, TokenError};
 // ---------------------------------------------------------------------------
 
 fn setup(env: &Env) -> (TokenClient<'_>, Address) {
-
     let admin = Address::generate(env);
     let id = env.register_contract(None, Token);
     let client = TokenClient::new(env, &id);
@@ -33,7 +32,6 @@ fn setup_with_balance<'a>(env: &'a Env, holder: &Address, amount: i128) -> Token
     client.mint(holder, &amount);
     client
 }
-
 
 // ---------------------------------------------------------------------------
 // Happy path
@@ -202,7 +200,6 @@ fn double_initialize_fails() {
     );
     let err = result.err().unwrap().expect("Ok error");
     assert!(err == TokenError::AlreadyInitialized.into());
-
 }
 
 #[test]
@@ -332,7 +329,6 @@ fn mint_fails_when_not_initialized() {
     let result = client.try_mint(&to, &100i128);
     let err = result.err().unwrap().expect("Ok error");
     assert!(err == TokenError::NotInitialized.into());
-
 }
 
 #[test]
@@ -345,7 +341,6 @@ fn transfer_fails_with_insufficient_balance() {
     let result = client.try_transfer(&alice, &bob, &100i128);
     let err = result.err().unwrap().expect("Ok error");
     assert!(err == TokenError::InsufficientBalance.into());
-
 }
 
 #[test]
@@ -357,7 +352,6 @@ fn burn_fails_with_insufficient_balance() {
     let result = client.try_burn(&alice, &100i128);
     let err = result.err().unwrap().expect("Ok error");
     assert!(err == TokenError::InsufficientBalance.into());
-
 }
 
 #[test]
@@ -373,5 +367,4 @@ fn transfer_from_fails_with_insufficient_allowance() {
     let result = client.try_transfer_from(&bob, &alice, &carol, &100i128);
     let err = result.err().unwrap().expect("Ok error");
     assert!(err == TokenError::InsufficientAllowance.into());
-
 }

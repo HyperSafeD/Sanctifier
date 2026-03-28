@@ -12,7 +12,6 @@ use soroban_sdk::{testutils::Address as _, Address, Env, String};
 use my_contract::{Token, TokenClient};
 
 fn fresh_client(env: &Env) -> (TokenClient<'_>, Address) {
-
     let admin = Address::generate(env);
     let id = env.register_contract(None, Token);
     let client = TokenClient::new(env, &id);
@@ -38,7 +37,6 @@ fn fuzz_mint_no_panic() {
 
             let to = Address::generate(&env);
             let _ = client.try_mint(&to, amount);
-
         });
 }
 
@@ -115,7 +113,6 @@ fn fuzz_burn_balance_never_negative() {
             let alice = Address::generate(&env);
 
             let _ = client.try_mint(&alice, &(*mint_amt as i128));
-
 
             if let Ok(Ok(())) = client.try_burn(&alice, &(*burn_amt as i128)) {
                 assert!(
