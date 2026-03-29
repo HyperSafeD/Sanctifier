@@ -49,7 +49,7 @@ impl std::str::FromStr for SeverityLevel {
     }
 }
 
-#[derive(Args, Debug)]
+#[derive(Args, Debug, Clone)]
 pub struct AnalyzeArgs {
     /// Path to the contract directory or Cargo.toml
     #[arg(default_value = ".")]

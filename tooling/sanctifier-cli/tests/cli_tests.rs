@@ -297,6 +297,36 @@ fn test_update_help() {
 }
 
 #[test]
+fn test_watch_help() {
+    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
+    cmd.arg("watch")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Re-run analysis automatically"))
+        .stdout(predicates::str::contains("--debounce-ms"));
+}
+
+#[test]
+fn test_watch_runs_initial_analysis_with_max_runs() {
+    let fixture_path = env::current_dir()
+        .unwrap()
+        .join("tests/fixtures/valid_contract.rs");
+
+    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
+    cmd.arg("watch")
+        .arg(&fixture_path)
+        .arg("--max-runs")
+        .arg("1")
+        .env_remove("RUST_LOG")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Watching"))
+        .stdout(predicates::str::contains("Static analysis complete."))
+        .stderr(predicates::str::contains("Analyzing"));
+}
+
+#[test]
 fn test_init_creates_sanctify_toml_in_current_directory() {
     let temp_dir = tempdir().unwrap();
     let mut cmd = Command::cargo_bin("sanctifier").unwrap();

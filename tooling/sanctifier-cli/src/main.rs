@@ -31,6 +31,8 @@ pub enum Commands {
     Report(commands::report::ReportArgs),
     /// Detect potential storage key collisions in Soroban contracts
     Storage(commands::storage::StorageArgs),
+    /// Re-run analysis automatically when source files change
+    Watch(commands::watch::WatchArgs),
     /// Initialize Sanctifier in a new project
     Init(commands::init::InitArgs),
     /// Show per-contract complexity metrics (cyclomatic complexity, nesting, LOC)
@@ -85,6 +87,9 @@ fn run() -> anyhow::Result<()> {
         }
         Commands::Storage(args) => {
             commands::storage::exec(args)?;
+        }
+        Commands::Watch(args) => {
+            commands::watch::exec(args)?;
         }
         Commands::Init(args) => {
             let path = Some(args.path.clone());
