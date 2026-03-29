@@ -17,7 +17,6 @@ fn setup(env: &Env) -> (TokenClient<'_>, Address) {
 
     let id = env.register_contract(None, Token);
 
-
     let client = TokenClient::new(env, &id);
     env.mock_all_auths();
 
@@ -166,7 +165,6 @@ fn allowance_returns_zero_after_expiry() {
     // Correct way to advance ledger in recent SDK
     env.ledger().with_mut(|l| l.sequence_number = 6);
 
-
     assert_eq!(client.allowance(&alice, &bob), 0);
 }
 
@@ -181,11 +179,9 @@ fn transfer_from_fails_on_expired_allowance() {
     client.approve(&alice, &bob, &500i128, &5u32);
     env.ledger().with_mut(|l| l.sequence_number = 6);
 
-
     let result = client.try_transfer_from(&bob, &alice, &carol, &100i128);
     let err = result.unwrap_err().unwrap();
     assert_eq!(err, TokenError::AllowanceExpired);
-
 }
 
 #[test]
@@ -200,8 +196,6 @@ fn double_initialize_fails() {
         &String::from_str(&env, "TEST"),
     );
     assert_eq!(result.unwrap_err().unwrap(), TokenError::AlreadyInitialized);
-
-
 }
 
 #[test]
@@ -216,9 +210,10 @@ fn transfer_from_consumes_exact_allowance() {
     client.transfer_from(&bob, &alice, &carol, &100i128);
 
     let result = client.try_transfer_from(&bob, &alice, &carol, &1i128);
-    assert_eq!(result.unwrap_err().unwrap(), TokenError::InsufficientAllowance);
-
-
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TokenError::InsufficientAllowance
+    );
 }
 
 #[test]
@@ -275,8 +270,6 @@ fn mint_fails_when_not_initialized() {
 
     let result = client.try_mint(&to, &100i128);
     assert_eq!(result.unwrap_err().unwrap(), TokenError::NotInitialized);
-
-
 }
 
 #[test]
@@ -287,9 +280,10 @@ fn transfer_fails_with_insufficient_balance() {
     let client = setup_with_balance(&env, &alice, 50);
 
     let result = client.try_transfer(&alice, &bob, &100i128);
-    assert_eq!(result.unwrap_err().unwrap(), TokenError::InsufficientBalance);
-
-
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TokenError::InsufficientBalance
+    );
 }
 
 #[test]
@@ -299,9 +293,10 @@ fn burn_fails_with_insufficient_balance() {
     let client = setup_with_balance(&env, &alice, 50);
 
     let result = client.try_burn(&alice, &100i128);
-    assert_eq!(result.unwrap_err().unwrap(), TokenError::InsufficientBalance);
-
-
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TokenError::InsufficientBalance
+    );
 }
 
 #[test]
@@ -315,7 +310,8 @@ fn transfer_from_fails_with_insufficient_allowance() {
     client.approve(&alice, &bob, &50i128, &1_000u32);
 
     let result = client.try_transfer_from(&bob, &alice, &carol, &100i128);
-    assert_eq!(result.unwrap_err().unwrap(), TokenError::InsufficientAllowance);
-
-
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TokenError::InsufficientAllowance
+    );
 }

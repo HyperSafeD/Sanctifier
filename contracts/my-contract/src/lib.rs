@@ -7,7 +7,6 @@ use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, 
 // SEP-41 type compatibility
 // ---------------------------------------------------------------------------
 
-
 // ---------------------------------------------------------------------------
 // Storage types
 // ---------------------------------------------------------------------------
@@ -83,18 +82,14 @@ impl Token {
         Ok(())
     }
 
-
     /// Mint `amount` tokens to `to`.  Only the admin may call this.
     pub fn mint(env: Env, to: Address, amount: i128) -> Result<(), TokenError> {
-
         if amount < 0 {
             return Err(TokenError::NegativeAmount);
-
         }
         let admin: Address = match env.storage().instance().get(&DataKey::Admin) {
             Some(a) => a,
             None => return Err(TokenError::NotInitialized),
-
         };
         admin.require_auth();
         let balance: i128 = env
@@ -111,7 +106,6 @@ impl Token {
             .set(&DataKey::Balance(to), &new_balance);
         Ok(())
     }
-
 
     // -----------------------------------------------------------------------
     // SEP-41 required interface
@@ -166,12 +160,7 @@ impl Token {
     }
 
     /// Transfer `amount` tokens from `from` to `to`.
-    pub fn transfer(
-        env: Env,
-        from: Address,
-        to: Address,
-        amount: i128,
-    ) -> Result<(), TokenError> {
+    pub fn transfer(env: Env, from: Address, to: Address, amount: i128) -> Result<(), TokenError> {
         from.require_auth();
         if amount < 0 {
             return Err(TokenError::NegativeAmount);
@@ -203,7 +192,6 @@ impl Token {
             .set(&DataKey::Balance(to), &new_to);
         Ok(())
     }
-
 
     /// Transfer `amount` tokens from `from` to `to` on behalf of `spender`.
     pub fn transfer_from(
@@ -274,7 +262,6 @@ impl Token {
         Ok(())
     }
 
-
     /// Burn `amount` tokens from `from`.
     pub fn burn(env: Env, from: Address, amount: i128) -> Result<(), TokenError> {
         from.require_auth();
@@ -296,7 +283,6 @@ impl Token {
             .set(&DataKey::Balance(from), &new_balance);
         Ok(())
     }
-
 
     /// Burn `amount` tokens from `from` using `spender`'s allowance.
     pub fn burn_from(
@@ -352,7 +338,6 @@ impl Token {
             .set(&DataKey::Balance(from), &new_balance);
         Ok(())
     }
-
 
     /// Returns the number of decimal places.
     pub fn decimals(env: Env) -> u32 {
