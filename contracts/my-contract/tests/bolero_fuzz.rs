@@ -13,7 +13,8 @@ use my_contract::{Token, TokenClient};
 
 fn fresh_client(env: &Env) -> (TokenClient<'_>, Address) {
     let admin = Address::generate(env);
-    let id = env.register_contract(None, Token);
+    // let id = env.register_contract(None, Token);
+    let id = env.register(Token, ());
     let client = TokenClient::new(env, &id);
     env.mock_all_auths();
     client.initialize(

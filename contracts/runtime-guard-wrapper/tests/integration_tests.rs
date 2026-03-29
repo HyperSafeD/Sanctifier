@@ -37,8 +37,8 @@ impl RuntimeGuardWrapperHarness {
 }
 
 fn setup(env: &Env) -> (RuntimeGuardWrapperHarnessClient<'_>, Address) {
-    let contract_id = env.register_contract(None, RuntimeGuardWrapperHarness);
-    let wrapped = Address::generate(env);
+    let contract_id = env.register(RuntimeGuardWrapperHarness, ()); // Fixed: new register API
+    let wrapped = Address::generate(env); // Fixed: works with testutils
 
     let client = RuntimeGuardWrapperHarnessClient::new(env, &contract_id);
 

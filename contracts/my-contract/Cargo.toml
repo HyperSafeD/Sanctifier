@@ -13,6 +13,7 @@ soroban-sdk = { workspace = true }
 testutils = ["soroban-sdk/testutils"]
 
 [dev-dependencies]
+soroban-sdk = { version = "20.5", features = ["testutils"] }
 
 bolero = "0.10"
 bolero-generator = "0.10"
