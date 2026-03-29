@@ -9,6 +9,7 @@ pub struct GasEstimationReport {
     pub estimated_memory_bytes: usize,
 }
 
+#[derive(Default)]
 pub struct GasEstimator {}
 
 impl GasEstimator {

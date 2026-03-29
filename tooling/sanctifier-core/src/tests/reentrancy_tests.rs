@@ -37,7 +37,10 @@ mod tests {
             }
         "#;
         let issues = scan_reentrancy(src);
-        assert!(issues.is_empty(), "Read then cross-call should not be flagged");
+        assert!(
+            issues.is_empty(),
+            "Read then cross-call should not be flagged"
+        );
     }
 
     #[test]
@@ -58,7 +61,10 @@ mod tests {
             }
         "#;
         let issues = scan_reentrancy(src);
-        assert!(issues.is_empty(), "Correct CEI pattern should not be flagged");
+        assert!(
+            issues.is_empty(),
+            "Correct CEI pattern should not be flagged"
+        );
     }
 
     #[test]

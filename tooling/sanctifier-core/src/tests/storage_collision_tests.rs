@@ -15,7 +15,10 @@ mod tests {
             const KEY_B: &str = "collision";
         "#;
         let issues = analyzer().scan_storage_collisions(src);
-        assert!(!issues.is_empty(), "Duplicate const string keys should be flagged");
+        assert!(
+            !issues.is_empty(),
+            "Duplicate const string keys should be flagged"
+        );
         assert!(issues.iter().any(|i| i.key_value == "collision"));
     }
 
@@ -33,8 +36,13 @@ mod tests {
             }
         "#;
         let issues = analyzer().scan_storage_collisions(src);
-        assert!(!issues.is_empty(), "Duplicate symbol_short! should be flagged");
-        assert!(issues.iter().any(|i| i.key_value == "\"tok\"" || i.key_value == "tok"));
+        assert!(
+            !issues.is_empty(),
+            "Duplicate symbol_short! should be flagged"
+        );
+        assert!(issues
+            .iter()
+            .any(|i| i.key_value == "\"tok\"" || i.key_value == "tok"));
     }
 
     #[test]
@@ -51,7 +59,10 @@ mod tests {
             }
         "#;
         let issues = analyzer().scan_storage_collisions(src);
-        assert!(issues.is_empty(), "All unique keys — no collisions expected");
+        assert!(
+            issues.is_empty(),
+            "All unique keys — no collisions expected"
+        );
     }
 
     #[test]
@@ -68,7 +79,10 @@ mod tests {
             }
         "#;
         let issues = analyzer().scan_storage_collisions(src);
-        assert!(!issues.is_empty(), "Duplicate Symbol::new keys should be flagged");
+        assert!(
+            !issues.is_empty(),
+            "Duplicate Symbol::new keys should be flagged"
+        );
         assert!(issues.iter().any(|i| i.key_value == "shared_key"));
     }
 

@@ -6,7 +6,7 @@
 //! logic into functions that can be verified with Kani, while the contract layer that uses
 //! `Env`, `Address`, `Symbol`, etc. remains unverified due to Host type limitations.
 
-use soroban_sdk::{contract, contractimpl, Env, Symbol, symbol_short};
+use soroban_sdk::{contract, contractimpl, symbol_short, Env, Symbol};
 
 // ── Pure logic (verified with Kani) ─────────────────────────────────────────────
 //
@@ -44,7 +44,9 @@ pub fn burn_pure(balance: i128, amount: i128) -> Result<i128, &'static str> {
     if amount <= 0 {
         return Err("Burn amount must be positive");
     }
-    balance.checked_sub(amount).ok_or("Insufficient balance to burn")
+    balance
+        .checked_sub(amount)
+        .ok_or("Insufficient balance to burn")
 }
 
 // ── Contract (not verified: uses Host types) ────────────────────────────────────
@@ -57,14 +59,15 @@ impl TokenContract {
     /// Wrapper exposing transfer_pure for contract use.
     /// A full implementation would read/write balances via env.storage().
     pub fn transfer(balance_from: i128, balance_to: i128, amount: i128) -> (i128, i128) {
-        transfer_pure(balance_from, balance_to, amount)
-            .expect("transfer failed")
+        transfer_pure(balance_from, balance_to, amount).expect("transfer failed")
     }
 
     /// A function that interacts with Env (Host types).
     /// Kani cannot verify this: Env, Symbol, and storage operations require host FFI.
     pub fn set_admin(env: Env, new_admin: Symbol) {
-        env.storage().instance().set(&symbol_short!("admin"), &new_admin);
+        env.storage()
+            .instance()
+            .set(&symbol_short!("admin"), &new_admin);
     }
 }
 
@@ -92,7 +95,10 @@ mod verification {
 
         assert!(new_from == balance_from - amount);
         assert!(new_to == balance_to + amount);
-        assert!(new_from + new_to == balance_from + balance_to, "Conservation of supply");
+        assert!(
+            new_from + new_to == balance_from + balance_to,
+            "Conservation of supply"
+        );
     }
 
     #[kani::proof]

@@ -11,7 +11,7 @@
 // storage write (`.set(`, `.update(`, `.remove(`).
 
 use serde::Serialize;
-use syn::{visit::Visit, parse_str, File, Item};
+use syn::{parse_str, visit::Visit, File, Item};
 
 /// A potential reentrancy / CEI violation found in a contract function.
 #[derive(Debug, Serialize, Clone)]
@@ -63,7 +63,8 @@ impl ReentrancyVisitor {
                 if !self.issues.iter().any(|i| i.function_name == *fn_name) {
                     self.issues.push(ReentrancyIssue {
                         function_name: fn_name.clone(),
-                        issue_type: "CEI violation: storage mutation after cross-contract call".to_string(),
+                        issue_type: "CEI violation: storage mutation after cross-contract call"
+                            .to_string(),
                         location: format!("fn {}", fn_name),
                     });
                 }

@@ -3,11 +3,11 @@ use quote::quote;
 use std::collections::HashMap;
 use syn::spanned::Spanned;
 use syn::{
-    parse_str,
     visit::{self, Visit},
-    Expr, ExprCall, ExprMacro, File, ItemConst, Lit, Meta,
+    Expr, ExprCall, ExprMacro, ItemConst, Lit,
 };
 
+#[derive(Default)]
 pub struct StorageVisitor {
     pub collisions: Vec<StorageCollisionIssue>,
     pub keys: HashMap<String, Vec<KeyInfo>>,
@@ -23,10 +23,7 @@ pub struct KeyInfo {
 
 impl StorageVisitor {
     pub fn new() -> Self {
-        Self {
-            collisions: Vec::new(),
-            keys: HashMap::new(),
-        }
+        Self::default()
     }
 
     fn add_key(&mut self, value: String, key_type: String, location: String, line: usize) {
@@ -36,7 +33,7 @@ impl StorageVisitor {
             location,
             line,
         };
-        self.keys.entry(value).or_insert_with(Vec::new).push(info);
+        self.keys.entry(value).or_default().push(info);
     }
 
     pub fn final_check(&mut self) {
@@ -86,18 +83,16 @@ impl<'ast> Visit<'ast> for StorageVisitor {
             if path.segments.len() >= 2 {
                 let seg1 = &path.segments[0].ident;
                 let seg2 = &path.segments[1].ident;
-                if seg1 == "Symbol" && seg2 == "new" {
-                    if i.args.len() >= 2 {
-                        if let Expr::Lit(expr_lit) = &i.args[1] {
-                            if let Lit::Str(lit_str) = &expr_lit.lit {
-                                let val = lit_str.value();
-                                self.add_key(
-                                    val,
-                                    "Symbol::new".to_string(),
-                                    "inline".to_string(),
-                                    i.span().start().line,
-                                );
-                            }
+                if seg1 == "Symbol" && seg2 == "new" && i.args.len() >= 2 {
+                    if let Expr::Lit(expr_lit) = &i.args[1] {
+                        if let Lit::Str(lit_str) = &expr_lit.lit {
+                            let val = lit_str.value();
+                            self.add_key(
+                                val,
+                                "Symbol::new".to_string(),
+                                "inline".to_string(),
+                                i.span().start().line,
+                            );
                         }
                     }
                 }

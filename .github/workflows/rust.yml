@@ -38,10 +38,20 @@ jobs:
         run: cargo fmt --check
 
       - name: Run Clippy
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy -p sanctifier-cli -p sanctifier-core --all-targets --all-features -- -D warnings
 
-      - name: Run tests
-        run: cargo test --workspace --all-features
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Run tests (JUnit XML)
+        run: cargo nextest run --workspace --all-features --profile ci
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-test-results
+          path: target/nextest/ci/junit.xml
 
       - name: Build release binary
         run: cargo build --release -p sanctifier-cli

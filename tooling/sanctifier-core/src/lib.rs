@@ -1,12 +1,12 @@
 use serde::{Deserialize, Serialize};
+pub mod complexity;
 pub mod gas_estimator;
 pub mod gas_report;
-pub mod complexity;
 pub mod reentrancy;
 pub mod storage_collision;
 
 use std::collections::HashSet;
-use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::panic::catch_unwind;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::{parse_str, Fields, File, Item, Meta, Type};
@@ -17,21 +17,15 @@ use thiserror::Error;
 #[cfg(target_arch = "wasm32")]
 use soroban_sdk::Env;
 
-const DEFAULT_APPROACHING_THRESHOLD: f64 = 0.8;
-
 fn with_panic_guard<F, R>(f: F) -> R
 where
     F: FnOnce() -> R + std::panic::UnwindSafe,
     R: Default,
 {
-    match catch_unwind(f) {
-        Ok(res) => res,
-        Err(_) => R::default(),
-    }
+    catch_unwind(f).unwrap_or_default()
 }
 
 // ── Existing types ────────────────────────────────────────────────────────────
-
 
 /// Severity of a ledger size warning.
 #[derive(Debug, Serialize, Clone, PartialEq)]
@@ -121,16 +115,6 @@ impl UpgradeReport {
             suggestions: vec![],
         }
     }
-}
-
-fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
-    attrs.iter().any(|attr| {
-        if let Meta::Path(path) = &attr.meta {
-            path.is_ident(name) || path.segments.iter().any(|s| s.ident == name)
-        } else {
-            false
-        }
-    })
 }
 
 fn is_upgrade_or_admin_fn(name: &str) -> bool {
@@ -263,9 +247,7 @@ fn classify_size(
     strict: bool,
     strict_threshold: usize,
 ) -> Option<SizeWarningLevel> {
-    if size >= limit {
-        Some(SizeWarningLevel::ExceedsLimit)
-    } else if strict && size >= strict_threshold {
+    if size >= limit || (strict && size >= strict_threshold) {
         Some(SizeWarningLevel::ExceedsLimit)
     } else if size as f64 >= limit as f64 * approaching {
         Some(SizeWarningLevel::ApproachingLimit)
@@ -273,8 +255,6 @@ fn classify_size(
         None
     }
 }
-
-
 
 // ── Analyzer ──────────────────────────────────────────────────────────────────
 
@@ -447,7 +427,9 @@ impl Analyzer {
                     }
                 }
                 syn::Stmt::Macro(m) => {
-                    if m.mac.path.is_ident("require_auth") || m.mac.path.is_ident("require_auth_for_args") {
+                    if m.mac.path.is_ident("require_auth")
+                        || m.mac.path.is_ident("require_auth_for_args")
+                    {
                         *has_auth = true;
                     }
                 }
@@ -476,7 +458,11 @@ impl Analyzer {
                 if method_name == "set" || method_name == "update" || method_name == "remove" {
                     // Heuristic: check if receiver chain contains "storage"
                     let receiver_str = quote::quote!(#m.receiver).to_string();
-                    if receiver_str.contains("storage") || receiver_str.contains("persistent") || receiver_str.contains("temporary") || receiver_str.contains("instance") {
+                    if receiver_str.contains("storage")
+                        || receiver_str.contains("persistent")
+                        || receiver_str.contains("temporary")
+                        || receiver_str.contains("instance")
+                    {
                         *has_mutation = true;
                     }
                 }
@@ -537,7 +523,9 @@ impl Analyzer {
                 Item::Struct(s) => {
                     if has_contracttype(&s.attrs) {
                         let size = self.estimate_struct_size(s);
-                        if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
+                        if let Some(level) =
+                            classify_size(size, limit, approaching, strict, strict_threshold)
+                        {
                             warnings.push(SizeWarning {
                                 struct_name: s.ident.to_string(),
                                 estimated_size: size,
@@ -550,7 +538,9 @@ impl Analyzer {
                 Item::Enum(e) => {
                     if has_contracttype(&e.attrs) {
                         let size = self.estimate_enum_size(e);
-                        if let Some(level) = classify_size(size, limit, approaching, strict, strict_threshold) {
+                        if let Some(level) =
+                            classify_size(size, limit, approaching, strict, strict_threshold)
+                        {
                             warnings.push(SizeWarning {
                                 struct_name: e.ident.to_string(),
                                 estimated_size: size,
@@ -615,9 +605,9 @@ impl Analyzer {
 
     // ── Event Consistency and Optimization (NEW) ─────────────────────────────
 
-    /// Scans for `env.events().publish(topics, data)` and checks:
-    /// 1. Consistency of topic counts for the same event name.
-    /// 2. Opportunities to use `symbol_short!` for gas savings.
+    // Scans for `env.events().publish(topics, data)` and checks:
+    // 1. Consistency of topic counts for the same event name.
+    // 2. Opportunities to use `symbol_short!` for gas savings.
     /* pub fn scan_events(&self, source: &str) -> Vec<EventIssue> {
         with_panic_guard(|| self.scan_events_impl(source))
     }
@@ -639,8 +629,7 @@ impl Analyzer {
 
     // ── Unsafe-pattern visitor ────────────────────────────────────────────────
 
-    /// Visitor-based scan for `panic!`, `.unwrap()`, `.expect()` with line
-    /// numbers derived from proc-macro2 span locations.
+    /// Visitor-based scan for `panic!`, `.unwrap()`, `.expect()` with line numbers derived from proc-macro2 span locations.
     pub fn analyze_unsafe_patterns(&self, source: &str) -> Vec<UnsafePattern> {
         with_panic_guard(|| self.analyze_unsafe_patterns_impl(source))
     }
@@ -741,7 +730,6 @@ impl Analyzer {
         visitor.issues
     }
 
-
     // ── Size estimation helpers ───────────────────────────────────────────────
 
     fn estimate_enum_size(&self, e: &syn::ItemEnum) -> usize {
@@ -796,7 +784,9 @@ impl Analyzer {
                         "Address" => 32,
                         "BytesN" => {
                             if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                                if let Some(syn::GenericArgument::Type(Type::Path(tp))) = args.args.first() {
+                                if let Some(syn::GenericArgument::Type(Type::Path(tp))) =
+                                    args.args.first()
+                                {
                                     // Sometimes N is a type-level literal or just a number
                                     if let Some(s) = tp.path.segments.last() {
                                         if let Ok(n) = s.ident.to_string().parse::<usize>() {
@@ -819,13 +809,17 @@ impl Analyzer {
                         }
                         "Map" => {
                             if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                                let inner: usize = args.args.iter().filter_map(|a| {
-                                    if let syn::GenericArgument::Type(t) = a {
-                                        Some(self.estimate_type_size(t))
-                                    } else {
-                                        None
-                                    }
-                                }).sum();
+                                let inner: usize = args
+                                    .args
+                                    .iter()
+                                    .filter_map(|a| {
+                                        if let syn::GenericArgument::Type(t) = a {
+                                            Some(self.estimate_type_size(t))
+                                        } else {
+                                            None
+                                        }
+                                    })
+                                    .sum();
                                 if inner > 0 {
                                     return 16 + inner * 2;
                                 }
@@ -1015,7 +1009,11 @@ impl<'ast> Visit<'ast> for SymbolVisitor {
             if p.path.is_ident("Symbol") || p.path.segments.iter().any(|s| s.ident == "Symbol") {
                 if let Some(last) = p.path.segments.last() {
                     if last.ident == "new" && i.args.len() >= 2 {
-                        if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) = &i.args[1] {
+                        if let syn::Expr::Lit(syn::ExprLit {
+                            lit: syn::Lit::Str(s),
+                            ..
+                        }) = &i.args[1]
+                        {
                             let val = s.value();
                             if val.len() > 32 {
                                 self.issues.push(SymbolIssue {

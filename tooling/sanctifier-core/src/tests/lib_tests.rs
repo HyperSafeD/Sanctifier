@@ -34,9 +34,10 @@ fn test_analyze_with_macros() {
 
 #[test]
 fn test_analyze_with_limit() {
-    let mut config = SanctifyConfig::default();
-    config.ledger_limit = 50;
-    let analyzer = Analyzer::new(config);
+    let analyzer = Analyzer::new(SanctifyConfig {
+        ledger_limit: 50,
+        ..Default::default()
+    });
     let source = r#"
         #[contracttype]
         pub struct ExceedsLimit {
@@ -52,10 +53,11 @@ fn test_analyze_with_limit() {
 
 #[test]
 fn test_ledger_size_enum_and_approaching() {
-    let mut config = SanctifyConfig::default();
-    config.ledger_limit = 100;
-    config.approaching_threshold = 0.5;
-    let analyzer = Analyzer::new(config);
+    let analyzer = Analyzer::new(SanctifyConfig {
+        ledger_limit: 100,
+        approaching_threshold: 0.5,
+        ..Default::default()
+    });
     let source = r#"
         #[contracttype]
         pub enum DataKey {
@@ -72,8 +74,13 @@ fn test_ledger_size_enum_and_approaching() {
         }
     "#;
     let warnings = analyzer.analyze_ledger_size(source);
-    assert!(warnings.iter().any(|w| w.struct_name == "NearLimit"), "NearLimit (64 bytes) should exceed 50% of 100");
-    assert!(warnings.iter().any(|w| w.level == SizeWarningLevel::ApproachingLimit));
+    assert!(
+        warnings.iter().any(|w| w.struct_name == "NearLimit"),
+        "NearLimit (64 bytes) should exceed 50% of 100"
+    );
+    assert!(warnings
+        .iter()
+        .any(|w| w.level == SizeWarningLevel::ApproachingLimit));
 }
 
 #[test]

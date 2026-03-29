@@ -38,9 +38,13 @@ fn test_analyze_vulnerable_contract() {
         .arg(fixture_path)
         .assert()
         .success()
-        .stdout(predicate::str::contains("Found potential Authentication Gaps!"))
+        .stdout(predicate::str::contains(
+            "Found potential Authentication Gaps!",
+        ))
         .stdout(predicate::str::contains("Found explicit Panics/Unwraps!"))
-        .stdout(predicate::str::contains("Found unchecked Arithmetic Operations!"));
+        .stdout(predicate::str::contains(
+            "Found unchecked Arithmetic Operations!",
+        ));
 }
 
 #[test]
@@ -50,15 +54,41 @@ fn test_analyze_json_output() {
         .unwrap()
         .join("tests/fixtures/valid_contract.rs");
 
-    let assert = cmd.arg("analyze")
+    let assert = cmd
+        .arg("analyze")
         .arg(fixture_path)
         .arg("--format")
         .arg("json")
         .assert()
         .success();
-    
+
     // JSON starts with {
     assert.stdout(predicate::str::starts_with("{"));
+}
+
+#[test]
+fn test_analyze_junit_output() {
+    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
+    let fixture_path = env::current_dir()
+        .unwrap()
+        .join("tests/fixtures/valid_contract.rs");
+
+    let assert = cmd
+        .arg("analyze")
+        .arg(fixture_path)
+        .arg("--format")
+        .arg("junit")
+        .assert()
+        .success();
+
+    assert
+        .stdout(predicate::str::contains(
+            r#"<?xml version="1.0" encoding="UTF-8"?>"#,
+        ))
+        .stdout(predicate::str::contains("<testsuites"))
+        .stdout(predicate::str::contains("</testsuites>"))
+        .stdout(predicate::str::contains("<testsuite name=\"auth_gaps\""))
+        .stdout(predicate::str::contains("<testsuite name=\"panic_issues\""));
 }
 
 #[test]

@@ -5,8 +5,8 @@
 // This module wraps ``gas_estimator`` output and provides human-readable
 // text and JSON rendering used by `sanctifier gas` subcommand.
 
-use serde::Serialize;
 use crate::gas_estimator::GasEstimationReport;
+use serde::Serialize;
 
 // ── Report types ──────────────────────────────────────────────────────────────
 
@@ -83,7 +83,11 @@ impl GasReport {
         let entries: Vec<GasReportEntry> = reports.into_iter().map(Into::into).collect();
         let total_instructions = entries.iter().map(|e| e.estimated_instructions).sum();
         let total_memory_bytes = entries.iter().map(|e| e.estimated_memory_bytes).sum();
-        GasReport { entries, total_instructions, total_memory_bytes }
+        GasReport {
+            entries,
+            total_instructions,
+            total_memory_bytes,
+        }
     }
 }
 
@@ -186,4 +190,3 @@ mod tests {
         assert!(text.contains("LOW"));
     }
 }
-

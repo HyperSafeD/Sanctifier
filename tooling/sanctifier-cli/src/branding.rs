@@ -29,6 +29,7 @@ pub fn print_logo() {
     println!();
 }
 
+#[allow(dead_code)]
 pub fn print_banner(title: &str) {
     println!("{}", format!("━━━ {} ━━━", title).yellow().bold());
 }
