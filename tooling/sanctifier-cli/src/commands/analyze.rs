@@ -103,6 +103,7 @@ pub(crate) struct FileAnalysisResult {
     pub(crate) smt_issues: Vec<sanctifier_core::smt::SmtInvariantIssue>,
     pub(crate) sep41_checked_contracts: Vec<String>,
     pub(crate) sep41_issues: Vec<sanctifier_core::Sep41Issue>,
+    pub(crate) call_graph_edges: Vec<sanctifier_core::ContractCallEdge>,
     pub(crate) timed_out: bool,
 }
 
@@ -256,6 +257,7 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
     let mut smt_issues = Vec::new();
     let mut sep41_checked_contracts = Vec::new();
     let mut sep41_issues = Vec::new();
+    let mut call_graph_edges = Vec::new();
     let mut timed_out_files: Vec<String> = Vec::new();
 
     for r in results {
@@ -276,6 +278,7 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
         smt_issues.extend(r.smt_issues);
         sep41_checked_contracts.extend(r.sep41_checked_contracts);
         sep41_issues.extend(r.sep41_issues);
+        call_graph_edges.extend(r.call_graph_edges);
         if r.timed_out {
             timed_out_files.push(r.file_path);
         }
@@ -403,12 +406,13 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
 
     if is_json {
         let report = serde_json::json!({
+            "schema_version": "1.0.0",
             "sanctifier_version": env!("CARGO_PKG_VERSION"),
             "storage_collisions": collisions,
-            "call_graph": [],
+            "call_graph": call_graph_edges,
             "ledger_size_warnings": size_warnings,
             "unsafe_patterns": unsafe_patterns,
-            "auth_gaps": auth_gaps,
+            "auth_gaps": auth_gaps.iter().map(|g| &g.function_name).collect::<Vec<_>>(),
             "panic_issues": panic_issues,
             "arithmetic_issues": arithmetic_issues,
             "custom_rules": custom_matches,
@@ -453,7 +457,6 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                     "key_type": c.key_type,
                     "location": c.location,
                     "message": c.message,
-                    "severity": c.severity(),
                 })).collect::<Vec<_>>(),
                 "ledger_size_warnings": size_warnings.iter().map(|w| serde_json::json!({
                     "code": finding_codes::LEDGER_SIZE_RISK,
@@ -461,25 +464,22 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                     "estimated_size": w.estimated_size,
                     "limit": w.limit,
                     "level": w.level,
-                    "severity": w.severity(),
                 })).collect::<Vec<_>>(),
                 "unsafe_patterns": unsafe_patterns.iter().map(|p| serde_json::json!({
                     "code": finding_codes::UNSAFE_PATTERN,
                     "pattern_type": p.pattern_type,
                     "line": p.line,
                     "snippet": p.snippet,
-                    "severity": p.severity(),
                 })).collect::<Vec<_>>(),
                 "auth_gaps": auth_gaps.iter().map(|g| serde_json::json!({
                     "code": finding_codes::AUTH_GAP,
-                    "function": g,
+                    "function": g.function_name,
                 })).collect::<Vec<_>>(),
                 "panic_issues": panic_issues.iter().map(|p| serde_json::json!({
                     "code": finding_codes::PANIC_USAGE,
                     "function_name": p.function_name,
                     "issue_type": p.issue_type,
                     "location": p.location,
-                    "severity": p.severity(),
                 })).collect::<Vec<_>>(),
                 "arithmetic_issues": arithmetic_issues.iter().map(|a| serde_json::json!({
                     "code": finding_codes::ARITHMETIC_OVERFLOW,
@@ -487,7 +487,6 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                     "operation": a.operation,
                     "suggestion": a.suggestion,
                     "location": a.location,
-                    "severity": a.severity(),
                 })).collect::<Vec<_>>(),
                 "custom_rules": custom_matches.iter().map(|m| serde_json::json!({
                     "code": finding_codes::CUSTOM_RULE_MATCH,
@@ -502,7 +501,6 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                     "issue_type": e.issue_type,
                     "location": e.location,
                     "message": e.message,
-                    "severity": e.severity(),
                 })).collect::<Vec<_>>(),
                 "unhandled_results": unhandled_results.iter().map(|r| serde_json::json!({
                     "code": finding_codes::UNHANDLED_RESULT,
@@ -510,7 +508,6 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                     "call_expression": r.call_expression,
                     "location": r.location,
                     "message": r.message,
-                    "severity": r.severity(),
                 })).collect::<Vec<_>>(),
                 "upgrade_risks": upgrade_reports.iter().flat_map(|r| &r.findings).map(|f| serde_json::json!({
                     "code": finding_codes::UPGRADE_RISK,
@@ -519,14 +516,12 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                     "location": f.location,
                     "message": f.message,
                     "suggestion": f.suggestion,
-                    "severity": f.severity(),
                 })).collect::<Vec<_>>(),
                 "smt_issues": smt_issues.iter().map(|s| serde_json::json!({
                     "code": finding_codes::SMT_INVARIANT_VIOLATION,
                     "function_name": s.function_name,
                     "description": s.description,
                     "location": s.location,
-                    "severity": s.severity(),
                 })).collect::<Vec<_>>(),
                 "sep41_issues": sep41_issues.iter().map(|issue| serde_json::json!({
                     "code": finding_codes::SEP41_INTERFACE_DEVIATION,
@@ -536,7 +531,6 @@ pub fn exec(args: AnalyzeArgs) -> anyhow::Result<()> {
                     "message": issue.message,
                     "expected_signature": issue.expected_signature,
                     "actual_signature": issue.actual_signature,
-                    "severity": issue.severity(),
                 })).collect::<Vec<_>>(),
                 "timeouts": timed_out_files.iter().map(|f| serde_json::json!({
                     "code": finding_codes::ANALYSIS_TIMEOUT,
@@ -871,6 +865,24 @@ pub(crate) fn analyze_single_file(
         }
     }
 
+    // Call graph edges
+    let inferred_caller = infer_contract_name(content).unwrap_or_else(|| {
+        Path::new(file_name)
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("<unknown>")
+            .to_string()
+    });
+    let mut edges = analyzer.scan_invoke_contract_calls(content, &inferred_caller, file_name);
+    for edge in &mut edges {
+        if let Some(ref mut func) = edge.function_expr {
+            if func.starts_with('&') {
+                *func = func.trim_start_matches('&').trim().to_string();
+            }
+        }
+    }
+    res.call_graph_edges = edges;
+
     res
 }
 
@@ -971,4 +983,36 @@ pub(crate) fn is_soroban_project(path: &Path) -> bool {
         path.to_path_buf()
     };
     cargo_toml_path.exists()
+}
+
+pub(crate) fn infer_contract_name(source: &str) -> Option<String> {
+    let mut saw_contract_attr = false;
+    for line in source.lines() {
+        let l = line.trim();
+        if l.starts_with("#[contract]") {
+            saw_contract_attr = true;
+            continue;
+        }
+        if saw_contract_attr {
+            if let Some(rest) = l.strip_prefix("pub struct ") {
+                return Some(
+                    rest.trim_end_matches('{')
+                        .trim_end_matches(';')
+                        .split_whitespace()
+                        .next()?
+                        .to_string(),
+                );
+            }
+            if let Some(rest) = l.strip_prefix("struct ") {
+                return Some(
+                    rest.trim_end_matches('{')
+                        .trim_end_matches(';')
+                        .split_whitespace()
+                        .next()?
+                        .to_string(),
+                );
+            }
+        }
+    }
+    None
 }

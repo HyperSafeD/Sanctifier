@@ -1,10 +1,5 @@
 #![cfg(test)]
 //! Property-based / fuzz tests for the SEP-41 token contract.
-//!
-//! Each test uses bolero's `check!()` harness to drive arbitrary inputs through
-//! the token's public entry points and assert that no undefined behaviour or
-//! unexpected panics occur.  All arithmetic in the contract uses checked
-//! operations, so only the well-typed error variants are ever returned.
 
 use bolero::{check, generator::*};
 use soroban_sdk::{testutils::Address as _, Address, Env, String};
@@ -13,10 +8,13 @@ use my_contract::{Token, TokenClient};
 
 fn fresh_client(env: &Env) -> (TokenClient<'_>, Address) {
     let admin = Address::generate(env);
-    // let id = env.register_contract(None, Token);
-    let id = env.register(Token, ());
+    
+    let id = env.register_contract(None, Token);
+    
     let client = TokenClient::new(env, &id);
+
     env.mock_all_auths();
+
     client.initialize(
         &admin,
         &7u32,
@@ -42,8 +40,7 @@ fn fuzz_mint_no_panic() {
 }
 
 /// Any combination of `(amount_a, amount_b)` passed through mint → transfer
-/// must leave balances consistent: sender decreases, receiver increases, sum
-/// is conserved.
+/// must leave balances consistent.
 #[test]
 fn fuzz_transfer_balance_conservation() {
     check!()
@@ -65,7 +62,7 @@ fn fuzz_transfer_balance_conservation() {
             if let Ok(Ok(())) = client.try_transfer(&alice, &bob, &transfer_amt) {
                 let alice_after = client.balance(&alice);
                 let bob_after = client.balance(&bob);
-                // Conservation: alice lost exactly transfer_amt, bob gained it.
+
                 assert_eq!(balance_before - transfer_amt, alice_after);
                 assert_eq!(bob_after, transfer_amt);
             }
@@ -90,10 +87,10 @@ fn fuzz_allowance_monotone_decrease() {
             let draw = *draw_amt as i128;
 
             let _ = client.try_mint(&alice, &approve);
-
             let _ = client.try_approve(&alice, &bob, &approve, &1_000u32);
 
             let allowance_before = client.allowance(&alice, &bob);
+
             if let Ok(Ok(())) = client.try_transfer_from(&bob, &alice, &carol, &draw) {
                 let allowance_after = client.allowance(&alice, &bob);
                 assert!(allowance_after >= 0, "allowance went negative");
