@@ -297,6 +297,107 @@ fn test_update_help() {
 }
 
 #[test]
+fn test_fuzz_help() {
+    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
+    cmd.arg("fuzz")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("harness scaffolds"))
+        .stdout(predicates::str::contains("--engine"));
+}
+
+#[test]
+fn test_fuzz_generates_both_harnesses() {
+    let temp_dir = tempdir().unwrap();
+    let contract_dir = temp_dir.path().join("contract");
+    let src_dir = contract_dir.join("src");
+    let output_dir = temp_dir.path().join("fuzz");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::write(
+        contract_dir.join("Cargo.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+            use soroban_sdk::{contract, contractimpl, Address, Env};
+
+            #[contract]
+            pub struct Vault;
+
+            #[contractimpl]
+            impl Vault {
+                pub fn deposit(env: Env, user: Address, amount: i128) -> Result<(), u32> {
+                    Ok(())
+                }
+            }
+        "#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("fuzz")
+        .arg(&contract_dir)
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Generated afl.rs harness"))
+        .stdout(predicates::str::contains("Generated honggfuzz.rs harness"));
+
+    let afl = fs::read_to_string(output_dir.join("afl.rs")).unwrap();
+    let honggfuzz = fs::read_to_string(output_dir.join("honggfuzz.rs")).unwrap();
+    assert!(afl.contains("deposit(env: Env, user: Address, amount: i128)"));
+    assert!(honggfuzz.contains("use honggfuzz::fuzz;"));
+}
+
+#[test]
+fn test_fuzz_engine_afl_only() {
+    let temp_dir = tempdir().unwrap();
+    let contract_dir = temp_dir.path().join("contract");
+    let src_dir = contract_dir.join("src");
+    let output_dir = temp_dir.path().join("fuzz");
+    fs::create_dir_all(&src_dir).unwrap();
+    fs::write(
+        contract_dir.join("Cargo.toml"),
+        "[package]\nname = \"demo\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+    )
+    .unwrap();
+    fs::write(
+        src_dir.join("lib.rs"),
+        r#"
+            use soroban_sdk::{contract, contractimpl, Env};
+
+            #[contract]
+            pub struct Vault;
+
+            #[contractimpl]
+            impl Vault {
+                pub fn ping(env: Env) {}
+            }
+        "#,
+    )
+    .unwrap();
+
+    Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("fuzz")
+        .arg(&contract_dir)
+        .arg("--engine")
+        .arg("afl")
+        .arg("--output-dir")
+        .arg(&output_dir)
+        .assert()
+        .success();
+
+    assert!(output_dir.join("afl.rs").exists());
+    assert!(!output_dir.join("honggfuzz.rs").exists());
+}
+
+#[test]
 fn test_init_creates_sanctify_toml_in_current_directory() {
     let temp_dir = tempdir().unwrap();
     let mut cmd = Command::cargo_bin("sanctifier").unwrap();
