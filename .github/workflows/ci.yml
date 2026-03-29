@@ -59,10 +59,17 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           choco install z3 -y
-          $z3_install_root = (Get-ChildItem -Path C:\ProgramData\chocolatey\lib\z3\tools\ -Directory | Where-Object Name -like "z3-*" | Select-Object -First 1).FullName
-          if (-not $z3_install_root) { $z3_install_root = "C:\ProgramData\chocolatey\lib\z3\tools" }
-          echo "Z3_SYS_Z3_HEADER=$z3_install_root\include\z3.h" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-          echo "LIB=$z3_install_root\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $z3_h = (Get-ChildItem -Path C:\ProgramData\chocolatey\lib\z3 -Filter z3.h -Recurse | Select-Object -First 1).FullName
+          if ($z3_h) {
+            $z3_root = Split-Path (Split-Path $z3_h)
+            echo "Z3_SYS_Z3_HEADER=$z3_h" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            echo "LIB=$z3_root\lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+            Write-Host "Found Z3 header at: $z3_h"
+            Write-Host "Found Z3 lib dir at: $z3_root\lib"
+          } else {
+            Write-Error "Could not find z3.h in Chocolatey package directory"
+            exit 1
+          }
 
       - name: Install system dependencies (Linux only)
         if: runner.os == 'Linux'
