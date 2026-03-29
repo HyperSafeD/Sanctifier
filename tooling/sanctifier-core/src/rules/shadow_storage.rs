@@ -277,7 +277,7 @@ fn is_storage_mutation_method(method_name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
     use crate::Analyzer;
     use crate::SanctifyConfig;
 

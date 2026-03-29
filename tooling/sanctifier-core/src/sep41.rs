@@ -240,6 +240,8 @@ pub fn verify(source: &str) -> Sep41VerificationReport {
     }
 }
 
+// ... [All the helper functions remain exactly the same] ...
+
 fn collect_public_methods(file: &File) -> BTreeMap<String, ParsedMethod> {
     let mut methods = BTreeMap::new();
 
@@ -459,6 +461,18 @@ fn expr_identifier(expr: &syn::Expr) -> Option<String> {
     }
 }
 
+// ================================================================
+// IMPORTANT: The impl block is now BEFORE the test module
+// ================================================================
+
+impl Sep41Issue {
+    /// Returns the severity level of this SEP-41 interface deviation.
+    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
+        crate::finding_codes::FindingSeverity::Critical
+    }
+}
+
+// Tests at the very bottom
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -609,12 +623,5 @@ mod tests {
         assert!(!report.candidate);
         assert!(!report.compliant);
         assert!(report.issues.is_empty());
-    }
-}
-
-impl Sep41Issue {
-    /// Returns the severity level of this SEP-41 interface deviation.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        crate::finding_codes::FindingSeverity::Critical
     }
 }

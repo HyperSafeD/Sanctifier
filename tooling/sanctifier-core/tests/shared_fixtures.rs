@@ -19,7 +19,18 @@ fn auth_gap_fixture_emits_exactly_one_auth_gap() {
 
     let findings = analyzer.scan_auth_gaps(&source);
 
-    assert_eq!(findings, vec!["store_user".to_string()]);
+    assert_eq!(findings.len(), 1, "Expected exactly one auth gap finding");
+
+    let issue = &findings[0];
+
+    // Since AuthGapIssue doesn't implement Display/ToString, we use Debug
+    let issue_debug = format!("{:?}", issue);
+
+    assert!(
+        issue_debug.contains("store_user"),
+        "Expected auth gap related to 'store_user', but got: {:?}",
+        issue
+    );
 }
 
 #[test]
