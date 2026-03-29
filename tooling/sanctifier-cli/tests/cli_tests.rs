@@ -297,6 +297,34 @@ fn test_update_help() {
 }
 
 #[test]
+fn test_tui_help() {
+    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
+    cmd.arg("tui")
+        .arg("--help")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("interactive terminal dashboard"));
+}
+
+#[test]
+fn test_tui_snapshot_for_vulnerable_contract() {
+    let fixture_path = env::current_dir()
+        .unwrap()
+        .join("tests/fixtures/vulnerable_contract.rs");
+
+    Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("tui")
+        .arg(fixture_path)
+        .env_remove("RUST_LOG")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Sanctifier TUI Snapshot"))
+        .stdout(predicates::str::contains("Authentication Gaps [S001]"))
+        .stdout(predicates::str::contains("Total findings:"));
+}
+
+#[test]
 fn test_init_creates_sanctify_toml_in_current_directory() {
     let temp_dir = tempdir().unwrap();
     let mut cmd = Command::cargo_bin("sanctifier").unwrap();

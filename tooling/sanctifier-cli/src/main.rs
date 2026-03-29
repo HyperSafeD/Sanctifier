@@ -29,6 +29,8 @@ pub enum Commands {
     Badge(commands::badge::BadgeArgs),
     /// Generate a Markdown or HTML security report
     Report(commands::report::ReportArgs),
+    /// Launch the interactive terminal dashboard
+    Tui(commands::tui::TuiArgs),
     /// Detect potential storage key collisions in Soroban contracts
     Storage(commands::storage::StorageArgs),
     /// Initialize Sanctifier in a new project
@@ -81,6 +83,9 @@ fn run() -> anyhow::Result<()> {
         }
         Commands::Report(args) => {
             commands::report::exec(args)?;
+        }
+        Commands::Tui(args) => {
+            commands::tui::exec(args)?;
         }
         Commands::Storage(args) => {
             commands::storage::exec(args)?;
