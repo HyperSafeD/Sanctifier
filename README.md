@@ -67,6 +67,23 @@ cargo install --path .
 
 ## 🚀 Quick Start
 
+### Developer commands
+
+Common workflows are wrapped in a root-level `Makefile`:
+
+```bash
+make build    # cargo build --workspace
+make test     # cargo test --workspace
+make lint     # cargo fmt --all --check && cargo clippy --workspace -- -D warnings
+make fmt      # cargo fmt --all
+make audit    # cargo audit && cargo deny check
+make release  # cargo build --workspace --release
+make docs     # cargo doc --workspace --no-deps --open
+make clean    # cargo clean
+```
+
+### Analyse a contract
+
 Analyse a Soroban contract in a single command:
 
 ```bash

@@ -1,8 +1,11 @@
-blank_issues_enabled: true
+blank_issues_enabled: false
 contact_links:
   - name: Security Vulnerability
-    url: https://github.com/Centurylong/sanctifier/security/advisories/new
-    about: Please report security vulnerabilities here.
-  - name: Documentation
-    url: https://github.com/Centurylong/sanctifier/wiki
-    about: Check the wiki for documentation.
+    url: https://github.com/HyperSafeD/Sanctifier/security/advisories/new
+    about: Please use a private security advisory or email security@sanctifier.dev.
+  - name: Security Policy
+    url: https://github.com/HyperSafeD/Sanctifier/blob/main/.github/SECURITY.md
+    about: Review the responsible disclosure process before reporting a vulnerability.
+  - name: Contributing Guide
+    url: https://github.com/HyperSafeD/Sanctifier/blob/main/CONTRIBUTING.md
+    about: Read the contribution workflow, community expectations, and review checklist.

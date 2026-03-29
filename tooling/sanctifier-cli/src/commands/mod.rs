@@ -1,7 +1,10 @@
 pub mod analyze;
 pub mod badge;
 pub mod complexity;
+pub mod diff;
 pub mod init;
+pub mod reentrancy;
 pub mod report;
+pub mod storage;
 pub mod update;
 pub mod webhook;

@@ -16,7 +16,7 @@ default = ["smt"]
 smt = ["dep:z3"]
 
 [dependencies]
-soroban-sdk = "20.5.0" # Target latest Soroban SDK
+soroban-sdk = "21.7.6" # Soroban v21 (Protocol 21) support
 syn = { version = "2.0", features = ["full", "extra-traits", "visit"] }
 quote = "1.0"
 proc-macro2 = { version = "1.0", features = ["span-locations"] }

@@ -11,13 +11,16 @@ pub mod auth_gap;
 pub mod ledger_size;
 /// Panic / unwrap detection.
 pub mod panic_detection;
+/// Reentrancy vulnerability detection and auto-fix.
+pub mod reentrancy;
 /// Shadow storage pattern detection.
 pub mod shadow_storage;
+/// Integer truncation and unchecked bounds detection.
+pub mod truncation_bounds;
 /// Unhandled `Result` values.
 pub mod unhandled_result;
 /// Unused local variables.
 pub mod unused_variable;
-
 use serde::Serialize;
 use std::any::Any;
 
@@ -170,6 +173,8 @@ impl RuleRegistry {
         registry.register(unhandled_result::UnhandledResultRule::new());
         registry.register(unused_variable::UnusedVariableRule::new());
         registry.register(shadow_storage::ShadowStorageRule::new());
+        registry.register(reentrancy::ReentrancyRule::new());
+        registry.register(truncation_bounds::TruncationBoundsRule::new());
         registry
     }
 }

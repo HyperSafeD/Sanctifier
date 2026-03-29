@@ -2,6 +2,7 @@
 use assert_cmd::Command;
 use jsonschema::JSONSchema;
 use mockito::Server;
+use serde_json::Value;
 use std::env;
 use std::fs;
 use tempfile::tempdir;
@@ -122,6 +123,167 @@ fn test_analyze_json_logs_do_not_pollute_stdout() {
         .success()
         .stdout(predicates::str::starts_with("{"))
         .stderr(predicates::str::contains("\"level\":\"DEBUG\""));
+}
+
+#[test]
+fn test_storage_text_output_lists_collisions_with_file_and_line() {
+    let temp_dir = tempdir().unwrap();
+    let contract_path = temp_dir.path().join("storage_contract.rs");
+
+    fs::write(
+        &contract_path,
+        r#"
+            use soroban_sdk::{contractimpl, Env};
+
+            #[contractimpl]
+            impl DemoContract {
+                pub fn write_a(env: Env) {
+                    env.storage().persistent().set(&"USER", &1u32);
+                }
+
+                pub fn write_b(env: Env) {
+                    env.storage().persistent().set(&"USER", &2u32);
+                }
+            }
+        "#,
+    )
+    .unwrap();
+
+    let expected_path = contract_path.display().to_string();
+
+    Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("storage")
+        .arg(&contract_path)
+        .assert()
+        .success()
+        .stdout(predicates::str::contains(
+            "Found 2 storage key collision(s):",
+        ))
+        .stdout(predicates::str::contains(
+            "USER [storage::set (persistent)]",
+        ))
+        .stdout(predicates::str::contains(expected_path))
+        .stdout(predicates::str::contains(
+            "persistent storage key collision",
+        ));
+}
+
+#[test]
+fn test_storage_json_output_matches_storage_collision_shape() {
+    let temp_dir = tempdir().unwrap();
+    let contract_path = temp_dir.path().join("storage_contract.rs");
+
+    fs::write(
+        &contract_path,
+        r#"
+            use soroban_sdk::{contractimpl, Env};
+
+            #[contractimpl]
+            impl DemoContract {
+                pub fn write_a(env: Env) {
+                    env.storage().persistent().set(&"USER", &1u32);
+                }
+
+                pub fn write_b(env: Env) {
+                    env.storage().persistent().set(&"USER", &2u32);
+                }
+            }
+        "#,
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("storage")
+        .arg(&contract_path)
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).unwrap();
+    let collisions = json.as_array().unwrap();
+    assert_eq!(collisions.len(), 2);
+
+    for collision in collisions {
+        let object = collision.as_object().unwrap();
+        assert!(object.contains_key("key_value"));
+        assert!(object.contains_key("key_type"));
+        assert!(object.contains_key("location"));
+        assert!(object.contains_key("message"));
+    }
+
+    assert!(collisions[0]["location"]
+        .as_str()
+        .unwrap()
+        .contains(&contract_path.display().to_string()));
+}
+
+#[test]
+fn test_storage_directory_scan_aggregates_rust_files() {
+    let temp_dir = tempdir().unwrap();
+    let colliding = temp_dir.path().join("colliding.rs");
+    let clean = temp_dir.path().join("clean.rs");
+
+    fs::write(
+        &colliding,
+        r#"
+            use soroban_sdk::{contractimpl, Env};
+
+            #[contractimpl]
+            impl DemoContract {
+                pub fn write_a(env: Env) {
+                    env.storage().persistent().set(&"ORDER", &1u32);
+                }
+
+                pub fn write_b(env: Env) {
+                    env.storage().persistent().set(&"ORDER", &2u32);
+                }
+            }
+        "#,
+    )
+    .unwrap();
+
+    fs::write(
+        &clean,
+        r#"
+            use soroban_sdk::{contractimpl, Env};
+
+            #[contractimpl]
+            impl CleanContract {
+                pub fn write_once(env: Env) {
+                    env.storage().temporary().set(&"SESSION", &1u32);
+                }
+            }
+        "#,
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("storage")
+        .arg(temp_dir.path())
+        .arg("--format")
+        .arg("json")
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let json: Value = serde_json::from_slice(&output).unwrap();
+    let collisions = json.as_array().unwrap();
+    assert_eq!(collisions.len(), 2);
+    assert!(collisions.iter().all(|collision| {
+        collision["location"]
+            .as_str()
+            .unwrap()
+            .contains(&colliding.display().to_string())
+    }));
 }
 
 #[test]

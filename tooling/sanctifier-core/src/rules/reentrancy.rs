@@ -7,7 +7,7 @@
 //! Also provides [`ReentrancyRule::fix`] which emits a [`Patch`] that inserts
 //! a boolean instance-storage lock guard around the external call site.
 
-use crate::rules::{Patch, Rule, RuleViolation, Severity};
+use super::{Patch, Rule, RuleViolation, Severity};
 use syn::spanned::Spanned;
 use syn::{parse_str, File, Item};
 
@@ -439,7 +439,6 @@ fn contains_invoke_contract(expr: &syn::Expr) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::rules::Rule;
 
     fn rule() -> ReentrancyRule {
         ReentrancyRule::new()

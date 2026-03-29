@@ -3,6 +3,8 @@
 import { useState, useMemo, useEffect } from "react";
 import type { Finding, Severity } from "../types";
 import { CodeSnippet } from "./CodeSnippet";
+import { Sparkles } from "lucide-react";
+import { AiFixPanel } from "./AiFixPanel";
 
 interface FindingsListProps {
   findings: Finding[];
@@ -26,6 +28,7 @@ const severityLabels: Record<Severity, string> = {
 };
 
 export function FindingsList({ findings, severityFilter }: FindingsListProps) {
+  const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const filtered = useMemo(() => {
@@ -46,6 +49,7 @@ export function FindingsList({ findings, severityFilter }: FindingsListProps) {
 
   return (
     <div className="space-y-4">
+      <AiFixPanel finding={selectedFinding} onClose={() => setSelectedFinding(null)} />
       {filtered.length === 0 ? (
         <p className="text-zinc-500 dark:text-zinc-400 theme-high-contrast:text-white py-8 text-center">
           No findings match the selected filter.
@@ -62,7 +66,16 @@ export function FindingsList({ findings, severityFilter }: FindingsListProps) {
                   <span className="text-xs font-semibold uppercase tracking-wide opacity-80">
                     {f.category}
                   </span>
-                  <h3 className="mt-1 font-medium">{f.title}</h3>
+                  <div className="flex items-center gap-3">
+                    <h3 className="mt-1 font-medium">{f.title}</h3>
+                    <button 
+                      onClick={() => setSelectedFinding(f)}
+                      className="mt-1 flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
+                    >
+                      <Sparkles size={10} />
+                      ASK AI
+                    </button>
+                  </div>
                   <p className="mt-1 text-sm opacity-90">{f.location}</p>
                   {f.suggestion && (
                     <p className="mt-2 text-sm italic">💡 {f.suggestion}</p>

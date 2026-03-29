@@ -2,6 +2,16 @@
 
 Welcome and thanks for contributing!
 
+## Community Health Files
+
+Before opening an issue or pull request, review the project community policies:
+
+- [Code of Conduct](.github/CODE_OF_CONDUCT.md)
+- [Bug Report Template](.github/ISSUE_TEMPLATE/bug_report.yml)
+- [Feature Request Template](.github/ISSUE_TEMPLATE/feature_request.yml)
+- [Pull Request Template](.github/PULL_REQUEST_TEMPLATE.md)
+- [Security Policy](.github/SECURITY.md)
+
 ## Quick Start with GitHub Codespaces
 
 The fastest way to start contributing is using GitHub Codespaces, which provides a pre-configured development environment with all dependencies installed:
@@ -30,6 +40,59 @@ If you prefer to develop locally, you'll need to install:
 - soroban-cli: `cargo install soroban-cli`
 - wasm-pack: `cargo install wasm-pack`
 
+## Commit Message Convention
+
+This project follows [Conventional Commits](https://www.conventionalcommits.org/) specification. All commit messages should be structured as follows:
+
+```
+<type>: <description>
+
+[optional body]
+
+[optional footer(s)]
+```
+
+### Commit Types
+
+- `feat:` - A new feature
+- `fix:` - A bug fix
+- `perf:` - A code change that improves performance
+- `test:` - Adding missing tests or correcting existing tests
+- `docs:` - Documentation only changes
+- `ci:` - Changes to CI configuration files and scripts
+- `refactor:` - A code change that neither fixes a bug nor adds a feature (no behaviour change)
+- `style:` - Changes that do not affect the meaning of the code (white-space, formatting, etc)
+- `build:` - Changes that affect the build system or external dependencies
+- `chore:` - Other changes that don't modify src or test files
+
+### Examples
+
+```
+feat: add reentrancy detection for cross-contract calls
+
+fix: correct overflow check in token transfer
+
+perf: optimize WASM parsing for large contracts
+
+docs: update deployment guide with Stellar testnet instructions
+
+ci: add commitlint validation to PR workflow
+
+refactor: extract common validation logic into helper module
+
+test: add property-based tests for AMM pool
+```
+
+### Breaking Changes
+
+Breaking changes should be indicated by a `!` after the type or by adding `BREAKING CHANGE:` in the footer:
+
+```
+feat!: change API response format for analysis results
+
+BREAKING CHANGE: The analysis API now returns findings in a nested structure
+```
+
 ## PR Process
 
 - Create an issue or confirm there is already one.
@@ -38,6 +101,7 @@ If you prefer to develop locally, you'll need to install:
   - `cargo fmt --all`
   - `cargo test -p sanctifier-core --all-features`
   - `cargo test -p sanctifier-cli --no-default-features`
+- Write commit messages following the Conventional Commits specification above.
 - Push to your fork and open a PR to `HyperSafeD/Sanctifier:main`.
 - Ensure that the PR is checked by CI and that all required status checks pass.
 - Seek at least one approving review.

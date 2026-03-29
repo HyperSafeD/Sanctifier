@@ -12,6 +12,7 @@ export function NavBar() {
   const navLinks = [
     { name: "Scan", href: "/scan" },
     { name: "Dashboard", href: "/dashboard" },
+    { name: "Playground", href: "/playground" },
     { name: "Terminal", href: "/terminal" },
   ];
 

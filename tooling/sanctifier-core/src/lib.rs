@@ -62,6 +62,8 @@ pub mod smt {
 }
 /// Storage-key collision detection (internal).
 mod storage_collision;
+/// Soroban v21 (Protocol 21) host functions and storage types.
+pub mod soroban_v21;
 use std::collections::HashSet;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
@@ -74,6 +76,7 @@ pub use smt::SmtInvariantIssue;
 
 // Redundant imports removed
 use crate::rules::arithmetic_overflow::ArithVisitor;
+use crate::rules::truncation_bounds::TruncationBoundsVisitor;
 
 const DEFAULT_STRICT_THRESHOLD: f64 = 0.9;
 fn with_panic_guard<F, R>(f: F) -> R
@@ -312,6 +315,23 @@ pub struct ArithmeticIssue {
     /// The operator: "+", "-", "*", "+=", "-=", "*=".
     pub operation: String,
     /// Human-readable suggestion pointing to the safe alternative.
+    pub suggestion: String,
+    /// "function_name:line" context string.
+    pub location: String,
+}
+
+// ── TruncationBoundsIssue ────────────────────────────────────────────────────
+
+/// Represents an integer truncation cast or unchecked array/slice indexing.
+#[derive(Debug, Serialize, Clone)]
+pub struct TruncationBoundsIssue {
+    /// Contract function in which the issue was found.
+    pub function_name: String,
+    /// The kind of issue: `"truncation"` or `"unchecked_index"`.
+    pub kind: String,
+    /// The problematic expression (e.g. `as u32`, `buf[i]`).
+    pub expression: String,
+    /// Human-readable suggestion for a safe alternative.
     pub suggestion: String,
     /// "function_name:line" context string.
     pub location: String,
@@ -1152,6 +1172,31 @@ impl Analyzer {
             current_fn: None,
             seen: HashSet::new(),
             index_depth: 0,
+            test_mod_depth: 0,
+        };
+        visitor.visit_file(&file);
+        visitor.issues
+    }
+
+    // ── Truncation / bounds risk detection ───────────────────────────────────
+
+    /// Detects narrowing integer casts (`as u32`, `as u16`, `as u8`, etc.) and
+    /// unchecked array/slice indexing that could cause truncation or
+    /// out-of-bounds panics.
+    pub fn scan_truncation_bounds(&self, source: &str) -> Vec<TruncationBoundsIssue> {
+        with_panic_guard(|| self.scan_truncation_bounds_impl(source))
+    }
+
+    fn scan_truncation_bounds_impl(&self, source: &str) -> Vec<TruncationBoundsIssue> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+
+        let mut visitor = TruncationBoundsVisitor {
+            issues: Vec::new(),
+            current_fn: None,
+            seen: HashSet::new(),
             test_mod_depth: 0,
         };
         visitor.visit_file(&file);
@@ -2287,7 +2332,7 @@ mod tests {
                 CustomRule {
                     name: "no_unsafe".to_string(),
                     pattern: "unsafe".to_string(),
-                    severity: crate::finding_codes::FindingSeverity::Critical,
+                    severity: RuleSeverity::Critical,
                 },
                 CustomRule {
                     name: "todo_comment".to_string(),
@@ -2301,25 +2346,15 @@ mod tests {
         let source = r#"
             pub fn my_fn() {
                 // TODO: implement this
-                unsafe {
-                    let x = 1;
-                }
+                unsafe { let x = 1; }
             }
         "#;
         let matches = analyzer.analyze_custom_rules(source, &analyzer.config.custom_rules);
         assert_eq!(matches.len(), 2);
-
-        let todo_match = matches
-            .iter()
-            .find(|m| m.rule_name == "todo_comment")
-            .unwrap();
+        let todo_match = matches.iter().find(|m| m.rule_name == "todo_comment").unwrap();
         assert_eq!(todo_match.severity, RuleSeverity::Info);
-
         let unsafe_match = matches.iter().find(|m| m.rule_name == "no_unsafe").unwrap();
-        assert_eq!(
-            unsafe_match.severity,
-            crate::finding_codes::FindingSeverity::Critical
-        );
+        assert_eq!(unsafe_match.severity, RuleSeverity::Critical);
     }
 
     #[test]
@@ -3156,6 +3191,7 @@ impl MyContract {
     }
 }
 
+#[cfg(feature = "smt")]
 impl SmtInvariantIssue {
     /// Returns the severity level of this SMT invariant violation.
     pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
@@ -3197,6 +3233,12 @@ impl UpgradeFinding {
 }
 impl ArithmeticIssue {
     /// Returns the severity level of this arithmetic issue.
+    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
+        crate::finding_codes::FindingSeverity::High
+    }
+}
+impl TruncationBoundsIssue {
+    /// Returns the severity level of this truncation/bounds issue.
     pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
         crate::finding_codes::FindingSeverity::High
     }

@@ -114,8 +114,8 @@ export default function ScanPage() {
           <div className="w-full max-w-2xl group relative">
             <div className={`absolute -inset-1 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000 ${isAnalyzing ? "animate-pulse" : ""}`} />
             <label className={`relative block overflow-hidden rounded-2xl border-2 border-dashed transition-all cursor-pointer bg-white dark:bg-zinc-900 shadow-xl ${selectedFile
-                ? "border-emerald-500/50 bg-emerald-500/5"
-                : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
+              ? "border-emerald-500/50 bg-emerald-500/5"
+              : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
               }`}>
               <input
                 type="file"
@@ -145,8 +145,8 @@ export default function ScanPage() {
               onClick={runAnalysis}
               disabled={!selectedFile || isAnalyzing}
               className={`px-10 py-4 rounded-2xl font-bold transition-all shadow-2xl active:scale-95 flex items-center gap-3 ${!selectedFile || isAnalyzing
-                  ? "bg-zinc-200 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
-                  : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 hover:scale-105 shadow-emerald-500/20"
+                ? "bg-zinc-200 dark:bg-zinc-800 text-zinc-400 cursor-not-allowed"
+                : "bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 hover:bg-zinc-800 dark:hover:bg-zinc-200 hover:scale-105 shadow-emerald-500/20"
                 }`}
             >
               {isAnalyzing ? (
@@ -205,10 +205,24 @@ export default function ScanPage() {
                       You can view the detailed findings below or explore the full reporting dashboard.
                     </p>
                   </div>
-                  <Link href="/dashboard" className="mt-8 inline-flex items-center gap-2 text-emerald-500 font-bold hover:gap-3 transition-all">
-                    Open Full Dashboard
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
-                  </Link>
+                  <div className="flex flex-col sm:flex-row items-center gap-4 mt-8">
+                    <Link href="/dashboard" className="inline-flex items-center gap-2 text-emerald-500 font-bold hover:gap-3 transition-all">
+                      Open Full Dashboard
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+                    </Link>
+                    <button
+                      onClick={() => {
+                        const reportId = Math.random().toString(36).substring(7);
+                        const shareUrl = `${window.location.origin}/share/${reportId}`;
+                        navigator.clipboard.writeText(shareUrl);
+                        alert(`Shareable link copied to clipboard: ${shareUrl}\n(Note: In a real system, this ID would be stored in the database with an expiry)`);
+                      }}
+                      className="inline-flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium transition-colors"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>
+                      Share Report
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>

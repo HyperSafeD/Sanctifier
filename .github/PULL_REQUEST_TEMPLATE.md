@@ -1,28 +1,33 @@
-## Description
-Please include a summary of the change and which issue is fixed. Please also include relevant motivation and context. List any dependencies that are required for this change.
+## Summary
 
-Fixes # (issue)
+Describe the change, the motivation behind it, and any important implementation details.
+
+Fixes #
 
 ## Type of change
-Please delete options that are not relevant.
 
-- [ ] Bug fix (non-breaking change which fixes an issue)
-- [ ] New feature (non-breaking change which adds functionality)
-- [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
-- [ ] This change requires a documentation update
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Breaking change
+- [ ] Documentation update
+- [ ] Maintenance or refactor
 
-## How Has This Been Tested?
-Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce. Please also list any relevant details for your test configuration.
+## Testing
 
-- [ ] Test A
-- [ ] Test B
+List the commands you ran and the scope of validation.
 
-## Checklist:
-- [ ] My code follows the style guidelines of this project
-- [ ] I have performed a self-review of my own code
-- [ ] I have commented my code, particularly in hard-to-understand areas
-- [ ] I have made corresponding changes to the documentation
-- [ ] My changes generate no new warnings
-- [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
-- [ ] Any dependent changes have been merged and published in downstream modules
+```text
+cargo fmt --all --check
+cargo clippy --workspace --all-targets --all-features -- -D warnings
+cargo test -p sanctifier-core --all-features
+cargo test -p sanctifier-cli
+cd frontend && npm test
+```
+
+## Checklist
+
+- [ ] I ran the relevant tests locally, or explained why they were not needed.
+- [ ] I updated documentation for any user-facing behavior changes.
+- [ ] I added or updated tests for the change when appropriate.
+- [ ] I added a changelog or release-notes entry when needed, or confirmed none is required.
+- [ ] I verified this branch is up to date with `main` and merge conflicts are resolved.
