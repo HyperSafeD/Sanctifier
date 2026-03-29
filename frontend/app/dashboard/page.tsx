@@ -1,10 +1,17 @@
 "use client";
 
-import { useState, useCallback, useTransition, useMemo } from "react";
+import { useState, useCallback, useTransition } from "react";
 import dynamic from "next/dynamic";
-import type { CallGraphNode, CallGraphEdge, Finding, Severity } from "../types";
+import type {
+  AnalysisReport,
+  CallGraphNode,
+  CallGraphEdge,
+  Finding,
+  Severity,
+} from "../types";
 import { transformReport, extractCallGraph, normalizeReport } from "../lib/transform";
 import { exportToPdf } from "../lib/export-pdf";
+import { exportToCsv } from "../lib/export-csv";
 import { SeverityFilter } from "../components/SeverityFilter";
 import { FindingsList } from "../components/FindingsList";
 import { SummaryChart } from "../components/SummaryChart";
@@ -49,6 +56,7 @@ function extractErrorMessage(payload: unknown, fallback: string): string {
 
 export default function DashboardPage() {
   const [findings, setFindings] = useState<Finding[]>([]);
+  const [report, setReport] = useState<AnalysisReport | null>(null);
   const [callGraphNodes, setCallGraphNodes] = useState<CallGraphNode[]>([]);
   const [callGraphEdges, setCallGraphEdges] = useState<CallGraphEdge[]>([]);
   const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
@@ -65,6 +73,7 @@ export default function DashboardPage() {
       const transformed = transformReport(report);
       const graph = extractCallGraph(report);
 
+      setReport(report);
       setFindings(transformed);
       setCallGraphNodes(graph.nodes);
       setCallGraphEdges(graph.edges);
@@ -78,6 +87,7 @@ export default function DashboardPage() {
       applyReport(JSON.parse(text || SAMPLE_JSON));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Invalid JSON");
+      setReport(null);
       setFindings([]);
       setCallGraphNodes([]);
       setCallGraphEdges([]);
@@ -162,6 +172,9 @@ export default function DashboardPage() {
           <p className="text-sm text-zinc-600 dark:text-zinc-400 theme-high-contrast:text-white mb-4">
             Paste JSON from <code className="bg-zinc-100 dark:bg-zinc-800 theme-high-contrast:bg-zinc-900 px-1 rounded">sanctifier analyze --format json</code>, upload an existing report, or analyze a Rust contract source file.
           </p>
+          <div className="mb-4 rounded-2xl border border-emerald-200/70 bg-emerald-50/80 px-4 py-3 text-sm text-emerald-900 shadow-sm dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-100">
+            Audit exports include a compliance-style PDF with Sanctity Score and methodology, plus a CSV findings register for remediation and governance workflows.
+          </div>
           <div className="flex flex-wrap gap-2 sm:gap-4">
             <label className="flex-1 sm:flex-none text-center cursor-pointer rounded-lg border border-zinc-300 dark:border-zinc-600 theme-high-contrast:border-white px-4 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 theme-high-contrast:hover:bg-zinc-900 focus-within:outline-none focus-within:ring-2 focus-within:ring-zinc-400 focus-within:ring-offset-2">
               Upload JSON
@@ -193,12 +206,21 @@ export default function DashboardPage() {
             </button>
             <button
               onClick={() => {
-                exportToPdf(findings);
+                exportToPdf(findings, report);
               }}
               disabled={!hasData}
               className="flex-1 sm:flex-none rounded-lg border border-zinc-300 dark:border-zinc-600 theme-high-contrast:border-white px-4 py-2 text-sm disabled:opacity-50 hover:bg-zinc-100 dark:hover:bg-zinc-800 theme-high-contrast:hover:bg-zinc-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:focus-visible:ring-0"
             >
-              Export PDF
+              Export Audit PDF
+            </button>
+            <button
+              onClick={() => {
+                exportToCsv(findings, report);
+              }}
+              disabled={!hasData}
+              className="flex-1 sm:flex-none rounded-lg border border-zinc-300 dark:border-zinc-600 theme-high-contrast:border-white px-4 py-2 text-sm disabled:opacity-50 hover:bg-zinc-100 dark:hover:bg-zinc-800 theme-high-contrast:hover:bg-zinc-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:focus-visible:ring-0"
+            >
+              Export CSV
             </button>
           </div>
           {uploadStatus && (

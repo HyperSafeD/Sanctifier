@@ -1,136 +1,163 @@
-import type { Finding, Severity } from "../types";
-
-const SEVERITY_WEIGHTS: Record<string, number> = {
-  critical: 15,
-  high: 10,
-  medium: 5,
-  low: 2,
-};
-
-function calculateScore(findings: Finding[]): number {
-  let score = 100;
-  for (const f of findings) {
-    score -= SEVERITY_WEIGHTS[f.severity] ?? 0;
-  }
-  return Math.max(0, Math.min(100, score));
-}
+import type { AnalysisReport, Finding } from "../types";
+import {
+  buildAuditExportModel,
+  getSeverityColor,
+  orderedSeverities,
+} from "./report-export";
 
 export async function exportToPdf(
   findings: Finding[],
-  title = "Sanctifier Security Report"
+  report: AnalysisReport | null,
+  title = "Sanctifier Compliance Audit Report"
 ): Promise<void> {
   try {
     const { jsPDF } = await import("jspdf");
     const doc = new jsPDF();
+    const model = buildAuditExportModel(findings, report, title);
+    const accent = getSeverityColor(model.score);
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     let pageNum = 1;
 
     const addFooter = () => {
       doc.setFontSize(8);
       doc.setFont("helvetica", "normal");
       doc.setTextColor(150);
-      doc.text(
-        `Sanctifier Security Report - Page ${pageNum}`,
-        105,
-        290,
-        { align: "center" }
-      );
-      doc.setTextColor(0);
+      doc.text(`${model.title} - Page ${pageNum}`, pageWidth / 2, pageHeight - 8, {
+        align: "center",
+      });
+      doc.setTextColor(24, 24, 27);
     };
 
-    // Header
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, pageWidth, 42, "F");
+
+    doc.setTextColor(255, 255, 255);
     doc.setFontSize(20);
     doc.setFont("helvetica", "bold");
-    doc.text(title, 14, 22);
+    doc.text(model.title, 14, 18);
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 30);
-    doc.text(`Total findings: ${findings.length}`, 14, 36);
+    doc.text(`Generated: ${model.generatedAt}`, 14, 26);
+    doc.text("Prepared for compliance and audit review", 14, 32);
 
-    // Sanctity Score
-    const score = calculateScore(findings);
-    doc.setFontSize(14);
+    doc.setFillColor(accent);
+    doc.roundedRect(pageWidth - 58, 10, 42, 20, 4, 4, "F");
+    doc.setFontSize(18);
     doc.setFont("helvetica", "bold");
-    doc.text(`Sanctity Score: ${score}/100`, 14, 48);
+    doc.text(String(model.score), pageWidth - 37, 20, { align: "center" });
+    doc.setFontSize(8);
+    doc.text(`Grade ${model.grade}`, pageWidth - 37, 26, { align: "center" });
 
-    // Severity summary table
-    const severities: Severity[] = ["critical", "high", "medium", "low"];
-    const counts: Record<string, number> = { critical: 0, high: 0, medium: 0, low: 0 };
-    findings.forEach((f) => { counts[f.severity]++; });
+    doc.setTextColor(24, 24, 27);
+    let y = 54;
 
-    let y = 58;
     doc.setFontSize(12);
     doc.setFont("helvetica", "bold");
-    doc.text("Summary", 14, y);
+    doc.text("Executive Summary", 14, y);
     y += 8;
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    severities.forEach((sev) => {
-      doc.text(`${sev.charAt(0).toUpperCase() + sev.slice(1)}: ${counts[sev]}`, 14, y);
-      y += 6;
+    const summary = doc.splitTextToSize(
+      `${model.narrative}. Sanctifier identified ${model.totalFindings} total findings in this report. ` +
+        "Use the severity summary and detailed findings below to support remediation planning and audit evidence collection.",
+      182
+    );
+    doc.text(summary, 14, y);
+    y += summary.length * 5 + 6;
+
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Severity Summary", 14, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    orderedSeverities().forEach((severity) => {
+      const label = severity.charAt(0).toUpperCase() + severity.slice(1);
+      doc.text(`${label}: ${model.severityCounts[severity]}`, 14, y);
+      y += 5;
     });
     y += 6;
 
-    // Separator line
     doc.setDrawColor(200);
-    doc.line(14, y, 196, y);
+    doc.line(14, y, pageWidth - 14, y);
     y += 10;
 
-    // Findings grouped by severity
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "bold");
+    doc.text("Methodology", 14, y);
+    y += 8;
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    model.methodology.forEach((step) => {
+      const lines = doc.splitTextToSize(`- ${step}`, 182);
+      doc.text(lines, 14, y);
+      y += lines.length * 5 + 2;
+    });
+    y += 4;
+
     addFooter();
 
-    severities.forEach((sev) => {
-      const sevFindings = findings.filter((f) => f.severity === sev);
-      if (sevFindings.length === 0) return;
+    orderedSeverities().forEach((severity) => {
+      const groupedFindings = model.findingsBySeverity[severity];
+      if (groupedFindings.length === 0) {
+        return;
+      }
 
       if (y > 250) {
         doc.addPage();
-        pageNum++;
+        pageNum += 1;
         y = 20;
         addFooter();
       }
 
-      // Section header
+      const label = severity.charAt(0).toUpperCase() + severity.slice(1);
       doc.setFontSize(13);
       doc.setFont("helvetica", "bold");
-      doc.text(
-        `${sev.charAt(0).toUpperCase() + sev.slice(1)} (${sevFindings.length})`,
-        14,
-        y
-      );
+      doc.text(`${label} Findings (${groupedFindings.length})`, 14, y);
       y += 8;
 
-      sevFindings.forEach((f, i) => {
+      groupedFindings.forEach((finding, index) => {
         if (y > 260) {
           doc.addPage();
-          pageNum++;
+          pageNum += 1;
           y = 20;
           addFooter();
         }
 
         doc.setFontSize(11);
         doc.setFont("helvetica", "bold");
-        doc.text(`${i + 1}. ${f.title}`, 14, y);
+        doc.text(`${index + 1}. ${finding.title}`, 14, y);
         y += 6;
 
         doc.setFont("helvetica", "normal");
         doc.setFontSize(9);
-        doc.text(`Category: ${f.category}`, 20, y);
+        doc.text(`Category: ${finding.category}`, 20, y);
         y += 5;
-        doc.text(`Location: ${f.location}`, 20, y);
+        doc.text(`Code: ${finding.code}`, 20, y);
+        y += 5;
+        doc.text(`Location: ${finding.location}`, 20, y);
         y += 5;
 
-        if (f.snippet) {
-          const snippetLines = doc.splitTextToSize(`Code: ${f.snippet}`, 170);
+        if (finding.snippet) {
+          const snippetLines = doc.splitTextToSize(`Code: ${finding.snippet}`, 170);
           doc.text(snippetLines, 20, y);
           y += snippetLines.length * 4;
         }
-        if (f.suggestion) {
-          const suggLines = doc.splitTextToSize(`Suggestion: ${f.suggestion}`, 170);
-          doc.text(suggLines, 20, y);
-          y += suggLines.length * 4;
+
+        if (finding.suggestion) {
+          const suggestionLines = doc.splitTextToSize(
+            `Suggestion: ${finding.suggestion}`,
+            170
+          );
+          doc.text(suggestionLines, 20, y);
+          y += suggestionLines.length * 4;
         }
+
         y += 6;
       });
 
