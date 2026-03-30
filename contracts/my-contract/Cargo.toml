@@ -10,8 +10,8 @@ crate-type = ["cdylib", "rlib"]
 soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [dev-dependencies]
-bolero = "0.10"
-bolero-generator = "0.10"
+bolero = "0.13"
+bolero-generator = "0.13"
 
 [profile.release]
 opt-level = "z"
