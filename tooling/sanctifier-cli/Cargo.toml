@@ -17,30 +17,30 @@ default = []
 smt = ["sanctifier-core/smt"]
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 anyhow = "1.0"
 sanctifier-core = { version = "0.1.0", path = "../sanctifier-core", default-features = false }
-toml = "0.8"
-tokio = { version = "1.0", features = ["full"] }
-colored = "2.0"
+toml = "1.1"
+tokio = { version = "1.52", features = ["full"] }
+colored = "3.1"
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 regex = "1.10"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
-rayon = "1.10"
-sha2 = "0.10"
+rayon = "1.12"
+sha2 = "0.11"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "json"] }
 csv = "1.3"
-notify = "6.1.1"
-notify-debouncer-mini = "0.4.1"
+notify = "8.2.0"
+notify-debouncer-mini = "0.7.0"
 
 [dev-dependencies]
-assert_cmd = "2.0"
+assert_cmd = "2.2"
 mockito = "1.6"
 predicates = "3.1"
 tempfile = "3.8"
-jsonschema = "0.18"
+jsonschema = "0.46"
 
 [build-dependencies]
 regex = "1.10"
