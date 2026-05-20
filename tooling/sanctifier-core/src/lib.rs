@@ -91,7 +91,6 @@ pub use smt::SmtInvariantIssue;
 
 use crate::rules::arithmetic_overflow::ArithVisitor;
 use crate::rules::truncation_bounds::TruncationBoundsVisitor;
-use crate::upgrade_analysis::{is_init_fn, is_upgrade_or_admin_fn};
 
 const DEFAULT_STRICT_THRESHOLD: f64 = 0.9;
 fn with_panic_guard<F, R>(f: F) -> R
