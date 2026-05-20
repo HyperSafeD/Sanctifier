@@ -66,5 +66,5 @@ export function getErrorMessage(
         return message(...Object.values(params || {}));
     }
 
-    return message || "An error occurred.";
+    return typeof message === "string" ? message : "An error occurred.";
 }

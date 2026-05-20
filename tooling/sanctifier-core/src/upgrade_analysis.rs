@@ -11,7 +11,6 @@ fn has_contracttype(attrs: &[syn::Attribute]) -> bool {
 
 /// Check if a function name indicates an upgrade or admin operation.
 pub fn is_upgrade_or_admin_fn(name: &str) -> bool {
-pub(crate) fn is_upgrade_or_admin_fn(name: &str) -> bool {
     let lower = name.to_lowercase();
     matches!(
         lower.as_str(),
@@ -27,7 +26,6 @@ pub(crate) fn is_upgrade_or_admin_fn(name: &str) -> bool {
 
 /// Check if a function name indicates an initialization operation.
 pub fn is_init_fn(name: &str) -> bool {
-pub(crate) fn is_init_fn(name: &str) -> bool {
     let lower = name.to_lowercase();
     lower == "initialize" || lower == "init" || lower == "initialise"
 }

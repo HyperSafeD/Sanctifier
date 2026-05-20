@@ -42,6 +42,10 @@ predicates = "3.1"
 tempfile = "3.8"
 jsonschema = "0.18"
 
+[build-dependencies]
+regex = "1.10"
+vergen = { version = "8.3", features = ["build", "cargo", "git", "gitcl"] }
+
 [lib]
 name = "sanctifier_cli"
 path = "src/lib.rs"

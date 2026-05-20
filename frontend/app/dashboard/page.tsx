@@ -48,8 +48,14 @@ export default function DashboardPage() {
 
   const currentReport = selectedContract?.report;
 
-  const { findings, callGraphNodes, callGraphEdges } = useMemo(() => {
-    if (!currentReport) return { findings: [], callGraphNodes: [], callGraphEdges: [] };
+  const { findings, nodes: callGraphNodes, edges: callGraphEdges } = useMemo(() => {
+    if (!currentReport) {
+      return {
+        findings: [] as ReturnType<typeof transformReport>,
+        nodes: [] as ReturnType<typeof extractCallGraph>["nodes"],
+        edges: [] as ReturnType<typeof extractCallGraph>["edges"],
+      };
+    }
     const report = normalizeReport(currentReport);
     return {
       findings: transformReport(report),

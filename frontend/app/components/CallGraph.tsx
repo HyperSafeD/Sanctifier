@@ -36,12 +36,10 @@ interface LayoutNode extends CallGraphNode {
   y: number;
 }
 
-function layoutNodes(nodes: CallGraphNode[]): LayoutNode[] {
+function layoutNodes(nodes: CallGraphNode[] = []): LayoutNode[] {
   if (!nodes || !Array.isArray(nodes)) {
     return [];
   }
-function layoutNodes(nodes: CallGraphNode[] = []): LayoutNode[] {
-  if (!nodes) return [];
   const functions = nodes.filter((n) => n.type === "function");
   const storages = nodes.filter((n) => n.type === "storage");
   const externals = nodes.filter((n) => n.type === "external");
