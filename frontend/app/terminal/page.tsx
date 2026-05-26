@@ -1,12 +1,31 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
+import { Copy, Download } from "lucide-react";
 import { AnalysisTerminal } from "../components/AnalysisTerminal";
+
+export const serializeLogs = (logs: string[]) => logs.join("\n");
 
 export default function TerminalPage() {
   const [logs, setLogs] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const hasLogs = logs.length > 0;
+
+  useEffect(() => {
+    if (!toastMessage) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setToastMessage(null);
+    }, 2500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [toastMessage]);
+
+  const showToast = useCallback((message: string) => {
+    setToastMessage(message);
+  }, []);
 
   const startAnalysis = useCallback(() => {
     setLogs([]);
@@ -41,6 +60,39 @@ export default function TerminalPage() {
     setConnectionError(null);
     startAnalysis();
   }, [startAnalysis]);
+
+  const handleDownloadLogs = useCallback(() => {
+    if (!hasLogs) {
+      showToast("No logs to download yet.");
+      return;
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const blob = new Blob([serializeLogs(logs)], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = `sanctifier-analysis-${timestamp}.log`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [hasLogs, logs, showToast]);
+
+  const handleCopyLogs = useCallback(async () => {
+    if (!hasLogs) {
+      showToast("No logs to copy yet.");
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(serializeLogs(logs));
+      showToast("Logs copied to clipboard.");
+    } catch {
+      showToast("Could not copy logs to clipboard.");
+    }
+  }, [hasLogs, logs, showToast]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100">
@@ -91,6 +143,16 @@ export default function TerminalPage() {
           </div>
         )}
 
+        {toastMessage && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="fixed bottom-6 right-6 z-50 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-4 py-3 text-sm font-medium text-zinc-800 dark:text-zinc-100 shadow-xl"
+          >
+            {toastMessage}
+          </div>
+        )}
+
         <section className="relative">
           <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-blue-500/20 rounded-2xl blur opacity-25 group-hover:opacity-100 transition duration-1000 group-hover:duration-200"></div>
           <AnalysisTerminal logs={logs} isAnalyzing={isAnalyzing} />
@@ -117,6 +179,26 @@ export default function TerminalPage() {
             </div>
             <h3 className="font-bold mb-2">Export Logs</h3>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">Keep a record of your analysis sessions for compliance and auditing purposes.</p>
+            <div className="mt-5 flex flex-col sm:flex-row gap-2">
+              <button
+                type="button"
+                onClick={handleDownloadLogs}
+                disabled={!hasLogs}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-amber-200 dark:border-amber-700/70 bg-amber-50 dark:bg-amber-500/10 px-3 py-2 text-sm font-semibold text-amber-700 dark:text-amber-300 transition-colors hover:bg-amber-100 dark:hover:bg-amber-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" aria-hidden="true" />
+                Download .log
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyLogs}
+                disabled={!hasLogs}
+                className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-950 px-3 py-2 text-sm font-semibold text-zinc-700 dark:text-zinc-200 transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Copy className="h-4 w-4" aria-hidden="true" />
+                Copy
+              </button>
+            </div>
           </div>
         </section>
       </main>
