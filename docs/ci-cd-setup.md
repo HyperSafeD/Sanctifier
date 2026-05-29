@@ -9,6 +9,7 @@ The automation includes:
 - **GitHub Actions**: Automated deployment on push and schedule
 - **Continuous Validation**: Periodic health checks and metrics collection
 - **Artifact Management**: Deployment manifests and logs
+- **Frontend E2E (Playwright)**: Browser-level regression checks
 
 ## Prerequisites
 
@@ -172,6 +173,28 @@ The workflow file: `.github/workflows/soroban-deploy.yml`
 2. `continuous-validation`: Run health checks
 3. `notification`: Generate reports
 
+### 4.4 Artifact retention strategy (why + where to change)
+
+Sanctifier uploads a few different artifact types and sets retention explicitly to keep CI predictable and costs bounded:
+
+- **Deployment artifacts** (`.github/workflows/soroban-deploy.yml`): `retention-days: 30`
+- **CI artifacts** (coverage, WASM pkg, Playwright reports, JUnit XML, etc.): `retention-days: 7`
+
+To change this, update the relevant `actions/upload-artifact@v4` steps and adjust the `retention-days` value(s).
+
+### 4.5 Frontend E2E in CI (Playwright)
+
+The frontend has Playwright E2E tests under `frontend/tests/e2e/` and a CI job in `.github/workflows/ci.yml`.
+
+Locally:
+
+```bash
+cd frontend
+npm ci
+npx playwright install chromium
+npm run test:e2e
+```
+
 ### 4.2 Workflow Permissions
 
 Verify workflow permissions in your repository:
@@ -331,6 +354,15 @@ Enable via GitHub Settings:
 
 ## Troubleshooting
 
+### Issue: "Invalid SOROBAN_SECRET_KEY format"
+
+**Solution:**
+Secret keys must start with 'S' and be exactly 56 characters long.
+```bash
+# Correct format example
+export SOROBAN_SECRET_KEY=SBXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+```
+
 ### Issue: "Secret SOROBAN_SECRET_KEY not available"
 
 **Solution:**
@@ -345,14 +377,14 @@ gh secret set SOROBAN_SECRET_KEY --body "SBXXXXXXX..."
 gh workflow run soroban-deploy.yml
 ```
 
-### Issue: "Workflow failed: Soroban binary not found"
+### Issue: "Workflow failed: Soroban binary not found" (or other tool missing)
 
 **Solution:**
-The workflow automatically installs Soroban. If it fails:
-
-1. Check network connectivity in workflow logs
-2. Try manual dispatch with retry
-3. File an issue if persists
+The scripts now validate that all required tools (`cargo`, `soroban`, `jq`, `curl`) are installed.
+1. If running locally, install the missing tool.
+2. In GitHub Actions, the workflow automatically installs Soroban. If it fails:
+   - Check network connectivity in workflow logs
+   - Try manual dispatch with retry
 
 ### Issue: "Deployment successful but validation failed"
 
@@ -371,6 +403,15 @@ soroban network info --network testnet
 ```
 
 3. Wait for contract to finalize on network
+
+### Issue: "Invalid Contract ID format"
+
+**Solution:**
+Contract IDs must start with 'C' and be exactly 56 characters long.
+```bash
+# Correct format example
+./scripts/validate-runtime-guards.sh --contract-id CAXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+```
 
 ### Issue: "Cannot access secrets in local run"
 

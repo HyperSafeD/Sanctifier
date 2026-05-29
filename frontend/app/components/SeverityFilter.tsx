@@ -32,6 +32,7 @@ export function SeverityFilter({ selected, onChange }: SeverityFilterProps) {
           key={s}
           onClick={() => onChange(s)}
           aria-pressed={selected === s}
+          aria-label={s}
           className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 ${
             selected === s
               ? s === "all"

@@ -23,3 +23,8 @@ The web interface for interacting with the Sanctifier suite.
 - Upload WASM files for analysis.
 - View real-time security reports.
 - Dashboard for tracked contracts.
+
+## Behavior Notes
+- [Report export (PDF/CSV/JSON)](docs/report-export.md)
+- [Offline and dev mode](docs/offline-dev-mode.md)
+- [Self-hosting guide](docs/self-hosting.md)

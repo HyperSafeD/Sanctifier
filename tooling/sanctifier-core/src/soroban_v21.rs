@@ -49,10 +49,7 @@ pub const EXTERNAL_CALL_METHODS: &[&str] = &[
 ];
 
 /// New Soroban v21 type names that the parser should recognise.
-pub const V21_TYPE_NAMES: &[&str] = &[
-    "MuxedAddress",
-    "Prng",
-];
+pub const V21_TYPE_NAMES: &[&str] = &["MuxedAddress", "Prng"];
 
 /// Returns `true` if `method` is a storage-mutating operation (including v21).
 pub fn is_storage_mutation(method: &str) -> bool {

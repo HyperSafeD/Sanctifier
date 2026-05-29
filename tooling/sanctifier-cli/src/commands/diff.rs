@@ -91,17 +91,26 @@ fn extract_fingerprints_from_json(report: &Value) -> HashSet<String> {
             let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
             // Use file + function from location (strip line number)
             let stable_loc = strip_line_number(loc);
-            fps.insert(fingerprint_finding("arithmetic_overflow", &format!("{}::{}", stable_loc, op)));
+            fps.insert(fingerprint_finding(
+                "arithmetic_overflow",
+                &format!("{}::{}", stable_loc, op),
+            ));
         }
     }
 
     // panic_issues
     if let Some(arr) = report.get("panic_issues").and_then(|v| v.as_array()) {
         for item in arr {
-            let issue_type = item.get("issue_type").and_then(|v| v.as_str()).unwrap_or("");
+            let issue_type = item
+                .get("issue_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
             let stable_loc = strip_line_number(loc);
-            fps.insert(fingerprint_finding("panic_usage", &format!("{}::{}", stable_loc, issue_type)));
+            fps.insert(fingerprint_finding(
+                "panic_usage",
+                &format!("{}::{}", stable_loc, issue_type),
+            ));
         }
     }
 
@@ -111,7 +120,10 @@ fn extract_fingerprints_from_json(report: &Value) -> HashSet<String> {
             let key = item.get("key_value").and_then(|v| v.as_str()).unwrap_or("");
             let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
             let stable_loc = strip_line_number(loc);
-            fps.insert(fingerprint_finding("storage_collision", &format!("{}::{}", stable_loc, key)));
+            fps.insert(fingerprint_finding(
+                "storage_collision",
+                &format!("{}::{}", stable_loc, key),
+            ));
         }
     }
 
@@ -124,9 +136,15 @@ fn extract_fingerprints_from_json(report: &Value) -> HashSet<String> {
     }
 
     // ledger_size_warnings
-    if let Some(arr) = report.get("ledger_size_warnings").and_then(|v| v.as_array()) {
+    if let Some(arr) = report
+        .get("ledger_size_warnings")
+        .and_then(|v| v.as_array())
+    {
         for item in arr {
-            let name = item.get("struct_name").and_then(|v| v.as_str()).unwrap_or("");
+            let name = item
+                .get("struct_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             fps.insert(fingerprint_finding("ledger_size_risk", name));
         }
     }
@@ -134,21 +152,36 @@ fn extract_fingerprints_from_json(report: &Value) -> HashSet<String> {
     // event_issues
     if let Some(arr) = report.get("event_issues").and_then(|v| v.as_array()) {
         for item in arr {
-            let name = item.get("event_name").and_then(|v| v.as_str()).unwrap_or("");
+            let name = item
+                .get("event_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
             let stable_loc = strip_line_number(loc);
-            fps.insert(fingerprint_finding("event_issue", &format!("{}::{}", stable_loc, name)));
+            fps.insert(fingerprint_finding(
+                "event_issue",
+                &format!("{}::{}", stable_loc, name),
+            ));
         }
     }
 
     // unhandled_results
     if let Some(arr) = report.get("unhandled_results").and_then(|v| v.as_array()) {
         for item in arr {
-            let fname = item.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
-            let call = item.get("call_expression").and_then(|v| v.as_str()).unwrap_or("");
+            let fname = item
+                .get("function_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let call = item
+                .get("call_expression")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
             let stable_loc = strip_line_number(loc);
-            fps.insert(fingerprint_finding("unhandled_result", &format!("{}::{}::{}", stable_loc, fname, call)));
+            fps.insert(fingerprint_finding(
+                "unhandled_result",
+                &format!("{}::{}::{}", stable_loc, fname, call),
+            ));
         }
     }
 
@@ -160,7 +193,10 @@ fn extract_fingerprints_from_json(report: &Value) -> HashSet<String> {
                     let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
                     let msg = item.get("message").and_then(|v| v.as_str()).unwrap_or("");
                     let stable_loc = strip_line_number(loc);
-                    fps.insert(fingerprint_finding("upgrade_risk", &format!("{}::{}", stable_loc, msg)));
+                    fps.insert(fingerprint_finding(
+                        "upgrade_risk",
+                        &format!("{}::{}", stable_loc, msg),
+                    ));
                 }
             }
         }
@@ -169,27 +205,48 @@ fn extract_fingerprints_from_json(report: &Value) -> HashSet<String> {
     // smt_issues
     if let Some(arr) = report.get("smt_issues").and_then(|v| v.as_array()) {
         for item in arr {
-            let fname = item.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
-            let desc = item.get("description").and_then(|v| v.as_str()).unwrap_or("");
-            fps.insert(fingerprint_finding("smt_invariant", &format!("{}::{}", fname, desc)));
+            let fname = item
+                .get("function_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            let desc = item
+                .get("description")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            fps.insert(fingerprint_finding(
+                "smt_invariant",
+                &format!("{}::{}", fname, desc),
+            ));
         }
     }
 
     // sep41_issues
     if let Some(arr) = report.get("sep41_issues").and_then(|v| v.as_array()) {
         for item in arr {
-            let fname = item.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
+            let fname = item
+                .get("function_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let msg = item.get("message").and_then(|v| v.as_str()).unwrap_or("");
-            fps.insert(fingerprint_finding("sep41_deviation", &format!("{}::{}", fname, msg)));
+            fps.insert(fingerprint_finding(
+                "sep41_deviation",
+                &format!("{}::{}", fname, msg),
+            ));
         }
     }
 
     // vulnerability_db_matches
-    if let Some(arr) = report.get("vulnerability_db_matches").and_then(|v| v.as_array()) {
+    if let Some(arr) = report
+        .get("vulnerability_db_matches")
+        .and_then(|v| v.as_array())
+    {
         for item in arr {
             let vid = item.get("vuln_id").and_then(|v| v.as_str()).unwrap_or("");
             let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("");
-            fps.insert(fingerprint_finding("vuln_db", &format!("{}::{}", file, vid)));
+            fps.insert(fingerprint_finding(
+                "vuln_db",
+                &format!("{}::{}", file, vid),
+            ));
         }
     }
 
@@ -198,7 +255,10 @@ fn extract_fingerprints_from_json(report: &Value) -> HashSet<String> {
         for item in arr {
             let name = item.get("rule_name").and_then(|v| v.as_str()).unwrap_or("");
             let snippet = item.get("snippet").and_then(|v| v.as_str()).unwrap_or("");
-            fps.insert(fingerprint_finding("custom_rule", &format!("{}::{}", name, snippet)));
+            fps.insert(fingerprint_finding(
+                "custom_rule",
+                &format!("{}::{}", name, snippet),
+            ));
         }
     }
 
@@ -229,13 +289,21 @@ fn strip_line_number(loc: &str) -> &str {
 fn collect_new_findings(current: &Value, baseline_fps: &HashSet<String>) -> Value {
     let mut new_report = serde_json::Map::new();
 
-    fn filter_array(current: &Value, key: &str, fp_fn: impl Fn(&Value) -> Option<String>, baseline: &HashSet<String>) -> Vec<Value> {
-        current.get(key)
+    fn filter_array(
+        current: &Value,
+        key: &str,
+        fp_fn: impl Fn(&Value) -> Option<String>,
+        baseline: &HashSet<String>,
+    ) -> Vec<Value> {
+        current
+            .get(key)
             .and_then(|v| v.as_array())
             .map(|arr| {
                 arr.iter()
                     .filter(|item| {
-                        fp_fn(item).map(|fp| !baseline.contains(&fp)).unwrap_or(true)
+                        fp_fn(item)
+                            .map(|fp| !baseline.contains(&fp))
+                            .unwrap_or(true)
                     })
                     .cloned()
                     .collect()
@@ -243,63 +311,170 @@ fn collect_new_findings(current: &Value, baseline_fps: &HashSet<String>) -> Valu
             .unwrap_or_default()
     }
 
-    new_report.insert("auth_gaps".into(), serde_json::json!(filter_array(current, "auth_gaps", |item| {
-        item.get("function_name").and_then(|v| v.as_str()).map(|n| fingerprint_finding("auth_gap", n))
-    }, baseline_fps)));
+    new_report.insert(
+        "auth_gaps".into(),
+        serde_json::json!(filter_array(
+            current,
+            "auth_gaps",
+            |item| {
+                item.get("function_name")
+                    .and_then(|v| v.as_str())
+                    .map(|n| fingerprint_finding("auth_gap", n))
+            },
+            baseline_fps
+        )),
+    );
 
-    new_report.insert("arithmetic_issues".into(), serde_json::json!(filter_array(current, "arithmetic_issues", |item| {
-        let op = item.get("operation").and_then(|v| v.as_str()).unwrap_or("");
-        let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
-        Some(fingerprint_finding("arithmetic_overflow", &format!("{}::{}", strip_line_number(loc), op)))
-    }, baseline_fps)));
+    new_report.insert(
+        "arithmetic_issues".into(),
+        serde_json::json!(filter_array(
+            current,
+            "arithmetic_issues",
+            |item| {
+                let op = item.get("operation").and_then(|v| v.as_str()).unwrap_or("");
+                let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
+                Some(fingerprint_finding(
+                    "arithmetic_overflow",
+                    &format!("{}::{}", strip_line_number(loc), op),
+                ))
+            },
+            baseline_fps
+        )),
+    );
 
-    new_report.insert("panic_issues".into(), serde_json::json!(filter_array(current, "panic_issues", |item| {
-        let it = item.get("issue_type").and_then(|v| v.as_str()).unwrap_or("");
-        let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
-        Some(fingerprint_finding("panic_usage", &format!("{}::{}", strip_line_number(loc), it)))
-    }, baseline_fps)));
+    new_report.insert(
+        "panic_issues".into(),
+        serde_json::json!(filter_array(
+            current,
+            "panic_issues",
+            |item| {
+                let it = item
+                    .get("issue_type")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
+                Some(fingerprint_finding(
+                    "panic_usage",
+                    &format!("{}::{}", strip_line_number(loc), it),
+                ))
+            },
+            baseline_fps
+        )),
+    );
 
-    new_report.insert("storage_collisions".into(), serde_json::json!(filter_array(current, "storage_collisions", |item| {
-        let key = item.get("key_value").and_then(|v| v.as_str()).unwrap_or("");
-        let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
-        Some(fingerprint_finding("storage_collision", &format!("{}::{}", strip_line_number(loc), key)))
-    }, baseline_fps)));
+    new_report.insert(
+        "storage_collisions".into(),
+        serde_json::json!(filter_array(
+            current,
+            "storage_collisions",
+            |item| {
+                let key = item.get("key_value").and_then(|v| v.as_str()).unwrap_or("");
+                let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
+                Some(fingerprint_finding(
+                    "storage_collision",
+                    &format!("{}::{}", strip_line_number(loc), key),
+                ))
+            },
+            baseline_fps
+        )),
+    );
 
-    new_report.insert("unsafe_patterns".into(), serde_json::json!(filter_array(current, "unsafe_patterns", |item| {
-        item.get("snippet").and_then(|v| v.as_str()).map(|s| fingerprint_finding("unsafe_pattern", s))
-    }, baseline_fps)));
+    new_report.insert(
+        "unsafe_patterns".into(),
+        serde_json::json!(filter_array(
+            current,
+            "unsafe_patterns",
+            |item| {
+                item.get("snippet")
+                    .and_then(|v| v.as_str())
+                    .map(|s| fingerprint_finding("unsafe_pattern", s))
+            },
+            baseline_fps
+        )),
+    );
 
-    new_report.insert("ledger_size_warnings".into(), serde_json::json!(filter_array(current, "ledger_size_warnings", |item| {
-        item.get("struct_name").and_then(|v| v.as_str()).map(|n| fingerprint_finding("ledger_size_risk", n))
-    }, baseline_fps)));
+    new_report.insert(
+        "ledger_size_warnings".into(),
+        serde_json::json!(filter_array(
+            current,
+            "ledger_size_warnings",
+            |item| {
+                item.get("struct_name")
+                    .and_then(|v| v.as_str())
+                    .map(|n| fingerprint_finding("ledger_size_risk", n))
+            },
+            baseline_fps
+        )),
+    );
 
-    new_report.insert("event_issues".into(), serde_json::json!(filter_array(current, "event_issues", |item| {
-        let name = item.get("event_name").and_then(|v| v.as_str()).unwrap_or("");
-        let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
-        Some(fingerprint_finding("event_issue", &format!("{}::{}", strip_line_number(loc), name)))
-    }, baseline_fps)));
+    new_report.insert(
+        "event_issues".into(),
+        serde_json::json!(filter_array(
+            current,
+            "event_issues",
+            |item| {
+                let name = item
+                    .get("event_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
+                Some(fingerprint_finding(
+                    "event_issue",
+                    &format!("{}::{}", strip_line_number(loc), name),
+                ))
+            },
+            baseline_fps
+        )),
+    );
 
-    new_report.insert("unhandled_results".into(), serde_json::json!(filter_array(current, "unhandled_results", |item| {
-        let fname = item.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
-        let call = item.get("call_expression").and_then(|v| v.as_str()).unwrap_or("");
-        let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
-        Some(fingerprint_finding("unhandled_result", &format!("{}::{}::{}", strip_line_number(loc), fname, call)))
-    }, baseline_fps)));
+    new_report.insert(
+        "unhandled_results".into(),
+        serde_json::json!(filter_array(
+            current,
+            "unhandled_results",
+            |item| {
+                let fname = item
+                    .get("function_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let call = item
+                    .get("call_expression")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
+                Some(fingerprint_finding(
+                    "unhandled_result",
+                    &format!("{}::{}::{}", strip_line_number(loc), fname, call),
+                ))
+            },
+            baseline_fps
+        )),
+    );
 
     new_report.insert("upgrade_reports".into(), {
         let mut new_reports = Vec::new();
         if let Some(arr) = current.get("upgrade_reports").and_then(|v| v.as_array()) {
             for rpt in arr {
                 if let Some(findings) = rpt.get("findings").and_then(|v| v.as_array()) {
-                    let new_findings: Vec<Value> = findings.iter().filter(|item| {
-                        let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
-                        let msg = item.get("message").and_then(|v| v.as_str()).unwrap_or("");
-                        let fp = fingerprint_finding("upgrade_risk", &format!("{}::{}", strip_line_number(loc), msg));
-                        !baseline_fps.contains(&fp)
-                    }).cloned().collect();
+                    let new_findings: Vec<Value> = findings
+                        .iter()
+                        .filter(|item| {
+                            let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
+                            let msg = item.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                            let fp = fingerprint_finding(
+                                "upgrade_risk",
+                                &format!("{}::{}", strip_line_number(loc), msg),
+                            );
+                            !baseline_fps.contains(&fp)
+                        })
+                        .cloned()
+                        .collect();
                     if !new_findings.is_empty() {
                         let mut new_rpt = rpt.clone();
-                        new_rpt.as_object_mut().unwrap().insert("findings".into(), serde_json::json!(new_findings));
+                        new_rpt
+                            .as_object_mut()
+                            .unwrap()
+                            .insert("findings".into(), serde_json::json!(new_findings));
                         new_reports.push(new_rpt);
                     }
                 }
@@ -308,38 +483,100 @@ fn collect_new_findings(current: &Value, baseline_fps: &HashSet<String>) -> Valu
         serde_json::json!(new_reports)
     });
 
-    new_report.insert("smt_issues".into(), serde_json::json!(filter_array(current, "smt_issues", |item| {
-        let fname = item.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
-        let desc = item.get("description").and_then(|v| v.as_str()).unwrap_or("");
-        Some(fingerprint_finding("smt_invariant", &format!("{}::{}", fname, desc)))
-    }, baseline_fps)));
+    new_report.insert(
+        "smt_issues".into(),
+        serde_json::json!(filter_array(
+            current,
+            "smt_issues",
+            |item| {
+                let fname = item
+                    .get("function_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let desc = item
+                    .get("description")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                Some(fingerprint_finding(
+                    "smt_invariant",
+                    &format!("{}::{}", fname, desc),
+                ))
+            },
+            baseline_fps
+        )),
+    );
 
-    new_report.insert("sep41_issues".into(), serde_json::json!(filter_array(current, "sep41_issues", |item| {
-        let fname = item.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
-        let msg = item.get("message").and_then(|v| v.as_str()).unwrap_or("");
-        Some(fingerprint_finding("sep41_deviation", &format!("{}::{}", fname, msg)))
-    }, baseline_fps)));
+    new_report.insert(
+        "sep41_issues".into(),
+        serde_json::json!(filter_array(
+            current,
+            "sep41_issues",
+            |item| {
+                let fname = item
+                    .get("function_name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+                let msg = item.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                Some(fingerprint_finding(
+                    "sep41_deviation",
+                    &format!("{}::{}", fname, msg),
+                ))
+            },
+            baseline_fps
+        )),
+    );
 
-    new_report.insert("vulnerability_db_matches".into(), serde_json::json!(filter_array(current, "vulnerability_db_matches", |item| {
-        let vid = item.get("vuln_id").and_then(|v| v.as_str()).unwrap_or("");
-        let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("");
-        Some(fingerprint_finding("vuln_db", &format!("{}::{}", file, vid)))
-    }, baseline_fps)));
+    new_report.insert(
+        "vulnerability_db_matches".into(),
+        serde_json::json!(filter_array(
+            current,
+            "vulnerability_db_matches",
+            |item| {
+                let vid = item.get("vuln_id").and_then(|v| v.as_str()).unwrap_or("");
+                let file = item.get("file").and_then(|v| v.as_str()).unwrap_or("");
+                Some(fingerprint_finding(
+                    "vuln_db",
+                    &format!("{}::{}", file, vid),
+                ))
+            },
+            baseline_fps
+        )),
+    );
 
-    new_report.insert("custom_rules".into(), serde_json::json!(filter_array(current, "custom_rules", |item| {
-        let name = item.get("rule_name").and_then(|v| v.as_str()).unwrap_or("");
-        let snippet = item.get("snippet").and_then(|v| v.as_str()).unwrap_or("");
-        Some(fingerprint_finding("custom_rule", &format!("{}::{}", name, snippet)))
-    }, baseline_fps)));
+    new_report.insert(
+        "custom_rules".into(),
+        serde_json::json!(filter_array(
+            current,
+            "custom_rules",
+            |item| {
+                let name = item.get("rule_name").and_then(|v| v.as_str()).unwrap_or("");
+                let snippet = item.get("snippet").and_then(|v| v.as_str()).unwrap_or("");
+                Some(fingerprint_finding(
+                    "custom_rule",
+                    &format!("{}::{}", name, snippet),
+                ))
+            },
+            baseline_fps
+        )),
+    );
 
     Value::Object(new_report)
 }
 
 fn count_new_findings(new: &Value) -> usize {
     let simple_keys = [
-        "auth_gaps", "arithmetic_issues", "panic_issues", "storage_collisions",
-        "unsafe_patterns", "ledger_size_warnings", "event_issues", "unhandled_results",
-        "smt_issues", "sep41_issues", "vulnerability_db_matches", "custom_rules",
+        "auth_gaps",
+        "arithmetic_issues",
+        "panic_issues",
+        "storage_collisions",
+        "unsafe_patterns",
+        "ledger_size_warnings",
+        "event_issues",
+        "unhandled_results",
+        "smt_issues",
+        "sep41_issues",
+        "vulnerability_db_matches",
+        "custom_rules",
     ];
     let mut total = 0usize;
     for key in &simple_keys {
@@ -368,51 +605,109 @@ fn highest_severity_in_new(new: &Value) -> Option<SeverityLevel> {
     };
 
     // auth_gaps -> Critical
-    if new.get("auth_gaps").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("auth_gaps")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::Critical);
     }
     // smt_issues -> Critical
-    if new.get("smt_issues").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("smt_issues")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::Critical);
     }
     // arithmetic_issues -> High
-    if new.get("arithmetic_issues").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("arithmetic_issues")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::High);
     }
     // panic_issues -> High
-    if new.get("panic_issues").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("panic_issues")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::High);
     }
     // unsafe_patterns -> High
-    if new.get("unsafe_patterns").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("unsafe_patterns")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::High);
     }
     // upgrade_reports -> High
-    if new.get("upgrade_reports").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("upgrade_reports")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::High);
     }
     // unhandled_results -> High
-    if new.get("unhandled_results").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("unhandled_results")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::High);
     }
     // storage_collisions -> Medium
-    if new.get("storage_collisions").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("storage_collisions")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::Medium);
     }
     // ledger_size_warnings -> Medium
-    if new.get("ledger_size_warnings").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("ledger_size_warnings")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::Medium);
     }
     // sep41_issues -> Medium
-    if new.get("sep41_issues").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("sep41_issues")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::Medium);
     }
     // event_issues -> Low
-    if new.get("event_issues").and_then(|v| v.as_array()).map(|a| !a.is_empty()).unwrap_or(false) {
+    if new
+        .get("event_issues")
+        .and_then(|v| v.as_array())
+        .map(|a| !a.is_empty())
+        .unwrap_or(false)
+    {
         consider(SeverityLevel::Low);
     }
     // vuln_db matches – parse per-item severity
-    if let Some(arr) = new.get("vulnerability_db_matches").and_then(|v| v.as_array()) {
+    if let Some(arr) = new
+        .get("vulnerability_db_matches")
+        .and_then(|v| v.as_array())
+    {
         for item in arr {
             if let Some(sev_str) = item.get("severity").and_then(|v| v.as_str()) {
                 if let Ok(sev) = sev_str.parse::<SeverityLevel>() {
@@ -524,7 +819,10 @@ fn build_current_report(
         + custom_matches.len()
         + event_issues.len()
         + unhandled_results.len()
-        + upgrade_reports.iter().map(|r| r.findings.len()).sum::<usize>()
+        + upgrade_reports
+            .iter()
+            .map(|r| r.findings.len())
+            .sum::<usize>()
         + smt_issues.len()
         + sep41_issues.len()
         + timed_out_files.len();
@@ -566,15 +864,20 @@ fn build_current_report(
 // ---------------------------------------------------------------------------
 
 pub fn exec(args: DiffArgs) -> anyhow::Result<()> {
-    let mut path = args.path.clone();
+    let path_raw = args.path.clone();
 
     #[cfg(not(windows))]
-    {
-        let s = path.to_string_lossy();
+    let path = {
+        let s = path_raw.to_string_lossy();
         if s.contains('\\') {
-            path = PathBuf::from(s.replace('\\', "/"));
+            PathBuf::from(s.replace('\\', "/"))
+        } else {
+            path_raw
         }
-    }
+    };
+
+    #[cfg(windows)]
+    let path = path_raw;
 
     let is_json = args.format == "json";
     let start = Instant::now();
@@ -664,8 +967,8 @@ pub fn exec(args: DiffArgs) -> anyhow::Result<()> {
 
     // 5. Determine exit code
     let new_highest = highest_severity_in_new(&new_findings);
-    let should_exit_with_1 = args.exit_code
-        && new_highest.map(|h| h >= args.min_severity).unwrap_or(false);
+    let should_exit_with_1 =
+        args.exit_code && new_highest.map(|h| h >= args.min_severity).unwrap_or(false);
 
     // 6. Output
     if is_json {
@@ -686,16 +989,10 @@ pub fn exec(args: DiffArgs) -> anyhow::Result<()> {
             "✨".green(),
             duration_ms
         );
-        println!(
-            "   Baseline: {}",
-            args.baseline.display()
-        );
+        println!("   Baseline: {}", args.baseline.display());
 
         if new_count == 0 {
-            println!(
-                "   {} No new findings compared to baseline.",
-                "✅".green()
-            );
+            println!("   {} No new findings compared to baseline.", "✅".green());
         } else {
             println!(
                 "   {} {} new finding(s) compared to baseline:",
@@ -719,7 +1016,12 @@ fn print_new_text_findings(new: &Value) {
     if let Some(arr) = new.get("auth_gaps").and_then(|v| v.as_array()) {
         for item in arr {
             if let Some(name) = item.get("function_name").and_then(|v| v.as_str()) {
-                println!("   {} [{}] Auth gap: {}", "->".red(), finding_codes::AUTH_GAP.bold(), name.bold());
+                println!(
+                    "   {} [{}] Auth gap: {}",
+                    "->".red(),
+                    finding_codes::AUTH_GAP.bold(),
+                    name.bold()
+                );
             }
         }
     }
@@ -727,56 +1029,121 @@ fn print_new_text_findings(new: &Value) {
         for item in arr {
             let op = item.get("operation").and_then(|v| v.as_str()).unwrap_or("");
             let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [{}] Arithmetic: {} at {}", "->".red(), finding_codes::ARITHMETIC_OVERFLOW.bold(), op.bold(), loc);
+            println!(
+                "   {} [{}] Arithmetic: {} at {}",
+                "->".red(),
+                finding_codes::ARITHMETIC_OVERFLOW.bold(),
+                op.bold(),
+                loc
+            );
         }
     }
     if let Some(arr) = new.get("panic_issues").and_then(|v| v.as_array()) {
         for item in arr {
-            let it = item.get("issue_type").and_then(|v| v.as_str()).unwrap_or("");
+            let it = item
+                .get("issue_type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
             let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [{}] Panic: {} at {}", "->".red(), finding_codes::PANIC_USAGE.bold(), it.bold(), loc);
+            println!(
+                "   {} [{}] Panic: {} at {}",
+                "->".red(),
+                finding_codes::PANIC_USAGE.bold(),
+                it.bold(),
+                loc
+            );
         }
     }
     if let Some(arr) = new.get("storage_collisions").and_then(|v| v.as_array()) {
         for item in arr {
             let key = item.get("key_value").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [{}] Storage collision: {}", "->".red(), finding_codes::STORAGE_COLLISION.bold(), key.bold());
+            println!(
+                "   {} [{}] Storage collision: {}",
+                "->".red(),
+                finding_codes::STORAGE_COLLISION.bold(),
+                key.bold()
+            );
         }
     }
     if let Some(arr) = new.get("unsafe_patterns").and_then(|v| v.as_array()) {
         for item in arr {
             let snippet = item.get("snippet").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [{}] Unsafe: {}", "->".red(), finding_codes::UNSAFE_PATTERN.bold(), snippet);
+            println!(
+                "   {} [{}] Unsafe: {}",
+                "->".red(),
+                finding_codes::UNSAFE_PATTERN.bold(),
+                snippet
+            );
         }
     }
     if let Some(arr) = new.get("ledger_size_warnings").and_then(|v| v.as_array()) {
         for item in arr {
-            let name = item.get("struct_name").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [{}] Size: {}", "->".red(), finding_codes::LEDGER_SIZE_RISK.bold(), name.bold());
+            let name = item
+                .get("struct_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            println!(
+                "   {} [{}] Size: {}",
+                "->".red(),
+                finding_codes::LEDGER_SIZE_RISK.bold(),
+                name.bold()
+            );
         }
     }
     if let Some(arr) = new.get("smt_issues").and_then(|v| v.as_array()) {
         for item in arr {
-            let fname = item.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [{}] SMT: {}", "->".red(), finding_codes::SMT_INVARIANT_VIOLATION.bold(), fname.bold());
+            let fname = item
+                .get("function_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            println!(
+                "   {} [{}] SMT: {}",
+                "->".red(),
+                finding_codes::SMT_INVARIANT_VIOLATION.bold(),
+                fname.bold()
+            );
         }
     }
     if let Some(arr) = new.get("sep41_issues").and_then(|v| v.as_array()) {
         for item in arr {
-            let fname = item.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [{}] SEP-41: {}", "->".red(), finding_codes::SEP41_INTERFACE_DEVIATION.bold(), fname.bold());
+            let fname = item
+                .get("function_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            println!(
+                "   {} [{}] SEP-41: {}",
+                "->".red(),
+                finding_codes::SEP41_INTERFACE_DEVIATION.bold(),
+                fname.bold()
+            );
         }
     }
     if let Some(arr) = new.get("event_issues").and_then(|v| v.as_array()) {
         for item in arr {
-            let name = item.get("event_name").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [{}] Event: {}", "->".red(), finding_codes::EVENT_INCONSISTENCY.bold(), name.bold());
+            let name = item
+                .get("event_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            println!(
+                "   {} [{}] Event: {}",
+                "->".red(),
+                finding_codes::EVENT_INCONSISTENCY.bold(),
+                name.bold()
+            );
         }
     }
     if let Some(arr) = new.get("unhandled_results").and_then(|v| v.as_array()) {
         for item in arr {
-            let fname = item.get("function_name").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [{}] Unhandled result: {}", "->".red(), finding_codes::UNHANDLED_RESULT.bold(), fname.bold());
+            let fname = item
+                .get("function_name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            println!(
+                "   {} [{}] Unhandled result: {}",
+                "->".red(),
+                finding_codes::UNHANDLED_RESULT.bold(),
+                fname.bold()
+            );
         }
     }
     if let Some(arr) = new.get("upgrade_reports").and_then(|v| v.as_array()) {
@@ -784,12 +1151,20 @@ fn print_new_text_findings(new: &Value) {
             if let Some(findings) = rpt.get("findings").and_then(|v| v.as_array()) {
                 for item in findings {
                     let msg = item.get("message").and_then(|v| v.as_str()).unwrap_or("");
-                    println!("   {} [{}] Upgrade: {}", "->".red(), finding_codes::UPGRADE_RISK.bold(), msg);
+                    println!(
+                        "   {} [{}] Upgrade: {}",
+                        "->".red(),
+                        finding_codes::UPGRADE_RISK.bold(),
+                        msg
+                    );
                 }
             }
         }
     }
-    if let Some(arr) = new.get("vulnerability_db_matches").and_then(|v| v.as_array()) {
+    if let Some(arr) = new
+        .get("vulnerability_db_matches")
+        .and_then(|v| v.as_array())
+    {
         for item in arr {
             let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let sev = item.get("severity").and_then(|v| v.as_str()).unwrap_or("");

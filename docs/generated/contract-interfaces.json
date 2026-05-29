@@ -1,0 +1,141 @@
+{
+  "schema_version": "1",
+  "generated_at": "2026-04-26T20:23:07Z",
+  "contracts": {
+    "amm-pool": {
+      "functions": [
+        "add_liquidity",
+        "get_price",
+        "remove_liquidity",
+        "swap"
+      ],
+      "errors": [
+        "ArithmeticOverflow",
+        "IdenticalTokens",
+        "InsufficientLiquidity",
+        "InvalidPair",
+        "LockedLiquidity",
+        "MintBelowMinimum",
+        "PoolNotInitialized",
+        "SlippageExceeded",
+        "ZeroAmount"
+      ]
+    }    ,
+    "governance": {
+      "functions": [
+        "cast_vote",
+        "execute",
+        "init",
+        "propose",
+        "queue",
+        "state"
+      ],
+      "errors": [
+        "AlreadyInitialized",
+        "AlreadyVoted",
+        "InvalidState",
+        "InvalidVote",
+        "NotInitialized",
+        "ProposalNotFound",
+        "ProposalThresholdNotMet",
+        "QuorumNotMet",
+        "Unauthorized"
+      ]
+    }    ,
+    "multisig": {
+      "functions": [
+        "add_signer",
+        "approve",
+        "cancel",
+        "execute",
+        "init",
+        "propose",
+        "remove_signer",
+        "set_threshold"
+      ],
+      "errors": [
+        "AlreadyApproved",
+        "AlreadyCancelled",
+        "AlreadyExecuted",
+        "AlreadyInitialized",
+        "InsufficientSigners",
+        "InvalidArguments",
+        "InvalidThreshold",
+        "NotInitialized",
+        "ProposalNotFound",
+        "ThresholdNotMet",
+        "Unauthorized"
+      ]
+    }    ,
+    "timelock": {
+      "functions": [
+        "cancel",
+        "execute",
+        "get_min_delay",
+        "init",
+        "is_canceller",
+        "is_executor",
+        "is_proposer",
+        "schedule",
+        "set_canceller",
+        "set_executor",
+        "set_proposer",
+        "update_delay"
+      ],
+      "errors": [
+        "AlreadyInitialized",
+        "InsufficientDelay",
+        "InvalidDelay",
+        "NotInitialized",
+        "ProposalNotFound",
+        "ProposalNotReady",
+        "Unauthorized"
+      ]
+    }    ,
+    "reentrancy-guard": {
+      "functions": [
+        "enter",
+        "exit",
+        "new"
+      ],
+      "errors": [
+      ]
+    }    ,
+    "runtime-guard-wrapper": {
+      "functions": [
+        "execute_guarded",
+        "get_stats",
+        "get_wrapped_contract",
+        "health_check",
+        "init"
+      ],
+      "errors": [
+      ]
+    }    ,
+    "my-contract": {
+      "functions": [
+        "allowance",
+        "approve",
+        "balance",
+        "burn",
+        "burn_from",
+        "decimals",
+        "initialize",
+        "mint",
+        "name",
+        "symbol",
+        "transfer",
+        "transfer_from"
+      ],
+      "errors": [
+        "AllowanceExpired",
+        "AlreadyInitialized",
+        "InsufficientAllowance",
+        "InsufficientBalance",
+        "NegativeAmount",
+        "NotInitialized",
+        "Overflow"
+      ]
+    }
+  }
+}

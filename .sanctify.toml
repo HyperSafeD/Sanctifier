@@ -3,6 +3,9 @@ enabled_rules = ["auth_gaps", "panics", "arithmetic", "ledger_size"]
 ledger_limit = 64000
 strict_mode = false
 
+# Path to YAML custom rules file (optional)
+# custom_rules_yaml = "custom-rules.yaml"
+
 # Regex-based custom rules (optional)
 [[custom_rules]]
 name = "no_unsafe_block"

@@ -1,13 +1,13 @@
 //! Z3-based formal-verification primitives.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use thiserror::Error;
 use z3::ast::{Bool, Int};
 use z3::{Context, SatResult, Solver};
 
 /// An invariant issue proved by the Z3 SMT solver.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SmtInvariantIssue {
     /// Function under verification.
     pub function_name: String,
@@ -20,7 +20,7 @@ pub struct SmtInvariantIssue {
 // ── Production SMT hardening ──────────────────────────────────────────────────
 
 /// Configuration for the SMT-based invariant verifier.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SmtConfig {
     /// Solver timeout per call in milliseconds (default 10 000 ms = 10 s).
     pub timeout_ms: u64,
@@ -33,7 +33,7 @@ impl Default for SmtConfig {
 }
 
 /// Structured finding returned by the SMT invariant verifier.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SmtFinding {
     /// Name / expression of the invariant that was checked.
     pub invariant_name: String,
@@ -198,7 +198,7 @@ fn check_invariant_spec(spec: &InvariantSpec, config: &SmtConfig) -> Option<SmtF
 }
 
 /// Supported SMT backends for fixed-point proofs.
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum SmtBackend {
@@ -209,7 +209,7 @@ pub enum SmtBackend {
 }
 
 /// Input bounds for a standard fixed-point `a * b / d` proof.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FixedPointMulDivSpec {
     /// Human-readable function or calculation name.
     pub function_name: String,
@@ -227,7 +227,7 @@ pub struct FixedPointMulDivSpec {
 }
 
 /// Concrete witness returned when a fixed-point proof fails.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FixedPointCounterexample {
     /// Value chosen for the left multiplicand.
     pub multiplicand: String,
@@ -242,7 +242,7 @@ pub struct FixedPointCounterexample {
 }
 
 /// Result of a fixed-point overflow proof.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FixedPointProofReport {
     /// Human-readable function or calculation name.
     pub function_name: String,
@@ -347,7 +347,7 @@ pub fn prove_fixed_point_mul_div_bounds_with_backend(
 }
 
 /// The constraint-generation strategy used for an SMT proof.
-#[derive(Debug, Serialize, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum SmtProofStrategy {
@@ -360,7 +360,7 @@ pub enum SmtProofStrategy {
 }
 
 /// Latency statistics for a single [`SmtProofStrategy`].
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SmtStrategyLatency {
     /// Which strategy was measured.
     pub strategy: SmtProofStrategy,
@@ -377,8 +377,10 @@ pub struct SmtStrategyLatency {
 }
 
 /// Aggregate benchmark across all [`SmtProofStrategy`] variants.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SmtLatencyBenchmarkReport {
+    /// Timestamp of the benchmark run.
+    pub timestamp: String,
     /// How many iterations were run per strategy.
     pub iterations_per_strategy: usize,
     /// Per-strategy results.
@@ -437,6 +439,7 @@ pub fn run_smt_latency_benchmark(iterations_per_strategy: usize) -> SmtLatencyBe
     }
 
     SmtLatencyBenchmarkReport {
+        timestamp: chrono::Utc::now().to_rfc3339(),
         iterations_per_strategy: iterations,
         strategies: results,
     }

@@ -1,7 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Finding } from "../../../types";
+import { AI_EXPLAIN_PROVIDER } from "../../../lib/env";
 
 export async function POST(req: NextRequest) {
+  if (!AI_EXPLAIN_PROVIDER && process.env.STUB_AI !== "1") {
+    return NextResponse.json(
+      { error: "AI provider not configured", set: ["AI_EXPLAIN_PROVIDER"] },
+      { status: 503 }
+    );
+  }
+
   try {
     const { finding } = (await req.json()) as { finding: Finding };
 
@@ -43,7 +51,7 @@ pub enum DataKey {
     };
 
     return NextResponse.json(result);
-  } catch (err) {
+  } catch (_err) {
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

@@ -76,6 +76,38 @@ Update to the latest Sanctifier binary at any time:
 sanctifier update
 ```
 
+### Shell Completions
+
+Sanctifier supports shell completions for bash, zsh, fish, powershell, and elvish. Generate completions for your shell:
+
+**Bash:**
+```bash
+sanctifier completions bash > ~/.local/share/bash-completion/completions/sanctifier
+```
+
+**Zsh:**
+```bash
+sanctifier completions zsh > ~/.zfunc/_sanctifier
+# Add to ~/.zshrc: fpath=(~/.zfunc $fpath)
+```
+
+**Fish:**
+```bash
+sanctifier completions fish > ~/.config/fish/completions/sanctifier.fish
+```
+
+**PowerShell:**
+```powershell
+sanctifier completions powershell | Out-String | Invoke-Expression
+```
+
+**Elvish:**
+```bash
+sanctifier completions elvish > ~/.elvish/lib/sanctifier.elv
+```
+
+After installing completions, restart your shell or source the completion file.
+
 ---
 
 ## 3. Running Your First Scan

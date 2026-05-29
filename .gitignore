@@ -5,4 +5,4 @@
 
 .env.local
 .env
-node_modulessanc/
+**/node_modules/

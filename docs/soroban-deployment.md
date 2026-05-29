@@ -2,8 +2,6 @@
 
 ## Overview
 
-This guide covers the complete process for automating deployment of runtime guard wrapper contracts to the Soroban testnet for continuous validation.
-
 ## Table of Contents
 
 1. [Prerequisites](#prerequisites)

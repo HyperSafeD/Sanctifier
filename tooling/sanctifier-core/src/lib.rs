@@ -24,33 +24,52 @@
 #![warn(missing_docs)]
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::panic::catch_unwind;
+use syn::spanned::Spanned;
+use syn::visit::{self, Visit};
 
+// Import upgrade analysis functions
+use crate::upgrade_analysis::{is_init_fn, is_upgrade_or_admin_fn};
+use syn::{parse_str, Fields, File, Item, Meta, Type};
+
+/// LRU analysis result cache keyed by source content hash.
+pub mod analysis_cache;
 /// Contract complexity metrics and reports.
 pub mod complexity;
+/// Custom YAML-based rule definitions.
+pub mod custom_yaml_rules;
+/// Event analysis pass.
+pub mod event_analysis;
 /// Canonical finding codes (`S000` – `S012`) emitted by every analysis pass.
 pub mod finding_codes;
 /// Gas / instruction-cost estimation heuristics.
 pub mod gas_estimator;
-/// (Reserved) Gas report rendering.
-pub(crate) mod gas_report;
+/// Gas report rendering and loop-warning formatting.
+pub mod gas_report;
+/// Input validation guards (size, null bytes, UTF-8, path traversal).
+pub mod input_validation;
 /// Automatic patch application.
 pub mod patcher;
 /// Pluggable rule system ([`Rule`] trait, [`RuleRegistry`], built-in rules).
 pub mod rules;
+/// Soroban SDK version detection and deprecation warnings.
+pub mod sdk_version;
 /// SEP-41 token-interface verification.
 pub mod sep41;
 /// Z3 SMT solver integration for formal verification.
 /// Only available when the `smt` feature is enabled (default).
 #[cfg(feature = "smt")]
 pub mod smt;
+/// Upgrade and admin-pattern analysis pass.
+pub mod upgrade_analysis;
 /// Stub SMT types used when the `smt` feature is disabled.
 #[cfg(not(feature = "smt"))]
 pub mod smt {
-    use serde::Serialize;
+    use serde::{Deserialize, Serialize};
 
     /// Placeholder invariant issue type for builds without SMT support.
-    #[derive(Debug, Serialize, Clone, Default)]
+    #[derive(Debug, Serialize, Deserialize, Clone, Default)]
     pub struct SmtInvariantIssue {
         /// Function under verification.
         pub function_name: String,
@@ -60,21 +79,16 @@ pub mod smt {
         pub location: String,
     }
 }
-/// Storage-key collision detection (internal).
-mod storage_collision;
 /// Soroban v21 (Protocol 21) host functions and storage types.
 pub mod soroban_v21;
-use std::collections::HashSet;
-use syn::spanned::Spanned;
-use syn::visit::{self, Visit};
-use syn::{parse_str, Fields, File, Item, Meta, Type};
+/// Storage-key collision detection (internal).
+mod storage_collision;
 
 pub use complexity::{analyze_complexity, analyze_complexity_from_source, render_text_report};
 pub use rules::{Rule, RuleRegistry, RuleViolation, Severity};
 pub use sep41::{Sep41Issue, Sep41IssueKind, Sep41VerificationReport};
 pub use smt::SmtInvariantIssue;
 
-// Redundant imports removed
 use crate::rules::arithmetic_overflow::ArithVisitor;
 use crate::rules::truncation_bounds::TruncationBoundsVisitor;
 
@@ -87,10 +101,63 @@ where
     catch_unwind(f).unwrap_or_default()
 }
 
+// ── Source provenance ─────────────────────────────────────────────────────────
+
+/// Sentry-style source provenance attached to a finding.
+///
+/// `git_blob_sha` is the SHA-1 object hash of the source file at analysis
+/// time (obtainable via `git hash-object <file>`).  It pins the finding to an
+/// exact revision so cross-revision tracking in issue trackers is unambiguous.
+///
+/// `stable_id` is a deterministic digest of `(rule_name, normalised_snippet)`
+/// that survives minor reformats — two findings for the same logical location
+/// produce the same `stable_id` even when surrounding lines shift.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct SourceProvenance {
+    /// SHA-1 blob hash of the analysed source file, if available.
+    pub git_blob_sha: Option<String>,
+    /// 1-based line number within the source file.
+    pub line: usize,
+    /// Reformat-stable identifier derived from the rule name and code context.
+    pub stable_id: String,
+}
+
+impl SourceProvenance {
+    /// Build a [`SourceProvenance`] from a rule name and a source snippet.
+    ///
+    /// The `stable_id` is a 16-character hex string produced by a djb2 hash of
+    /// `"<rule_name>:<whitespace-normalised snippet>"`, making it independent
+    /// of line numbers and minor whitespace changes.
+    pub fn new(rule_name: &str, snippet: &str, line: usize) -> Self {
+        let normalised: String = snippet.split_whitespace().collect::<Vec<_>>().join(" ");
+        let combined = format!("{}:{}", rule_name, normalised);
+        let stable_id = format!("{:016x}", djb2_hash(&combined));
+        Self {
+            git_blob_sha: None,
+            line,
+            stable_id,
+        }
+    }
+
+    /// Attach a git blob SHA to the provenance.
+    pub fn with_git_blob_sha(mut self, sha: impl Into<String>) -> Self {
+        self.git_blob_sha = Some(sha.into());
+        self
+    }
+}
+
+fn djb2_hash(s: &str) -> u64 {
+    let mut hash: u64 = 5381;
+    for byte in s.bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(u64::from(byte));
+    }
+    hash
+}
+
 // ── Existing types ────────────────────────────────────────────────────────────
 
 /// Severity of a ledger size warning.
-#[derive(Debug, Serialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum SizeWarningLevel {
     /// Size exceeds the ledger entry limit (e.g. 64KB).
@@ -101,7 +168,7 @@ pub enum SizeWarningLevel {
 
 /// A warning about a `#[contracttype]` whose estimated serialised size is
 /// close to or exceeds the ledger entry limit.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SizeWarning {
     /// Name of the struct or enum that was analysed.
     pub struct_name: String,
@@ -115,7 +182,7 @@ pub struct SizeWarning {
 
 /// A `panic!`, `.unwrap()`, or `.expect()` call found inside a contract
 /// function.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PanicIssue {
     /// The contract function containing the panic-path.
     pub function_name: String,
@@ -128,7 +195,7 @@ pub struct PanicIssue {
 // ── UnsafePattern types (visitor-based panic/unwrap scanning) ─────────────────
 
 /// The kind of unsafe pattern detected by [`Analyzer::analyze_unsafe_patterns`].
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[non_exhaustive]
 pub enum PatternType {
     /// A `panic!()` macro invocation.
@@ -141,7 +208,7 @@ pub enum PatternType {
 
 /// An unsafe pattern (`panic!`, `.unwrap()`, `.expect()`) together with its
 /// source location.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UnsafePattern {
     /// The kind of pattern.
     pub pattern_type: PatternType,
@@ -154,7 +221,7 @@ pub struct UnsafePattern {
 // ── Upgrade analysis types ────────────────────────────────────────────────────
 
 /// A single finding related to contract upgrade / admin mechanisms.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UpgradeFinding {
     /// Broad category of the finding.
     pub category: UpgradeCategory,
@@ -169,7 +236,7 @@ pub struct UpgradeFinding {
 }
 
 /// Category of an upgrade-safety finding.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 #[non_exhaustive]
 pub enum UpgradeCategory {
@@ -186,7 +253,7 @@ pub enum UpgradeCategory {
 }
 
 /// Upgrade safety report produced by [`Analyzer::analyze_upgrade_patterns`].
-#[derive(Debug, Serialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct UpgradeReport {
     /// Individual findings.
     pub findings: Vec<UpgradeFinding>,
@@ -286,29 +353,10 @@ fn is_cfg_test_attrs(attrs: &[syn::Attribute]) -> bool {
         .any(|a| a.path().is_ident("cfg") && quote::quote!(#a).to_string().contains("test"))
 }
 
-fn is_upgrade_or_admin_fn(name: &str) -> bool {
-    let lower = name.to_lowercase();
-    matches!(
-        lower.as_str(),
-        "set_admin"
-            | "upgrade"
-            | "set_authorized"
-            | "deploy"
-            | "update_admin"
-            | "transfer_admin"
-            | "change_admin"
-    ) || (lower.contains("upgrade") && (lower.contains("contract") || lower.contains("wasm")))
-}
-
-fn is_init_fn(name: &str) -> bool {
-    let lower = name.to_lowercase();
-    lower == "initialize" || lower == "init" || lower == "initialise"
-}
-
 // ── ArithmeticIssue (NEW) ─────────────────────────────────────────────────────
 
 /// Represents an unchecked arithmetic operation that could overflow or underflow.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ArithmeticIssue {
     /// Contract function in which the operation was found.
     pub function_name: String,
@@ -323,7 +371,7 @@ pub struct ArithmeticIssue {
 // ── TruncationBoundsIssue ────────────────────────────────────────────────────
 
 /// Represents an integer truncation cast or unchecked array/slice indexing.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TruncationBoundsIssue {
     /// Contract function in which the issue was found.
     pub function_name: String,
@@ -340,7 +388,7 @@ pub struct TruncationBoundsIssue {
 // ── StorageCollisionIssue (NEW) ──────────────────────────────────────────────
 
 /// Represents a potential storage key collision.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StorageCollisionIssue {
     /// The storage key literal or expression.
     pub key_value: String,
@@ -352,8 +400,21 @@ pub struct StorageCollisionIssue {
     pub message: String,
 }
 
+// ── ContractImportIssue (NEW) ────────────────────────────────────────────────
+
+/// Represents a mismatch or staleness between a `contractimport!` WASM and workspace source.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContractImportMismatchIssue {
+    /// The `file` path argument from `contractimport!`.
+    pub wasm_path: String,
+    /// 1-based line location.
+    pub location: String,
+    /// Human-readable message.
+    pub message: String,
+}
+
 /// The kind of event issue detected by [`Analyzer::scan_events`].
-#[derive(Debug, Serialize, Clone, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum EventIssueType {
     /// Topics count varies for the same event name.
@@ -363,7 +424,7 @@ pub enum EventIssueType {
 }
 
 /// An event-related finding (inconsistent schema or optimisable topic).
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct EventIssue {
     /// Function that emits the event.
     pub function_name: String,
@@ -378,7 +439,7 @@ pub struct EventIssue {
 }
 
 /// A `Result` return value that is silently discarded.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct UnhandledResultIssue {
     /// Function containing the unhandled result.
     pub function_name: String,
@@ -407,7 +468,7 @@ pub struct CustomRule {
 }
 
 /// A match produced by a [`CustomRule`].
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CustomRuleMatch {
     /// Name of the custom rule that matched.
     pub rule_name: String,
@@ -423,9 +484,15 @@ pub struct CustomRuleMatch {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SanctifyConfig {
     /// Paths to skip during directory walking.
+    ///
+    /// Defaults to `["target", ".git"]` — the two directories that are
+    /// almost always present and never contain user contracts.
     #[serde(default = "default_ignore_paths")]
     pub ignore_paths: Vec<String>,
     /// Names of enabled built-in rules.
+    ///
+    /// Defaults to the full rule set so new projects get complete coverage
+    /// without extra configuration.  Narrow this list to speed up CI.
     #[serde(default = "default_enabled_rules")]
     pub enabled_rules: Vec<String>,
     /// Ledger-entry size limit in bytes.
@@ -440,6 +507,19 @@ pub struct SanctifyConfig {
     /// User-defined regex rules.
     #[serde(default)]
     pub custom_rules: Vec<CustomRule>,
+    /// Maximum number of findings emitted per analysis run.
+    ///
+    /// `0` means unlimited.  Setting a cap (e.g. `500`) prevents unbounded
+    /// output on large or very noisy contracts and keeps CI logs readable.
+    /// Defaults to `0` (unlimited) so existing integrations are unaffected.
+    #[serde(default)]
+    pub max_findings: usize,
+    /// When `true`, stop analysis after the first finding per rule.
+    ///
+    /// Useful in fast-feedback loops (editor save hooks, pre-commit) where you
+    /// want a quick signal rather than a full report.  Defaults to `false`.
+    #[serde(default)]
+    pub fail_fast: bool,
 }
 
 fn default_ignore_paths() -> Vec<String> {
@@ -453,6 +533,9 @@ fn default_enabled_rules() -> Vec<String> {
         "arithmetic".to_string(),
         "ledger_size".to_string(),
         "events".to_string(),
+        "storage_collisions".to_string(),
+        "unhandled_results".to_string(),
+        "upgrade_patterns".to_string(),
     ]
 }
 
@@ -473,6 +556,8 @@ impl Default for SanctifyConfig {
             approaching_threshold: default_approaching_threshold(),
             strict_mode: false,
             custom_rules: vec![],
+            max_findings: 0,
+            fail_fast: false,
         }
     }
 }
@@ -550,9 +635,17 @@ impl Analyzer {
         self.rule_registry.available_rules()
     }
 
+    /// Detect Soroban SDK version and check for deprecations.
+    pub fn detect_sdk_version(
+        &self,
+        cargo_toml_path: &std::path::Path,
+    ) -> sdk_version::SdkVersionInfo {
+        sdk_version::detect_sdk_version(cargo_toml_path)
+    }
+
     /// Analyse upgrade/admin patterns and return an [`UpgradeReport`].
     pub fn analyze_upgrade_patterns(&self, source: &str) -> UpgradeReport {
-        with_panic_guard(|| self.analyze_upgrade_patterns_impl(source))
+        with_panic_guard(|| upgrade_analysis::analyze_upgrade_patterns(source))
     }
 
     /// Verify the contract against the SEP-41 token interface.
@@ -560,6 +653,7 @@ impl Analyzer {
         with_panic_guard(|| sep41::verify(source))
     }
 
+    #[allow(dead_code)]
     fn analyze_upgrade_patterns_impl(&self, source: &str) -> UpgradeReport {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
@@ -570,15 +664,11 @@ impl Analyzer {
 
         for item in &file.items {
             match item {
-                Item::Struct(s) => {
-                    if has_contracttype(&s.attrs) {
-                        report.storage_types.push(s.ident.to_string());
-                    }
+                Item::Struct(s) if has_contracttype(&s.attrs) => {
+                    report.storage_types.push(s.ident.to_string());
                 }
-                Item::Enum(e) => {
-                    if has_contracttype(&e.attrs) {
-                        report.storage_types.push(e.ident.to_string());
-                    }
+                Item::Enum(e) if has_contracttype(&e.attrs) => {
+                    report.storage_types.push(e.ident.to_string());
                 }
                 Item::Impl(i) => {
                     for impl_item in &i.items {
@@ -731,6 +821,59 @@ impl Analyzer {
         gaps
     }
 
+    // ── Contract Import scanning ─────────────────────────────────────────────
+
+    /// Scan for `contractimport!` declarations and return their parsed `file` paths.
+    /// Actual file staleness checks are performed by the caller to keep this pure.
+    pub fn scan_contractimports(&self, source: &str) -> Vec<ContractImportMismatchIssue> {
+        with_panic_guard(|| self.scan_contractimports_impl(source))
+    }
+
+    fn scan_contractimports_impl(&self, source: &str) -> Vec<ContractImportMismatchIssue> {
+        let file = match syn::parse_str::<syn::File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+        let mut imports = Vec::new();
+
+        struct ContractImportVisitor<'a> {
+            issues: &'a mut Vec<ContractImportMismatchIssue>,
+        }
+
+        impl<'ast, 'a> visit::Visit<'ast> for ContractImportVisitor<'a> {
+            fn visit_macro(&mut self, node: &'ast syn::Macro) {
+                if node.path.is_ident("contractimport") {
+                    let tokens = node.tokens.to_string();
+                    // Basic parsing of `file = "..."`
+                    if let Some(path_start) = tokens.find("file = \"") {
+                        let path_start = path_start + 8;
+                        if let Some(path_end) = tokens[path_start..].find('"') {
+                            let wasm_path = &tokens[path_start..path_start + path_end];
+                            self.issues.push(ContractImportMismatchIssue {
+                                wasm_path: wasm_path.to_string(),
+                                location: node.path.segments[0]
+                                    .ident
+                                    .span()
+                                    .start()
+                                    .line
+                                    .to_string(),
+                                message: String::new(), // Populated by caller
+                            });
+                        }
+                    }
+                }
+                visit::visit_macro(self, node);
+            }
+        }
+
+        let mut visitor = ContractImportVisitor {
+            issues: &mut imports,
+        };
+        visit::Visit::visit_file(&mut visitor, &file);
+
+        imports
+    }
+
     // ── Panic / unwrap / expect detection ────────────────────────────────────
 
     /// Returns all `panic!`, `.unwrap()`, and `.expect()` calls found inside
@@ -796,14 +939,12 @@ impl Analyzer {
                 }
                 // In syn 2.0, bare macro calls (e.g. `panic!(...)`) are Stmt::Macro,
                 // not Stmt::Expr(Expr::Macro(...)).
-                syn::Stmt::Macro(m) => {
-                    if m.mac.path.is_ident("panic") {
-                        issues.push(PanicIssue {
-                            function_name: fn_name.to_string(),
-                            issue_type: "panic!".to_string(),
-                            location: fn_name.to_string(),
-                        });
-                    }
+                syn::Stmt::Macro(m) if m.mac.path.is_ident("panic") => {
+                    issues.push(PanicIssue {
+                        function_name: fn_name.to_string(),
+                        issue_type: "panic!".to_string(),
+                        location: fn_name.to_string(),
+                    });
                 }
                 _ => {}
             }
@@ -812,14 +953,12 @@ impl Analyzer {
 
     fn check_expr_panics(&self, expr: &syn::Expr, fn_name: &str, issues: &mut Vec<PanicIssue>) {
         match expr {
-            syn::Expr::Macro(m) => {
-                if m.mac.path.is_ident("panic") {
-                    issues.push(PanicIssue {
-                        function_name: fn_name.to_string(),
-                        issue_type: "panic!".to_string(),
-                        location: fn_name.to_string(),
-                    });
-                }
+            syn::Expr::Macro(m) if m.mac.path.is_ident("panic") => {
+                issues.push(PanicIssue {
+                    function_name: fn_name.to_string(),
+                    issue_type: "panic!".to_string(),
+                    location: fn_name.to_string(),
+                });
             }
             syn::Expr::MethodCall(m) => {
                 let method_name = m.method.to_string();
@@ -869,12 +1008,11 @@ impl Analyzer {
                         self.check_expr(&init.expr, summary);
                     }
                 }
-                syn::Stmt::Macro(m) => {
+                syn::Stmt::Macro(m)
                     if m.mac.path.is_ident("require_auth")
-                        || m.mac.path.is_ident("require_auth_for_args")
-                    {
-                        summary.has_auth = true;
-                    }
+                        || m.mac.path.is_ident("require_auth_for_args") =>
+                {
+                    summary.has_auth = true;
                 }
                 _ => {}
             }
@@ -969,34 +1107,30 @@ impl Analyzer {
 
         for item in &file.items {
             match item {
-                Item::Struct(s) => {
-                    if has_contracttype(&s.attrs) {
-                        let size = self.estimate_struct_size(s);
-                        if let Some(level) =
-                            classify_size(size, limit, approaching, strict, strict_threshold)
-                        {
-                            warnings.push(SizeWarning {
-                                struct_name: s.ident.to_string(),
-                                estimated_size: size,
-                                limit,
-                                level,
-                            });
-                        }
+                Item::Struct(s) if has_contracttype(&s.attrs) => {
+                    let size = self.estimate_struct_size(s);
+                    if let Some(level) =
+                        classify_size(size, limit, approaching, strict, strict_threshold)
+                    {
+                        warnings.push(SizeWarning {
+                            struct_name: s.ident.to_string(),
+                            estimated_size: size,
+                            limit,
+                            level,
+                        });
                     }
                 }
-                Item::Enum(e) => {
-                    if has_contracttype(&e.attrs) {
-                        let size = self.estimate_enum_size(e);
-                        if let Some(level) =
-                            classify_size(size, limit, approaching, strict, strict_threshold)
-                        {
-                            warnings.push(SizeWarning {
-                                struct_name: e.ident.to_string(),
-                                estimated_size: size,
-                                limit,
-                                level,
-                            });
-                        }
+                Item::Enum(e) if has_contracttype(&e.attrs) => {
+                    let size = self.estimate_enum_size(e);
+                    if let Some(level) =
+                        classify_size(size, limit, approaching, strict, strict_threshold)
+                    {
+                        warnings.push(SizeWarning {
+                            struct_name: e.ident.to_string(),
+                            estimated_size: size,
+                            limit,
+                            level,
+                        });
                     }
                 }
                 Item::Impl(_) | Item::Macro(_) => {}
@@ -1009,122 +1143,11 @@ impl Analyzer {
 
     // ── Event Consistency and Optimization ──────────────────────────────────────
 
-    fn extract_topics(line: &str) -> String {
-        if let Some(start_paren) = line.find('(') {
-            let after_publish = &line[start_paren + 1..];
-            if let Some(end_paren) = after_publish.rfind(')') {
-                let topics_content = &after_publish[..end_paren];
-                if topics_content.contains(',') || topics_content.starts_with('(') {
-                    return topics_content.to_string();
-                }
-            }
-        }
-        if let Some(vec_start) = line.find("vec![") {
-            let after_vec = &line[vec_start + 5..];
-            if let Some(end_bracket) = after_vec.find(']') {
-                return after_vec[..end_bracket].to_string();
-            }
-        }
-        String::new()
-    }
-
-    fn extract_event_name(line: &str) -> Option<String> {
-        if let Some(start) = line.find('(') {
-            let content = &line[start..];
-            if let Some(name_end) = content.find(',') {
-                let name_part = &content[1..name_end];
-                let clean_name = name_part.trim().trim_matches('"');
-                if !clean_name.is_empty() {
-                    return Some(clean_name.to_string());
-                }
-            } else if let Some(end_paren) = content.find(')') {
-                let name_part = &content[1..end_paren];
-                let clean_name = name_part.trim().trim_matches('"');
-                if !clean_name.is_empty() {
-                    return Some(clean_name.to_string());
-                }
-            }
-        }
-        None
-    }
-
     /// Scans for `env.events().publish(topics, data)` and checks:
     /// 1. Consistency of topic counts for the same event name.
     /// 2. Opportunities to use `symbol_short!` for gas savings.
     pub fn scan_events(&self, source: &str) -> Vec<EventIssue> {
-        with_panic_guard(|| self.scan_events_impl(source))
-    }
-
-    fn scan_events_impl(&self, source: &str) -> Vec<EventIssue> {
-        let mut issues = Vec::new();
-        let mut event_schemas: std::collections::HashMap<String, Vec<usize>> =
-            std::collections::HashMap::new();
-        let mut issue_locations: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-
-        for (line_num, line) in source.lines().enumerate() {
-            let line = line.trim();
-
-            if line.contains("env.events().publish(") || line.contains("env.events().emit(") {
-                let topics_str = Self::extract_topics(line);
-                let topic_count = if topics_str.is_empty() {
-                    0
-                } else {
-                    topics_str.matches(',').count() + 1
-                };
-
-                let event_name = Self::extract_event_name(line)
-                    .unwrap_or_else(|| format!("unknown_{}", line_num));
-
-                let location = format!("line {}", line_num + 1);
-                let _location_key = format!("{}:{}", event_name, topic_count);
-
-                if let Some(previous_counts) = event_schemas.get(&event_name) {
-                    for &prev_count in previous_counts {
-                        if prev_count != topic_count {
-                            let issue_key = format!("{}:{}:inconsistent", event_name, line_num + 1);
-                            if !issue_locations.contains(&issue_key) {
-                                issue_locations.insert(issue_key);
-                                issues.push(EventIssue {
-                                    function_name: "unknown".to_string(), // scan_events_impl is regex-based, function context is limited
-                                    event_name: event_name.clone(),
-                                    issue_type: EventIssueType::InconsistentSchema,
-                                    message: format!(
-                                        "Event '{}' has inconsistent topic count. Previous: {}, Current: {}",
-                                        event_name, prev_count, topic_count
-                                    ),
-                                    location: location.clone(),
-                                });
-                            }
-                        }
-                    }
-                }
-
-                event_schemas
-                    .entry(event_name.clone())
-                    .or_default()
-                    .push(topic_count);
-
-                if !line.contains("symbol_short!") && topic_count > 0 {
-                    let has_string_topic = line.contains("\"") || line.contains("String");
-                    if has_string_topic {
-                        let issue_key = format!("{}:{}:gas_optimization", event_name, line_num + 1);
-                        if !issue_locations.contains(&issue_key) {
-                            issue_locations.insert(issue_key);
-                            issues.push(EventIssue {
-                                function_name: "unknown".to_string(),
-                                event_name,
-                                issue_type: EventIssueType::OptimizableTopic,
-                                message: "Consider using symbol_short! for short topic names to save gas.".to_string(),
-                                location: format!("line {}", line_num + 1),
-                            });
-                        }
-                    }
-                }
-            }
-        }
-
-        issues
+        with_panic_guard(|| event_analysis::scan_events(source))
     }
 
     // ── Unsafe-pattern visitor ────────────────────────────────────────────────
@@ -1342,6 +1365,7 @@ impl Analyzer {
         total
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn estimate_type_size(&self, ty: &Type) -> usize {
         match ty {
             Type::Path(tp) => {
@@ -1410,7 +1434,7 @@ impl Analyzer {
 }
 
 /// An edge in the cross-contract call graph.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContractCallEdge {
     /// The calling contract.
     pub caller: String,
@@ -2351,10 +2375,73 @@ mod tests {
         "#;
         let matches = analyzer.analyze_custom_rules(source, &analyzer.config.custom_rules);
         assert_eq!(matches.len(), 2);
-        let todo_match = matches.iter().find(|m| m.rule_name == "todo_comment").unwrap();
+        let todo_match = matches
+            .iter()
+            .find(|m| m.rule_name == "todo_comment")
+            .unwrap();
         assert_eq!(todo_match.severity, RuleSeverity::Info);
         let unsafe_match = matches.iter().find(|m| m.rule_name == "no_unsafe").unwrap();
         assert_eq!(unsafe_match.severity, RuleSeverity::Critical);
+    }
+
+    // ── contractimport scanning tests ─────────────────────────────────────────
+
+    #[test]
+    fn test_scan_contractimports_detects_file_path() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            use soroban_sdk::contractimport;
+            contractimport!(file = "../target/wasm32-unknown-unknown/release/my_contract.wasm");
+        "#;
+        let imports = analyzer.scan_contractimports(source);
+        assert_eq!(imports.len(), 1, "should detect one contractimport");
+        assert_eq!(
+            imports[0].wasm_path,
+            "../target/wasm32-unknown-unknown/release/my_contract.wasm"
+        );
+    }
+
+    #[test]
+    fn test_scan_contractimports_no_false_positive() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        // No contractimport! macro here — should find nothing
+        let source = r#"
+            #[contractimpl]
+            impl MyContract {
+                pub fn hello(env: Env) -> Symbol {
+                    Symbol::new(&env, "hello")
+                }
+            }
+        "#;
+        let imports = analyzer.scan_contractimports(source);
+        assert_eq!(
+            imports.len(),
+            0,
+            "contractimpl should not be confused with contractimport"
+        );
+    }
+
+    #[test]
+    fn test_scan_contractimports_multiple() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            contractimport!(file = "../wasm/token.wasm");
+            contractimport!(file = "../wasm/oracle.wasm");
+        "#;
+        let imports = analyzer.scan_contractimports(source);
+        assert_eq!(imports.len(), 2, "should detect two contractimports");
+        let paths: Vec<&str> = imports.iter().map(|i| i.wasm_path.as_str()).collect();
+        assert!(paths.contains(&"../wasm/token.wasm"));
+        assert!(paths.contains(&"../wasm/oracle.wasm"));
+    }
+
+    #[test]
+    fn test_scan_contractimports_invalid_source_no_panic() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        // Intentionally broken Rust — should not panic, just return empty
+        let source = "this is { not valid rust }}}}";
+        let imports = analyzer.scan_contractimports(source);
+        assert_eq!(imports.len(), 0);
     }
 
     #[test]
@@ -3263,7 +3350,7 @@ impl UnhandledResultIssue {
 }
 
 /// An authentication gap issue detected in a contract function.
-#[derive(Debug, serde::Serialize, Clone, PartialEq)]
+#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, PartialEq)]
 pub struct AuthGapIssue {
     /// The name of the function missing authentication.
     pub function_name: String,

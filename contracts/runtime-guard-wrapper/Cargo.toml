@@ -11,9 +11,3 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [lib]
 crate-type = ["cdylib", "rlib"]
-
-
-[profile.release]
-opt-level = "z"
-lto = true
-codegen-units = 1

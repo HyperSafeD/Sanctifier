@@ -1,0 +1,23 @@
+[package]
+name = "security-disclaimers"
+version = "0.1.0"
+edition = "2021"
+authors = ["Sanctifier Team"]
+description = "Security disclaimers and safe usage guidelines for Soroban contracts"
+license = "MIT"
+repository = "https://github.com/EbukaMoses/Sanctifier"
+keywords = ["soroban", "security", "disclaimer", "smart-contracts"]
+categories = ["security", "web-programming"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+testutils = ["soroban-sdk/testutils"]

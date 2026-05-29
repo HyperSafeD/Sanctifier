@@ -65,7 +65,7 @@ export function SanctityScore({ findings }: SanctityScoreProps) {
             : "High risk — immediate attention needed"
         }`}
       >
-        <title>Sanctity Score: {score}/100, Grade {grade}</title>
+        <title>{`Sanctity Score: ${score}/100, Grade ${grade}`}</title>
         {/* Background arc */}
         <path
           d={`M ${90 - radius} 95 A ${radius} ${radius} 0 0 1 ${90 + radius} 95`}

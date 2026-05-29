@@ -3,220 +3,58 @@
 //! Compiled with `wasm-pack build --target web` this crate produces the
 //! `@sanctifier/wasm` npm package consumed by the frontend dashboard.
 //!
+//! # Module layout
+//!
+//! | Module        | Responsibility                                         |
+//! |---------------|--------------------------------------------------------|
+//! | `constants`   | Compile-time limits, namespace strings, version pins  |
+//! | `validation`  | Input guard functions (source size, memory budget, config) |
+//! | `types`       | Serialisable output structs returned to JS consumers  |
+//! | `converters`  | Core-type → [`types::Finding`] conversion helpers     |
+//! | `analysis`    | Orchestration of analysis passes, progress, cache key |
+//! | *(top-level)* | `#[wasm_bindgen]` public API surface                  |
+//!
 //! # Exported functions
 //!
 //! * [`analyze`] — run all analysis passes with default config.
 //! * [`analyze_with_config`] — run with a JSON-serialised [`SanctifyConfig`].
+//! * [`analyze_with_progress`] — run analysis and emit deterministic progress events.
+//! * [`version`] — return the WASM module version.
+//! * [`schema_version`] — return the analysis output schema version.
+//! * [`finding_codes`] — return the finding code catalogue.
+//! * [`default_config_json`] — return default config JSON for easy customization.
+//! * [`asset_cache_key`] — return a deterministic browser cache-bust key.
+//! * [`cache_metadata`] — return full cache metadata for offline-first consumers.
 
-use sanctifier_core::{
-    finding_codes, Analyzer, ArithmeticIssue, AuthGapIssue, EventIssue, PanicIssue, SanctifyConfig,
-    SizeWarning, StorageCollisionIssue, UnhandledResultIssue, UnsafePattern,
-};
-use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
-// Improve panic messages in the browser console.
+// ── Module declarations ────────────────────────────────────────────────────────
+
+mod analysis;
+pub mod constants;
+mod converters;
+pub mod types;
+pub mod validation;
+
+// Re-export the public API types so consumers can import them directly.
+pub use types::{
+    AnalysisResult, CacheMetadata, ErrorResponse, Finding, ProgressEvent,
+    ProgressiveAnalysisResult, Summary,
+};
+
+// ── Internal wiring ────────────────────────────────────────────────────────────
+
 fn set_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
-// ── Output types ──────────────────────────────────────────────────────────────
-
-/// A single finding emitted by any analysis pass, normalised for JS consumers.
-#[derive(Serialize)]
-pub struct Finding {
-    /// Canonical code (`S000`–`S012`).
-    pub code: &'static str,
-    /// Broad category string (matches the finding-code catalogue).
-    pub category: &'static str,
-    /// Human-readable description of the issue.
-    pub message: String,
-    /// Source location string when available (e.g. `"function_name:line"`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub location: Option<String>,
-}
-
-/// Top-level result returned by [`analyze`] and [`analyze_with_config`].
-#[derive(Serialize)]
-pub struct AnalysisResult {
-    /// Flat list of all findings across every analysis pass.
-    pub findings: Vec<Finding>,
-    /// Pre-computed counts so JS consumers don't have to iterate.
-    pub summary: Summary,
-}
-
-/// Aggregate counts included in every [`AnalysisResult`].
-#[derive(Serialize)]
-pub struct Summary {
-    pub total: usize,
-    pub auth_gaps: usize,
-    pub panic_issues: usize,
-    pub arithmetic_issues: usize,
-    pub size_warnings: usize,
-    pub unsafe_patterns: usize,
-    pub storage_collisions: usize,
-    pub event_issues: usize,
-    pub unhandled_results: usize,
-    pub upgrade_risks: usize,
-    pub sep41_issues: usize,
-    pub has_critical: bool,
-    pub has_high: bool,
-}
-
-// ── Helpers to convert core types into Finding ───────────────────────────────
-
-fn auth_gap_finding(issue: &AuthGapIssue) -> Finding {
-    Finding {
-        code: finding_codes::AUTH_GAP,
-        category: "authentication",
-        message: format!("Missing authentication guard in `{}`", issue.function_name),
-        location: Some(issue.function_name.clone()),
-    }
-}
-
-fn panic_finding(p: &PanicIssue) -> Finding {
-    Finding {
-        code: finding_codes::PANIC_USAGE,
-        category: "panic_handling",
-        message: format!("`{}` usage in `{}`", p.issue_type, p.function_name),
-        location: Some(p.location.clone()),
-    }
-}
-
-fn arithmetic_finding(a: &ArithmeticIssue) -> Finding {
-    Finding {
-        code: finding_codes::ARITHMETIC_OVERFLOW,
-        category: "arithmetic",
-        message: format!(
-            "Unchecked `{}` in `{}` — {}",
-            a.operation, a.function_name, a.suggestion
-        ),
-        location: Some(a.location.clone()),
-    }
-}
-
-fn size_finding(w: &SizeWarning) -> Finding {
-    Finding {
-        code: finding_codes::LEDGER_SIZE_RISK,
-        category: "storage_limits",
-        message: format!(
-            "`{}` estimated size {}B approaches/exceeds ledger limit {}B",
-            w.struct_name, w.estimated_size, w.limit
-        ),
-        location: None,
-    }
-}
-
-fn unsafe_finding(p: &UnsafePattern) -> Finding {
-    Finding {
-        code: finding_codes::UNSAFE_PATTERN,
-        category: "unsafe_patterns",
-        message: format!("{:?} at line {}: {}", p.pattern_type, p.line, p.snippet),
-        location: Some(format!("line:{}", p.line)),
-    }
-}
-
-fn collision_finding(c: &StorageCollisionIssue) -> Finding {
-    Finding {
-        code: finding_codes::STORAGE_COLLISION,
-        category: "storage_keys",
-        message: c.message.clone(),
-        location: Some(c.location.clone()),
-    }
-}
-
-fn event_finding(e: &EventIssue) -> Finding {
-    Finding {
-        code: finding_codes::EVENT_INCONSISTENCY,
-        category: "events",
-        message: e.message.clone(),
-        location: Some(e.location.clone()),
-    }
-}
-
-fn unhandled_finding(r: &UnhandledResultIssue) -> Finding {
-    Finding {
-        code: finding_codes::UNHANDLED_RESULT,
-        category: "logic",
-        message: r.message.clone(),
-        location: Some(r.location.clone()),
-    }
-}
-
-// ── Core analysis logic ───────────────────────────────────────────────────────
-
-fn run_analysis(analyzer: &Analyzer, source: &str) -> AnalysisResult {
-    let auth_gaps = analyzer.scan_auth_gaps(source);
-    let panic_issues = analyzer.scan_panics(source);
-    let arithmetic_issues = analyzer.scan_arithmetic_overflow(source);
-    let size_warnings = analyzer.analyze_ledger_size(source);
-    let unsafe_patterns = analyzer.analyze_unsafe_patterns(source);
-    let storage_collisions = analyzer.scan_storage_collisions(source);
-    let event_issues = analyzer.scan_events(source);
-    let unhandled_results = analyzer.scan_unhandled_results(source);
-    let upgrade_report = analyzer.analyze_upgrade_patterns(source);
-    let sep41_report = analyzer.verify_sep41_interface(source);
-
-    let mut findings: Vec<Finding> = Vec::new();
-
-    for g in &auth_gaps {
-        findings.push(auth_gap_finding(g));
-    }
-    for p in &panic_issues {
-        findings.push(panic_finding(p));
-    }
-    for a in &arithmetic_issues {
-        findings.push(arithmetic_finding(a));
-    }
-    for w in &size_warnings {
-        findings.push(size_finding(w));
-    }
-    for p in &unsafe_patterns {
-        findings.push(unsafe_finding(p));
-    }
-    for c in &storage_collisions {
-        findings.push(collision_finding(c));
-    }
-    for e in &event_issues {
-        findings.push(event_finding(e));
-    }
-    for r in &unhandled_results {
-        findings.push(unhandled_finding(r));
-    }
-    for f in &upgrade_report.findings {
-        findings.push(Finding {
-            code: finding_codes::UPGRADE_RISK,
-            category: "upgrades",
-            message: f.message.clone(),
-            location: Some(f.location.clone()),
-        });
-    }
-    for issue in &sep41_report.issues {
-        findings.push(Finding {
-            code: finding_codes::SEP41_INTERFACE_DEVIATION,
-            category: "token_interface",
-            message: issue.message.clone(),
-            location: Some(issue.location.clone()),
-        });
-    }
-
-    let summary = Summary {
-        total: findings.len(),
-        auth_gaps: auth_gaps.len(),
-        panic_issues: panic_issues.len(),
-        arithmetic_issues: arithmetic_issues.len(),
-        size_warnings: size_warnings.len(),
-        unsafe_patterns: unsafe_patterns.len(),
-        storage_collisions: storage_collisions.len(),
-        event_issues: event_issues.len(),
-        unhandled_results: unhandled_results.len(),
-        upgrade_risks: upgrade_report.findings.len(),
-        sep41_issues: sep41_report.issues.len(),
-        has_critical: false, // wasm passes don't produce critical-severity findings
-        has_high: !auth_gaps.is_empty() || !upgrade_report.findings.is_empty(),
+fn make_error(error_code: &str, message: String) -> JsValue {
+    let error = ErrorResponse {
+        error_code: error_code.to_string(),
+        message,
+        schema_version: constants::SCHEMA_VERSION,
     };
-
-    AnalysisResult { findings, summary }
+    serde_wasm_bindgen::to_value(&error).unwrap_or(JsValue::NULL)
 }
 
 // ── Public WASM API ───────────────────────────────────────────────────────────
@@ -227,27 +65,69 @@ fn run_analysis(analyzer: &Analyzer, source: &str) -> AnalysisResult {
 /// ```json
 /// {
 ///   "findings": [{ "code": "S001", "category": "...", "message": "...", "location": "..." }],
-///   "summary":  { "total": 3, "has_critical": false, "has_high": true, ... }
+///   "summary":  { "total": 3, "has_critical": false, "has_high": true, ... },
+///   "schema_version": "1.0.0"
 /// }
+/// ```
+///
+/// On validation failure the return value is shaped as [`ErrorResponse`]:
+/// ```json
+/// { "error_code": "INVALID_INPUT", "message": "...", "schema_version": "1.0.0" }
 /// ```
 #[wasm_bindgen]
 pub fn analyze(source: &str) -> JsValue {
     set_panic_hook();
-    let analyzer = Analyzer::new(SanctifyConfig::default());
-    let result = run_analysis(&analyzer, source);
+
+    if let Err(msg) = validation::validate_source(source) {
+        return make_error("INVALID_INPUT", msg);
+    }
+    if let Err(msg) = validation::check_memory_budget(source.len()) {
+        return make_error("MEMORY_BUDGET_EXCEEDED", msg);
+    }
+
+    let result = analysis::run_analysis_default(source);
     serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
 }
 
 /// Analyse with a JSON-serialised [`SanctifyConfig`].
 ///
 /// Falls back to `SanctifyConfig::default()` if `config_json` cannot be parsed.
+///
+/// # Errors
+/// Returns an [`ErrorResponse`] object if input validation fails.
 #[wasm_bindgen]
 pub fn analyze_with_config(config_json: &str, source: &str) -> JsValue {
     set_panic_hook();
-    let config: SanctifyConfig = serde_json::from_str(config_json).unwrap_or_default();
-    let analyzer = Analyzer::new(config);
-    let result = run_analysis(&analyzer, source);
+
+    if let Err(msg) = validation::validate_config_json(config_json) {
+        return make_error("INVALID_CONFIG", msg);
+    }
+    if let Err(msg) = validation::validate_source(source) {
+        return make_error("INVALID_INPUT", msg);
+    }
+    if let Err(msg) = validation::check_memory_budget(source.len()) {
+        return make_error("MEMORY_BUDGET_EXCEEDED", msg);
+    }
+
+    let result = analysis::run_analysis_with_config(config_json, source);
     serde_wasm_bindgen::to_value(&result).unwrap_or(JsValue::NULL)
+}
+
+/// Analyse with deterministic progress snapshots for streaming-like UX.
+///
+/// Returns a [`ProgressiveAnalysisResult`] containing both progress events and
+/// the final [`AnalysisResult`], allowing frontend clients to render partial
+/// progress while output remains deterministic and cacheable.
+#[wasm_bindgen]
+pub fn analyze_with_progress(source: &str) -> JsValue {
+    set_panic_hook();
+
+    if let Err(msg) = validation::validate_source(source) {
+        return make_error("INVALID_INPUT", msg);
+    }
+
+    let progressive = analysis::run_analysis_with_progress(source);
+    serde_wasm_bindgen::to_value(&progressive).unwrap_or(JsValue::NULL)
 }
 
 /// Return the full finding-code catalogue as a JS array.
@@ -259,8 +139,152 @@ pub fn finding_codes() -> JsValue {
     serde_wasm_bindgen::to_value(&codes).unwrap_or(JsValue::NULL)
 }
 
-/// Return the crate version string (e.g. `"0.1.0"`).
+/// Return the crate version string (e.g. `"0.2.0"`).
 #[wasm_bindgen]
 pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
+}
+
+/// Return the analysis output schema version (independent of tool version).
+///
+/// Increment this only when the JSON output format changes in a breaking way.
+/// See `docs/wasm-versioning-alignment.md` for the versioning policy.
+#[wasm_bindgen]
+pub fn schema_version() -> String {
+    constants::SCHEMA_VERSION.to_string()
+}
+
+/// Return default config JSON for easy copy/edit in browser tooling.
+#[wasm_bindgen]
+pub fn default_config_json() -> String {
+    serde_json::to_string_pretty(&sanctifier_core::SanctifyConfig::default())
+        .unwrap_or_else(|_| "{}".to_string())
+}
+
+/// Return a deterministic cache key for wasm module assets.
+///
+/// Frontend loaders use this to bust stale service-worker and CacheStorage
+/// entries whenever the package or schema version changes.
+#[wasm_bindgen]
+pub fn asset_cache_key() -> String {
+    analysis::build_cache_key()
+}
+
+/// Return cache metadata for offline-first consumers.
+#[wasm_bindgen]
+pub fn cache_metadata() -> JsValue {
+    let metadata = CacheMetadata {
+        package: "sanctifier-wasm",
+        version: env!("CARGO_PKG_VERSION"),
+        schema_version: constants::SCHEMA_VERSION,
+        cache_key: analysis::build_cache_key(),
+    };
+    serde_wasm_bindgen::to_value(&metadata).unwrap_or(JsValue::NULL)
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::constants::{MAX_SOURCE_SIZE, MEMORY_BUDGET_BYTES, MEMORY_OVERHEAD_FACTOR};
+    use crate::validation::{check_memory_budget, validate_source};
+
+    // ── validate_source ───────────────────────────────────────────────────────
+
+    #[test]
+    fn validate_source_rejects_empty() {
+        assert!(validate_source("").is_err());
+    }
+
+    #[test]
+    fn validate_source_accepts_one_byte() {
+        assert!(validate_source("x").is_ok());
+    }
+
+    #[test]
+    fn validate_source_rejects_above_max_size() {
+        let oversized = "x".repeat(MAX_SOURCE_SIZE + 1);
+        assert!(validate_source(&oversized).is_err());
+    }
+
+    #[test]
+    fn validate_source_accepts_at_max_size() {
+        let at_limit = "x".repeat(MAX_SOURCE_SIZE);
+        assert!(validate_source(&at_limit).is_ok());
+    }
+
+    // ── check_memory_budget ───────────────────────────────────────────────────
+
+    #[test]
+    fn memory_budget_accepts_small_source() {
+        assert!(check_memory_budget(1024).is_ok());
+    }
+
+    #[test]
+    fn memory_budget_accepts_source_at_exact_limit() {
+        let max_ok = MEMORY_BUDGET_BYTES / MEMORY_OVERHEAD_FACTOR;
+        assert!(check_memory_budget(max_ok).is_ok());
+    }
+
+    #[test]
+    fn memory_budget_rejects_source_one_byte_above_limit() {
+        let just_over = MEMORY_BUDGET_BYTES / MEMORY_OVERHEAD_FACTOR + 1;
+        let result = check_memory_budget(just_over);
+        assert!(result.is_err());
+        let msg = result.unwrap_err();
+        assert!(
+            msg.contains("memory budget"),
+            "expected budget message, got: {msg}"
+        );
+    }
+
+    #[test]
+    fn memory_budget_rejects_max_source_size() {
+        // MAX_SOURCE_SIZE (10 MB) × 8 = 80 MB > 32 MB budget.
+        assert!(check_memory_budget(MAX_SOURCE_SIZE).is_err());
+    }
+
+    #[test]
+    fn memory_budget_saturating_mul_does_not_overflow() {
+        let result = check_memory_budget(usize::MAX);
+        assert!(result.is_err());
+    }
+
+    // ── build_cache_key ───────────────────────────────────────────────────────
+
+    #[test]
+    fn cache_key_contains_namespace_and_versions() {
+        let key = analysis::build_cache_key();
+        assert!(key.contains(constants::CACHE_NAMESPACE));
+        assert!(key.contains(constants::SCHEMA_VERSION));
+    }
+
+    // ── Module boundary: public re-exports are accessible ────────────────────
+
+    #[test]
+    fn types_module_re_exports_are_accessible() {
+        // Ensures the public module boundary is stable; adding a new type here
+        // will cause a compile error if the module layout changes unexpectedly.
+        let _ = ErrorResponse {
+            error_code: "TEST".to_string(),
+            message: "test".to_string(),
+            schema_version: constants::SCHEMA_VERSION,
+        };
+        let _ = Summary {
+            total: 0,
+            auth_gaps: 0,
+            panic_issues: 0,
+            arithmetic_issues: 0,
+            size_warnings: 0,
+            unsafe_patterns: 0,
+            storage_collisions: 0,
+            event_issues: 0,
+            unhandled_results: 0,
+            upgrade_risks: 0,
+            sep41_issues: 0,
+            has_critical: false,
+            has_high: false,
+        };
+    }
 }

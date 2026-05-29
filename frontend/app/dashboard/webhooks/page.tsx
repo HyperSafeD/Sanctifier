@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Bell, ChevronRight, Hash, MessageSquare, Save, Webhook } from "lucide-react";
+import { Bell, ChevronRight, Hash, MessageSquare, Save } from "lucide-react";
 import Link from "next/link";
 
 export default function WebhooksPage() {

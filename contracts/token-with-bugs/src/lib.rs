@@ -40,6 +40,18 @@ impl TokenWithBugs {
         e.storage().persistent().set(&to, &new_balance);
     }
 
+    // VULNERABILITY (S023): transfer_from moves 'from' balance without checking
+    // or decrementing the spender's allowance — any caller can drain any account.
+    pub fn transfer_from(e: Env, _spender: Address, from: Address, to: Address, amount: i128) {
+        let from_balance = Self::balance(e.clone(), from.clone());
+        e.storage()
+            .persistent()
+            .set(&from, &(from_balance - amount));
+
+        let to_balance = Self::balance(e.clone(), to.clone());
+        e.storage().persistent().set(&to, &(to_balance + amount));
+    }
+
     pub fn symbol(e: Env) -> String {
         // Return the symbol stored under the BALANCE key as a demonstration;
         // the unused `BALANCE` constant is referenced here so the compiler

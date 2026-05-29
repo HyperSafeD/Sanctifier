@@ -20,12 +20,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
           targets: wasm32-unknown-unknown
+
+      - name: Install WASM target
+        run: rustup target add wasm32-unknown-unknown
 
       - name: Cache cargo registry & build artifacts
         uses: actions/cache@v4
@@ -75,10 +80,17 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libdbus-1-dev pkg-config
+          sudo apt-get install -y libdbus-1-dev libudev-dev pkg-config
 
-      - name: Lint (make lint smoke test)
-        run: make lint
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies and Lint (make lint smoke test)
+        run: |
+          npm ci
+          make lint
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -98,6 +110,11 @@ jobs:
         run: |
           cargo test -p sanctifier-core --all-features
           cargo test -p sanctifier-cli
+
+      - name: Run action unit tests
+        run: |
+          python -m unittest discover -s tests/action -p "test_*.py"
+          python -m unittest discover -s tests/vulnerability_db -p "test_*.py"
 
       - name: Code coverage (Linux only)
         if: runner.os == 'Linux'
@@ -139,7 +156,7 @@ jobs:
           echo 'module.exports = {};' > tooling/sanctifier-wasm/pkg/index.js
 
       - name: Install frontend dependencies
-        run: cd frontend && npm ci
+        run: cd frontend && npm install
 
       - name: Run unit tests
         run: cd frontend && npm test
@@ -154,6 +171,167 @@ jobs:
           name: frontend-coverage
           path: frontend/coverage/
           retention-days: 7
+
+  docs-specs-integration:
+    name: Docs/specs integration coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate docs/specs coverage
+        run: npm run docs:specs:check
+
+  contracts-sep41-fixtures:
+    name: Contracts SEP-41 Fixture Coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Sanctifier CLI
+        run: cargo build -p sanctifier-cli
+
+      - name: Run SEP-41 fixture contract tests
+        run: cargo test -p my-contract
+
+      - name: Validate S012 fixture output via CLI
+        run: |
+          cargo run --quiet --bin sanctifier -- analyze contracts/fixtures/finding-codes/s012_token_interface.rs --format json > /tmp/s012-report.json
+          grep -q '"S012"' /tmp/s012-report.json
+
+  frontend-e2e:
+    name: Frontend E2E Tests (Playwright)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build WASM stub
+        run: |
+          mkdir -p tooling/sanctifier-wasm/pkg
+          echo '{"name":"@sanctifier/wasm","version":"0.0.0","main":"index.js"}' > tooling/sanctifier-wasm/pkg/package.json
+          echo 'module.exports = {};' > tooling/sanctifier-wasm/pkg/index.js
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm install
+
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install --with-deps chromium
+
+      - name: Run e2e tests
+        run: cd frontend && npm run test:e2e
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+          retention-days: 7
+
+  frontend-schema-e2e:
+    name: Frontend Schema Rendering E2E
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build WASM stub
+        run: |
+          mkdir -p tooling/sanctifier-wasm/pkg
+          echo '{"name":"@sanctifier/wasm","version":"0.0.0","main":"index.js"}' > tooling/sanctifier-wasm/pkg/package.json
+          echo 'module.exports = {};' > tooling/sanctifier-wasm/pkg/index.js
+
+      - name: Install frontend dependencies
+        run: cd frontend && npm install
+
+      - name: Install Playwright browsers
+        run: cd frontend && npx playwright install --with-deps chromium
+
+      - name: Run schema rendering e2e suite
+        run: cd frontend && npm run test:e2e:schema
+
+  contract-docs:
+    name: Contract ABI / Interface Docs
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-contract-docs-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-contract-docs-
+
+      - name: Generate contract docs and interface summary
+        run: make contract-docs
+
+      - name: Verify interface summary is up-to-date
+        run: |
+          # Run extraction-only check (rustdoc already generated above)
+          SKIP_RUSTDOC=1 bash scripts/gen-contract-docs.sh --check
+
+      - name: Run ABI surface stability tests (amm-pool)
+        run: cargo test -p amm-pool --test integration_tests abi_ -- --nocapture
+
+      - name: Upload rustdoc artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-rustdoc
+          path: target/doc/
+          retention-days: 14
+
+      - name: Upload interface JSON artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: contract-interfaces-json
+          path: docs/generated/contract-interfaces.json
+          retention-days: 14
 
   commitlint:
     name: Lint Commit Messages
@@ -221,6 +399,10 @@ jobs:
             pkg.name = '@sanctifier/wasm';
             fs.writeFileSync('pkg/package.json', JSON.stringify(pkg, null, 2));
           "
+      - name: Verify CSP Compliance
+        run: |
+          cd tooling/sanctifier-wasm
+          node scripts/verify-csp-compliance.js
 
       - name: Upload WASM artifact
         uses: actions/upload-artifact@v4

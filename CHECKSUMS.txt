@@ -1,0 +1,17 @@
+# Sanctifier Release Artifact Checksums (SHA-256)
+# Generated on 2026-04-26T01:47:00Z
+# Source manifest: data/release-manifest.json
+# Verify locally: grep -v '^#' CHECKSUMS.txt | sha256sum -c
+
+137880142281345efe8668eada85cca0a1979ed2fbb2cf099629ad62eeaba95e  data/sarif/rule-metadata.yaml
+0032d95b465d2a750394100b8fbc87caff059951e9993688157db44a0d42e4de  data/sarif/severity-map.yaml
+ac95c14879e7c811d20014818950d357afcf8dcd33c55da0b1e960425d8c1d2f  data/security-review/checklist.yaml
+83256328e87f34dbeb4c171cc6c94e94b4f1cd1619fd1c1d6e6e567e12c51c5f  data/security-review/defaults.yaml
+de34d4b4019a3b5c7a137954d8154ce74ff78c96c32c68ba98b84937a2e58299  data/security-review/owners.yaml
+432941f5159eefac437fa747a98e32acf9cd7c5060e1c5f9a43e9730584287a7  data/vulnerability-db.json
+9cc8233f63e2308fd8f110cd4a4aed074d0d962a765f278130518ddbb289c99d  schemas/analysis-output.json
+27a7582503498d5ede1c04343d93d4c5bcc267ac9b1094c7da8892e657f43626  schemas/sanctifier.json
+74a621b06a37249687ce742662a2cbc848bf1f1a6c79a50569893aca2519deaf  schemas/sarif-rule-metadata.schema.json
+81ffb6b623fa0e8c6bc28be52056594b5bb101a0180b9c2e4706319a817c15c6  schemas/security-review.schema.json
+97044742c57fa849037f78840a53712462fbdc3632e82de4fa9a624420825150  schemas/severity-taxonomy.schema.json
+5281e26bfda506bd954cfa675ef2f4ea3ef75e33a980598c8a044a8bfb4522e5  schemas/vulnerability-db.json

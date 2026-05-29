@@ -4,12 +4,16 @@ on:
     tags:
       - "v*"
 
+permissions: {}
+
 jobs:
   build-and-release:
     name: Build and Release Binary
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -59,6 +63,11 @@ jobs:
       - name: Prepare binary for upload (Windows)
         if: runner.os == 'Windows'
         run: mv target/${{ matrix.target }}/release/sanctifier.exe ${{ matrix.artifact_name }}
+
+      - name: Generate build provenance (SLSA)
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ${{ matrix.artifact_name }}
 
       - name: Release
         uses: softprops/action-gh-release@v2

@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Tailwind v4: wire the `dark:` variant to the `.dark` class on <html>.
+   Without this, `dark:` defaults to the prefers-color-scheme media query and
+   the theme toggle has no effect on utility-class-styled content. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;

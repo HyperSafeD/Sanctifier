@@ -241,7 +241,11 @@ mod tests {
             }
         "#;
         let violations = rule.check(source);
-        assert_eq!(violations.len(), 1, "Only real_code should fire, not cfg(test) helper");
+        assert_eq!(
+            violations.len(),
+            1,
+            "Only real_code should fire, not cfg(test) helper"
+        );
     }
 
     #[test]

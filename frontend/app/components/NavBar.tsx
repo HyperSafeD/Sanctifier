@@ -16,8 +16,6 @@ export function NavBar() {
     { name: "Terminal", href: "/terminal" },
   ];
 
-  const githubUrl = "https://github.com/Jayy4rl/Sanctifier";
-
   const isActive = (path: string) => pathname === path;
 
   return (
@@ -45,14 +43,6 @@ export function NavBar() {
                   {link.name}
                 </Link>
               ))}
-              <a
-                href={githubUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center px-1 pt-1 text-sm font-medium border-b-2 border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 theme-high-contrast:text-white transition-colors"
-              >
-                GitHub
-              </a>
             </div>
           </div>
           <div className="hidden md:flex items-center">
@@ -124,14 +114,6 @@ export function NavBar() {
                 {link.name}
               </Link>
             ))}
-            <a
-              href={githubUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="block pl-3 pr-4 py-2 border-l-4 border-transparent text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:border-zinc-300 theme-high-contrast:text-white text-base font-medium transition-colors"
-            >
-              GitHub
-            </a>
           </div>
         </div>
       )}

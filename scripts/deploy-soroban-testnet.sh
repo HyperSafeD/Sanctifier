@@ -94,6 +94,7 @@ validate_environment() {
     for tool in "${required_tools[@]}"; do
         if ! command -v "$tool" &> /dev/null; then
             log_error "Required tool not found: $tool"
+            log_info "Please install $tool to proceed."
             return 1
         fi
     done
@@ -101,21 +102,52 @@ validate_environment() {
     # Check Soroban secret key
     if [[ -z "${SOROBAN_SECRET_KEY:-}" ]]; then
         log_error "SOROBAN_SECRET_KEY environment variable not set"
+        log_info "Set it with: export SOROBAN_SECRET_KEY=S..."
+        return 1
+    fi
+
+    if ! validate_secret_key "$SOROBAN_SECRET_KEY"; then
+        log_error "Invalid SOROBAN_SECRET_KEY format"
+        log_info "Secret keys should start with 'S' and be 56 characters long."
         return 1
     fi
 
     # Check network is valid
-    case "$NETWORK" in
+    if ! validate_network "$NETWORK"; then
+        log_error "Invalid network: $NETWORK"
+        log_info "Supported networks: testnet, futurenet, mainnet"
+        return 1
+    fi
+
+    # Check validation interval
+    if ! [[ "$VALIDATION_INTERVAL" =~ ^[0-9]+$ ]] || [ "$VALIDATION_INTERVAL" -le 0 ]; then
+        log_error "Invalid validation interval: $VALIDATION_INTERVAL"
+        log_info "Interval must be a positive integer (seconds)."
+        return 1
+    fi
+
+    return 0
+}
+
+validate_secret_key() {
+    local key=$1
+    if [[ "$key" =~ ^S[A-Z0-9]{55}$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+validate_network() {
+    local net=$1
+    case "$net" in
         testnet|futurenet|mainnet)
-            log_success "Network validated: $NETWORK"
+            return 0
             ;;
         *)
-            log_error "Invalid network: $NETWORK"
             return 1
             ;;
     esac
-
-    return 0
 }
 
 #======================================================================

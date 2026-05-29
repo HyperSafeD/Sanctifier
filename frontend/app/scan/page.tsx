@@ -7,6 +7,7 @@ import { SanctityScore } from "../components/SanctityScore";
 import { FindingsList } from "../components/FindingsList";
 import { SeverityFilter } from "../components/SeverityFilter";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { nextScanProgressPhase } from "../lib/scan-progress";
 import type { Finding, Severity } from "../types";
 import Link from "next/link";
 
@@ -57,18 +58,11 @@ export default function ScanPage() {
       formData.append("contract", selectedFile);
 
       // We start a "simulated" log stream since our POST is atomic
+      let phaseIndex = 0;
       const logsTimer = setInterval(() => {
-        const phases = [
-          "Parsing Soroban SDK attributes...",
-          "Building intermediate representation...",
-          "Traversing call graph...",
-          "Running static analysis rules...",
-          "Checking for authorization gaps...",
-          "Verifying arithmetic safety...",
-          "Estimating ledger footprint...",
-        ];
-        const randomPhase = phases[Math.floor(Math.random() * phases.length)];
-        setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] [INFO] ${randomPhase}`]);
+        const phase = nextScanProgressPhase(phaseIndex);
+        phaseIndex += 1;
+        setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] [INFO] ${phase}`]);
       }, 1500);
 
       const response = await fetch("/api/analyze", {

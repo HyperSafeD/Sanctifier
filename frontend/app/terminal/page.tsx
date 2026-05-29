@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useToast } from "../providers/ToastProvider";
 import { AnalysisTerminal } from "../components/AnalysisTerminal";
 
 export default function TerminalPage() {
@@ -8,20 +9,27 @@ export default function TerminalPage() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [connectionError, setConnectionError] = useState<string | null>(null);
 
+  const toast = useToast();
+
   const startAnalysis = useCallback(() => {
     setLogs([]);
     setIsAnalyzing(true);
     setConnectionError(null);
 
-    const eventSource = new EventSource("/api/analyze?path=.");
+    const eventSource = new EventSource(`/api/analyze/stream?path=${encodeURIComponent(".")}`);
 
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      setLogs((prev) => [...prev, data]);
-
-      if (data.includes("Analysis complete")) {
+      if (data.type === "log" || data.type === "result") {
+        const line = data.type === "log" ? data.message : JSON.stringify(data.payload);
+        setLogs((prev) => [...prev, line]);
+      }
+      if (data.type === "done" || data.type === "error") {
         eventSource.close();
         setIsAnalyzing(false);
+        if (data.type === "error") {
+          setConnectionError(`Analysis error: ${data.message}`);
+        }
       }
     };
 
@@ -111,12 +119,43 @@ export default function TerminalPage() {
             <h3 className="font-bold mb-2">Instant Feedback</h3>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">Get immediate diagnostic information without waiting for long build processes.</p>
           </div>
-          <div className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm">
-            <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 mb-4">
+          <div className="p-6 rounded-2xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 shadow-sm flex flex-col gap-3">
+            <div className="w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500">
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>
             </div>
-            <h3 className="font-bold mb-2">Export Logs</h3>
+            <h3 className="font-bold">Export Logs</h3>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">Keep a record of your analysis sessions for compliance and auditing purposes.</p>
+            <div className="flex gap-2 mt-1">
+              <button
+                disabled={logs.length === 0}
+                onClick={() => {
+                  const blob = new Blob([logs.join("\n")], { type: "text/plain" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `sanctifier-${Date.now()}.log`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  toast.success("Log downloaded");
+                }}
+                className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Download .log
+              </button>
+              <button
+                disabled={logs.length === 0}
+                onClick={() => {
+                  navigator.clipboard.writeText(logs.join("\n")).then(() => {
+                    toast.success("Logs copied to clipboard");
+                  }).catch(() => {
+                    toast.error("Failed to copy logs");
+                  });
+                }}
+                className="flex-1 rounded-lg border border-zinc-300 dark:border-zinc-600 px-3 py-1.5 text-xs font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Copy
+              </button>
+            </div>
           </div>
         </section>
       </main>

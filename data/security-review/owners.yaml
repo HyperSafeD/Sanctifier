@@ -1,0 +1,15 @@
+owners:
+  security:
+    team: core-security
+    slack: "#security"
+    fallback: maintainers
+
+  schemas:
+    team: platform-data
+    slack: "#platform"
+    fallback: maintainers
+
+  data:
+    team: platform-data
+    slack: "#platform"
+    fallback: maintainers

@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "SanctifierAnalysisOutput",
-  "description": "Schema for the JSON output produced by `sanctifier analyze --format json`. Versioned via the `schema_version` field; the current version is 1.0.0.",
+  "description": "Schema for the JSON output produced by `sanctifier analyze --format json`. Versioned via the `schema_version` field; the current version is 1.1.0.",
   "type": "object",
   "required": [
     "schema_version",
@@ -18,23 +18,37 @@
     "schema_version": {
       "type": "string",
       "description": "Semantic version of this JSON schema (e.g. \"1.0.0\"). Incremented independently of the tool version whenever the output shape changes.",
-      "examples": ["1.0.0"]
+      "examples": [
+        "1.1.0"
+      ]
     },
     "metadata": {
       "type": "object",
       "description": "Run-level metadata.",
-      "required": ["version", "timestamp", "project_path", "format", "timeout_secs"],
+      "required": [
+        "version",
+        "timestamp",
+        "project_path",
+        "format",
+        "timeout_secs",
+        "cached_files",
+        "total_files"
+      ],
       "additionalProperties": false,
       "properties": {
         "version": {
           "type": "string",
           "description": "Sanctifier CLI version (semver).",
-          "examples": ["0.1.0"]
+          "examples": [
+            "0.1.0"
+          ]
         },
         "timestamp": {
           "type": "string",
           "description": "ISO-8601 UTC timestamp when the scan was started.",
-          "examples": ["2026-03-25T10:00:00Z"]
+          "examples": [
+            "2026-03-25T10:00:00Z"
+          ]
         },
         "project_path": {
           "type": "string",
@@ -49,6 +63,16 @@
           "type": "integer",
           "minimum": 0,
           "description": "Per-file analysis timeout in seconds. 0 means disabled."
+        },
+        "cached_files": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of files served from the incremental analysis cache."
+        },
+        "total_files": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total number of Rust files found in the project."
         }
       }
     },
@@ -69,24 +93,73 @@
         "smt_issues",
         "sep41_issues",
         "timed_out_files",
+        "cached_files",
+        "reanalysed_files",
         "has_critical",
         "has_high"
       ],
       "additionalProperties": false,
       "properties": {
-        "total_findings": { "type": "integer", "minimum": 0 },
-        "storage_collisions": { "type": "integer", "minimum": 0 },
-        "auth_gaps": { "type": "integer", "minimum": 0 },
-        "panic_issues": { "type": "integer", "minimum": 0 },
-        "arithmetic_issues": { "type": "integer", "minimum": 0 },
-        "size_warnings": { "type": "integer", "minimum": 0 },
-        "unsafe_patterns": { "type": "integer", "minimum": 0 },
-        "custom_rule_matches": { "type": "integer", "minimum": 0 },
-        "event_issues": { "type": "integer", "minimum": 0 },
-        "unhandled_results": { "type": "integer", "minimum": 0 },
-        "smt_issues": { "type": "integer", "minimum": 0 },
-        "sep41_issues": { "type": "integer", "minimum": 0 },
-        "timed_out_files": { "type": "integer", "minimum": 0 },
+        "total_findings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "storage_collisions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "auth_gaps": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "panic_issues": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "arithmetic_issues": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "size_warnings": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsafe_patterns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "custom_rule_matches": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "event_issues": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unhandled_results": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "smt_issues": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sep41_issues": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "timed_out_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cached_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reanalysed_files": {
+          "type": "integer",
+          "minimum": 0
+        },
         "has_critical": {
           "type": "boolean",
           "description": "True if any critical-severity finding was emitted."
@@ -99,7 +172,7 @@
     },
     "findings": {
       "type": "object",
-      "description": "Structured finding lists, one array per category. Every item carries a `code` field (S000–S012).",
+      "description": "Structured finding lists, one array per category. Every item carries a `code` field (S000\u2013S012).",
       "required": [
         "storage_collisions",
         "ledger_size_warnings",
@@ -119,137 +192,195 @@
       "properties": {
         "storage_collisions": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingStorageCollision" }
+          "items": {
+            "$ref": "#/definitions/FindingStorageCollision"
+          }
         },
         "ledger_size_warnings": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingLedgerSize" }
+          "items": {
+            "$ref": "#/definitions/FindingLedgerSize"
+          }
         },
         "unsafe_patterns": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingUnsafePattern" }
+          "items": {
+            "$ref": "#/definitions/FindingUnsafePattern"
+          }
         },
         "auth_gaps": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingAuthGap" }
+          "items": {
+            "$ref": "#/definitions/FindingAuthGap"
+          }
         },
         "panic_issues": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingPanic" }
+          "items": {
+            "$ref": "#/definitions/FindingPanic"
+          }
         },
         "arithmetic_issues": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingArithmetic" }
+          "items": {
+            "$ref": "#/definitions/FindingArithmetic"
+          }
         },
         "custom_rules": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingCustomRule" }
+          "items": {
+            "$ref": "#/definitions/FindingCustomRule"
+          }
         },
         "event_issues": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingEventIssue" }
+          "items": {
+            "$ref": "#/definitions/FindingEventIssue"
+          }
         },
         "unhandled_results": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingUnhandledResult" }
+          "items": {
+            "$ref": "#/definitions/FindingUnhandledResult"
+          }
         },
         "upgrade_risks": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingUpgradeRisk" }
+          "items": {
+            "$ref": "#/definitions/FindingUpgradeRisk"
+          }
         },
         "smt_issues": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingSmtIssue" }
+          "items": {
+            "$ref": "#/definitions/FindingSmtIssue"
+          }
         },
         "sep41_issues": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingSep41Issue" }
+          "items": {
+            "$ref": "#/definitions/FindingSep41Issue"
+          }
         },
         "timeouts": {
           "type": "array",
-          "items": { "$ref": "#/definitions/FindingTimeout" }
+          "items": {
+            "$ref": "#/definitions/FindingTimeout"
+          }
         }
       }
     },
     "error_codes": {
       "type": "array",
       "description": "Full catalogue of finding codes known to this version of Sanctifier.",
-      "items": { "$ref": "#/definitions/FindingCode" }
+      "items": {
+        "$ref": "#/definitions/FindingCode"
+      }
     },
     "storage_collisions": {
       "type": "array",
       "description": "Raw storage-collision structs (same data as findings.storage_collisions but without the code field).",
-      "items": { "$ref": "#/definitions/StorageCollisionIssue" }
+      "items": {
+        "$ref": "#/definitions/StorageCollisionIssue"
+      }
     },
     "call_graph": {
       "type": "array",
       "description": "Raw cross-contract call graph edges collected from env.invoke_contract usage.",
-      "items": { "$ref": "#/definitions/ContractCallEdge" }
+      "items": {
+        "$ref": "#/definitions/ContractCallEdge"
+      }
     },
     "ledger_size_warnings": {
       "type": "array",
       "description": "Raw ledger-size-warning structs.",
-      "items": { "$ref": "#/definitions/SizeWarning" }
+      "items": {
+        "$ref": "#/definitions/SizeWarning"
+      }
     },
     "unsafe_patterns": {
       "type": "array",
       "description": "Raw unsafe-pattern structs.",
-      "items": { "$ref": "#/definitions/UnsafePattern" }
+      "items": {
+        "$ref": "#/definitions/UnsafePattern"
+      }
     },
     "auth_gaps": {
       "type": "array",
       "description": "Function names that are missing an authentication guard.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "panic_issues": {
       "type": "array",
       "description": "Raw panic-issue structs.",
-      "items": { "$ref": "#/definitions/PanicIssue" }
+      "items": {
+        "$ref": "#/definitions/PanicIssue"
+      }
     },
     "arithmetic_issues": {
       "type": "array",
       "description": "Raw arithmetic-issue structs.",
-      "items": { "$ref": "#/definitions/ArithmeticIssue" }
+      "items": {
+        "$ref": "#/definitions/ArithmeticIssue"
+      }
     },
     "custom_rules": {
       "type": "array",
       "description": "Raw custom-rule-match structs.",
-      "items": { "$ref": "#/definitions/CustomRuleMatch" }
+      "items": {
+        "$ref": "#/definitions/CustomRuleMatch"
+      }
     },
     "event_issues": {
       "type": "array",
       "description": "Raw event-issue structs.",
-      "items": { "$ref": "#/definitions/EventIssue" }
+      "items": {
+        "$ref": "#/definitions/EventIssue"
+      }
     },
     "unhandled_results": {
       "type": "array",
       "description": "Raw unhandled-result structs.",
-      "items": { "$ref": "#/definitions/UnhandledResultIssue" }
+      "items": {
+        "$ref": "#/definitions/UnhandledResultIssue"
+      }
     },
     "upgrade_reports": {
       "type": "array",
       "description": "Full upgrade-safety reports (each contains multiple findings plus metadata).",
-      "items": { "$ref": "#/definitions/UpgradeReport" }
+      "items": {
+        "$ref": "#/definitions/UpgradeReport"
+      }
     },
     "smt_issues": {
       "type": "array",
       "description": "Raw SMT-invariant-issue structs.",
-      "items": { "$ref": "#/definitions/SmtInvariantIssue" }
+      "items": {
+        "$ref": "#/definitions/SmtInvariantIssue"
+      }
     },
     "sep41_checked_contracts": {
       "type": "array",
       "description": "Paths or names of contracts checked for SEP-41 compliance.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     },
     "sep41_issues": {
       "type": "array",
       "description": "Raw SEP-41 compliance issues.",
-      "items": { "$ref": "#/definitions/Sep41Issue" }
+      "items": {
+        "$ref": "#/definitions/Sep41Issue"
+      }
     },
     "vulnerability_db_matches": {
       "type": "array",
       "description": "Matches against the community vulnerability database.",
-      "items": { "$ref": "#/definitions/VulnMatch" }
+      "items": {
+        "$ref": "#/definitions/VulnMatch"
+      }
     },
     "vulnerability_db_version": {
       "type": "string",
@@ -258,27 +389,56 @@
     "timed_out_files": {
       "type": "array",
       "description": "Paths of files whose analysis was aborted due to the per-file timeout.",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      }
     }
   },
   "definitions": {
     "ContractCallEdge": {
       "type": "object",
-      "required": ["caller", "callee", "file", "line", "contract_id_expr", "function_expr"],
+      "required": [
+        "caller",
+        "callee",
+        "file",
+        "line",
+        "contract_id_expr",
+        "function_expr"
+      ],
       "additionalProperties": false,
       "properties": {
-        "caller": { "type": "string" },
-        "callee": { "type": "string" },
-        "file": { "type": "string" },
-        "line": { "type": "integer", "minimum": 1 },
-        "contract_id_expr": { "type": "string" },
-        "function_expr": { "type": ["string", "null"] }
+        "caller": {
+          "type": "string"
+        },
+        "callee": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "contract_id_expr": {
+          "type": "string"
+        },
+        "function_expr": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
       }
     },
     "FindingCode": {
       "type": "object",
       "description": "A single entry in the Sanctifier finding-code catalogue.",
-      "required": ["code", "category", "description"],
+      "required": [
+        "code",
+        "category",
+        "description"
+      ],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -299,27 +459,62 @@
     "StorageCollisionIssue": {
       "type": "object",
       "description": "Potential storage key collision (raw struct, no code tag).",
-      "required": ["key_value", "key_type", "location", "message"],
+      "required": [
+        "key_value",
+        "key_type",
+        "location",
+        "message"
+      ],
       "additionalProperties": false,
       "properties": {
-        "key_value": { "type": "string", "description": "The storage key literal or expression." },
-        "key_type": { "type": "string", "description": "The type of the key (e.g. Symbol, BytesN)." },
-        "location": { "type": "string", "description": "Human-readable source location." },
-        "message": { "type": "string" }
+        "key_value": {
+          "type": "string",
+          "description": "The storage key literal or expression."
+        },
+        "key_type": {
+          "type": "string",
+          "description": "The type of the key (e.g. Symbol, BytesN)."
+        },
+        "location": {
+          "type": "string",
+          "description": "Human-readable source location."
+        },
+        "message": {
+          "type": "string"
+        }
       }
     },
     "SizeWarning": {
       "type": "object",
       "description": "Ledger entry size exceeds or approaches the configured limit (raw struct).",
-      "required": ["struct_name", "estimated_size", "limit", "level"],
+      "required": [
+        "struct_name",
+        "estimated_size",
+        "limit",
+        "level"
+      ],
       "additionalProperties": false,
       "properties": {
-        "struct_name": { "type": "string", "description": "Name of the #[contracttype] struct or enum." },
-        "estimated_size": { "type": "integer", "minimum": 0, "description": "Estimated serialised size in bytes." },
-        "limit": { "type": "integer", "minimum": 0, "description": "Configured ledger-entry size limit in bytes." },
+        "struct_name": {
+          "type": "string",
+          "description": "Name of the #[contracttype] struct or enum."
+        },
+        "estimated_size": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Estimated serialised size in bytes."
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Configured ledger-entry size limit in bytes."
+        },
         "level": {
           "type": "string",
-          "enum": ["ExceedsLimit", "ApproachingLimit"],
+          "enum": [
+            "ExceedsLimit",
+            "ApproachingLimit"
+          ],
           "description": "Whether the size exceeds or merely approaches the limit."
         }
       }
@@ -327,53 +522,109 @@
     "UnsafePattern": {
       "type": "object",
       "description": "Unsafe pattern (panic!, unwrap, expect) detected by the visitor (raw struct).",
-      "required": ["pattern_type", "line", "snippet"],
+      "required": [
+        "pattern_type",
+        "line",
+        "snippet"
+      ],
       "additionalProperties": false,
       "properties": {
         "pattern_type": {
           "type": "string",
-          "enum": ["Panic", "Unwrap", "Expect"],
+          "enum": [
+            "Panic",
+            "Unwrap",
+            "Expect"
+          ],
           "description": "The kind of unsafe pattern."
         },
-        "line": { "type": "integer", "minimum": 1, "description": "1-based line number." },
-        "snippet": { "type": "string", "description": "Source snippet around the pattern." }
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based line number."
+        },
+        "snippet": {
+          "type": "string",
+          "description": "Source snippet around the pattern."
+        }
       }
     },
     "PanicIssue": {
       "type": "object",
       "description": "panic!/unwrap/expect found inside a contract function (raw struct).",
-      "required": ["function_name", "issue_type", "location"],
+      "required": [
+        "function_name",
+        "issue_type",
+        "location"
+      ],
       "additionalProperties": false,
       "properties": {
-        "function_name": { "type": "string" },
-        "issue_type": { "type": "string", "description": "One of: panic!, unwrap, expect." },
-        "location": { "type": "string" }
+        "function_name": {
+          "type": "string"
+        },
+        "issue_type": {
+          "type": "string",
+          "description": "One of: panic!, unwrap, expect."
+        },
+        "location": {
+          "type": "string"
+        }
       }
     },
     "ArithmeticIssue": {
       "type": "object",
       "description": "Unchecked arithmetic operation (raw struct).",
-      "required": ["function_name", "operation", "suggestion", "location"],
+      "required": [
+        "function_name",
+        "operation",
+        "suggestion",
+        "location"
+      ],
       "additionalProperties": false,
       "properties": {
-        "function_name": { "type": "string" },
-        "operation": { "type": "string", "description": "Operator: +, -, *, +=, -=, *=." },
-        "suggestion": { "type": "string" },
-        "location": { "type": "string" }
+        "function_name": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string",
+          "description": "Operator: +, -, *, +=, -=, *=."
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        }
       }
     },
     "CustomRuleMatch": {
       "type": "object",
       "description": "Match produced by a user-defined regex rule (raw struct).",
-      "required": ["rule_name", "line", "snippet", "severity"],
+      "required": [
+        "rule_name",
+        "line",
+        "snippet",
+        "severity"
+      ],
       "additionalProperties": false,
       "properties": {
-        "rule_name": { "type": "string" },
-        "line": { "type": "integer", "minimum": 1 },
-        "snippet": { "type": "string" },
+        "rule_name": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snippet": {
+          "type": "string"
+        },
         "severity": {
           "type": "string",
-          "enum": ["info", "warning", "error"],
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ],
           "description": "Severity inherited from the custom rule."
         }
       }
@@ -381,91 +632,197 @@
     "EventIssue": {
       "type": "object",
       "description": "Inconsistent event schema or sub-optimal topic pattern (raw struct).",
-      "required": ["function_name", "event_name", "issue_type", "message", "location"],
+      "required": [
+        "function_name",
+        "event_name",
+        "issue_type",
+        "message",
+        "location"
+      ],
       "additionalProperties": false,
       "properties": {
-        "function_name": { "type": "string" },
-        "event_name": { "type": "string" },
+        "function_name": {
+          "type": "string"
+        },
+        "event_name": {
+          "type": "string"
+        },
         "issue_type": {
           "type": "string",
-          "enum": ["InconsistentSchema", "OptimizableTopic"]
+          "enum": [
+            "InconsistentSchema",
+            "OptimizableTopic"
+          ]
         },
-        "message": { "type": "string" },
-        "location": { "type": "string" }
+        "message": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        }
       }
     },
     "UnhandledResultIssue": {
       "type": "object",
       "description": "Result return value that is silently discarded (raw struct).",
-      "required": ["function_name", "call_expression", "message", "location"],
+      "required": [
+        "function_name",
+        "call_expression",
+        "message",
+        "location"
+      ],
       "additionalProperties": false,
       "properties": {
-        "function_name": { "type": "string" },
-        "call_expression": { "type": "string" },
-        "message": { "type": "string" },
-        "location": { "type": "string" }
+        "function_name": {
+          "type": "string"
+        },
+        "call_expression": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        }
       }
     },
     "UpgradeFinding": {
       "type": "object",
       "description": "A single finding within an upgrade-safety report.",
-      "required": ["category", "location", "message", "suggestion"],
+      "required": [
+        "category",
+        "location",
+        "message",
+        "suggestion"
+      ],
       "additionalProperties": false,
       "properties": {
         "category": {
           "type": "string",
-          "enum": ["admin_control", "timelock", "init_pattern", "storage_layout", "governance"]
+          "enum": [
+            "admin_control",
+            "timelock",
+            "init_pattern",
+            "storage_layout",
+            "governance"
+          ]
         },
         "function_name": {
-          "type": ["string", "null"],
+          "type": [
+            "string",
+            "null"
+          ],
           "description": "Name of the related function, if applicable."
         },
-        "location": { "type": "string" },
-        "message": { "type": "string" },
-        "suggestion": { "type": "string" }
+        "location": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        }
       }
     },
     "UpgradeReport": {
       "type": "object",
       "description": "Upgrade-safety report produced by the upgrade-pattern analyser.",
-      "required": ["findings", "upgrade_mechanisms", "init_functions", "storage_types", "suggestions"],
+      "required": [
+        "findings",
+        "upgrade_mechanisms",
+        "init_functions",
+        "storage_types",
+        "suggestions"
+      ],
       "additionalProperties": false,
       "properties": {
         "findings": {
           "type": "array",
-          "items": { "$ref": "#/definitions/UpgradeFinding" }
+          "items": {
+            "$ref": "#/definitions/UpgradeFinding"
+          }
         },
-        "upgrade_mechanisms": { "type": "array", "items": { "type": "string" } },
-        "init_functions": { "type": "array", "items": { "type": "string" } },
-        "storage_types": { "type": "array", "items": { "type": "string" } },
-        "suggestions": { "type": "array", "items": { "type": "string" } }
+        "upgrade_mechanisms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "init_functions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "storage_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "suggestions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
       }
     },
     "SmtInvariantIssue": {
       "type": "object",
       "description": "Invariant violation proved by the Z3 SMT solver (raw struct).",
-      "required": ["function_name", "description", "location"],
+      "required": [
+        "function_name",
+        "description",
+        "location"
+      ],
       "additionalProperties": false,
       "properties": {
-        "function_name": { "type": "string" },
-        "description": { "type": "string" },
-        "location": { "type": "string" }
+        "function_name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        }
       }
     },
     "Sep41Issue": {
       "type": "object",
       "description": "SEP-41 token-interface compliance issue (raw struct).",
-      "required": ["function_name", "kind", "location", "message", "expected_signature"],
+      "required": [
+        "function_name",
+        "kind",
+        "location",
+        "message",
+        "expected_signature"
+      ],
       "additionalProperties": false,
       "properties": {
-        "function_name": { "type": "string" },
+        "function_name": {
+          "type": "string"
+        },
         "kind": {
           "type": "string",
-          "enum": ["missing_function", "signature_mismatch", "authorization_mismatch"]
+          "enum": [
+            "missing_function",
+            "signature_mismatch",
+            "authorization_mismatch"
+          ]
         },
-        "location": { "type": "string" },
-        "message": { "type": "string" },
-        "expected_signature": { "type": "string" },
+        "location": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "expected_signature": {
+          "type": "string"
+        },
         "actual_signature": {
           "type": "string",
           "description": "Present only when the function exists but has a wrong signature."
@@ -475,188 +832,524 @@
     "VulnMatch": {
       "type": "object",
       "description": "Match against the community vulnerability database.",
-      "required": ["vuln_id", "name", "severity", "category", "description", "recommendation", "file", "line", "snippet"],
+      "required": [
+        "vuln_id",
+        "name",
+        "severity",
+        "category",
+        "description",
+        "recommendation",
+        "file",
+        "line",
+        "snippet"
+      ],
       "additionalProperties": false,
       "properties": {
-        "vuln_id": { "type": "string" },
-        "name": { "type": "string" },
-        "severity": { "type": "string" },
-        "category": { "type": "string" },
-        "description": { "type": "string" },
-        "recommendation": { "type": "string" },
-        "file": { "type": "string" },
-        "line": { "type": "integer", "minimum": 0 },
-        "snippet": { "type": "string" }
+        "vuln_id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "recommendation": {
+          "type": "string"
+        },
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "snippet": {
+          "type": "string"
+        }
       }
     },
     "FindingStorageCollision": {
       "type": "object",
-      "description": "S005 — potential storage key collision.",
-      "required": ["code", "key_value", "key_type", "location", "message"],
+      "description": "S005 \u2014 potential storage key collision.",
+      "required": [
+        "code",
+        "key_value",
+        "key_type",
+        "location",
+        "message"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S005" },
-        "key_value": { "type": "string" },
-        "key_type": { "type": "string" },
-        "location": { "type": "string" },
-        "message": { "type": "string" }
+        "code": {
+          "type": "string",
+          "const": "S005"
+        },
+        "key_value": {
+          "type": "string"
+        },
+        "key_type": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingLedgerSize": {
       "type": "object",
-      "description": "S004 — ledger entry size exceeds or approaches limit.",
-      "required": ["code", "struct_name", "estimated_size", "limit", "level"],
+      "description": "S004 \u2014 ledger entry size exceeds or approaches limit.",
+      "required": [
+        "code",
+        "struct_name",
+        "estimated_size",
+        "limit",
+        "level"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S004" },
-        "struct_name": { "type": "string" },
-        "estimated_size": { "type": "integer", "minimum": 0 },
-        "limit": { "type": "integer", "minimum": 0 },
-        "level": { "type": "string", "enum": ["ExceedsLimit", "ApproachingLimit"] }
+        "code": {
+          "type": "string",
+          "const": "S004"
+        },
+        "struct_name": {
+          "type": "string"
+        },
+        "estimated_size": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "level": {
+          "type": "string",
+          "enum": [
+            "ExceedsLimit",
+            "ApproachingLimit"
+          ]
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingUnsafePattern": {
       "type": "object",
-      "description": "S006 — unsafe language or runtime pattern.",
-      "required": ["code", "pattern_type", "line", "snippet"],
+      "description": "S006 \u2014 unsafe language or runtime pattern.",
+      "required": [
+        "code",
+        "pattern_type",
+        "line",
+        "snippet"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S006" },
-        "pattern_type": { "type": "string", "enum": ["Panic", "Unwrap", "Expect"] },
-        "line": { "type": "integer", "minimum": 1 },
-        "snippet": { "type": "string" }
+        "code": {
+          "type": "string",
+          "const": "S006"
+        },
+        "pattern_type": {
+          "type": "string",
+          "enum": [
+            "Panic",
+            "Unwrap",
+            "Expect"
+          ]
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snippet": {
+          "type": "string"
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingAuthGap": {
       "type": "object",
-      "description": "S001 — missing authentication guard in a privileged function.",
-      "required": ["code", "function"],
+      "description": "S001 \u2014 missing authentication guard in a privileged function.",
+      "required": [
+        "code",
+        "function"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S001" },
-        "function": { "type": "string", "description": "Name of the unguarded function." }
+        "code": {
+          "type": "string",
+          "const": "S001"
+        },
+        "function": {
+          "type": "string",
+          "description": "Name of the unguarded function."
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingPanic": {
       "type": "object",
-      "description": "S002 — panic!/unwrap/expect usage.",
-      "required": ["code", "function_name", "issue_type", "location"],
+      "description": "S002 \u2014 panic!/unwrap/expect usage.",
+      "required": [
+        "code",
+        "function_name",
+        "issue_type",
+        "location"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S002" },
-        "function_name": { "type": "string" },
-        "issue_type": { "type": "string" },
-        "location": { "type": "string" }
+        "code": {
+          "type": "string",
+          "const": "S002"
+        },
+        "function_name": {
+          "type": "string"
+        },
+        "issue_type": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingArithmetic": {
       "type": "object",
-      "description": "S003 — unchecked arithmetic with overflow risk.",
-      "required": ["code", "function_name", "operation", "suggestion", "location"],
+      "description": "S003 \u2014 unchecked arithmetic with overflow risk.",
+      "required": [
+        "code",
+        "function_name",
+        "operation",
+        "suggestion",
+        "location"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S003" },
-        "function_name": { "type": "string" },
-        "operation": { "type": "string" },
-        "suggestion": { "type": "string" },
-        "location": { "type": "string" }
+        "code": {
+          "type": "string",
+          "const": "S003"
+        },
+        "function_name": {
+          "type": "string"
+        },
+        "operation": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingCustomRule": {
       "type": "object",
-      "description": "S007 — user-defined custom rule matched contract source.",
-      "required": ["code", "rule_name", "line", "snippet", "severity"],
+      "description": "S007 \u2014 user-defined custom rule matched contract source.",
+      "required": [
+        "code",
+        "rule_name",
+        "line",
+        "snippet",
+        "severity"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S007" },
-        "rule_name": { "type": "string" },
-        "line": { "type": "integer", "minimum": 1 },
-        "snippet": { "type": "string" },
-        "severity": { "type": "string", "enum": ["info", "warning", "error"] }
+        "code": {
+          "type": "string",
+          "const": "S007"
+        },
+        "rule_name": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "snippet": {
+          "type": "string"
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingEventIssue": {
       "type": "object",
-      "description": "S008 — inconsistent event schema or sub-optimal topic.",
-      "required": ["code", "event_name", "issue_type", "location", "message"],
+      "description": "S008 \u2014 inconsistent event schema or sub-optimal topic.",
+      "required": [
+        "code",
+        "event_name",
+        "issue_type",
+        "location",
+        "message"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S008" },
-        "event_name": { "type": "string" },
-        "issue_type": { "type": "string", "enum": ["InconsistentSchema", "OptimizableTopic"] },
-        "location": { "type": "string" },
-        "message": { "type": "string" }
+        "code": {
+          "type": "string",
+          "const": "S008"
+        },
+        "event_name": {
+          "type": "string"
+        },
+        "issue_type": {
+          "type": "string",
+          "enum": [
+            "InconsistentSchema",
+            "OptimizableTopic"
+          ]
+        },
+        "location": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingUnhandledResult": {
       "type": "object",
-      "description": "S009 — Result return value not consumed.",
-      "required": ["code", "function_name", "call_expression", "location", "message"],
+      "description": "S009 \u2014 Result return value not consumed.",
+      "required": [
+        "code",
+        "function_name",
+        "call_expression",
+        "location",
+        "message"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S009" },
-        "function_name": { "type": "string" },
-        "call_expression": { "type": "string" },
-        "location": { "type": "string" },
-        "message": { "type": "string" }
+        "code": {
+          "type": "string",
+          "const": "S009"
+        },
+        "function_name": {
+          "type": "string"
+        },
+        "call_expression": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingUpgradeRisk": {
       "type": "object",
-      "description": "S010 — security risk in contract upgrade or admin mechanisms.",
-      "required": ["code", "category", "location", "message", "suggestion"],
+      "description": "S010 \u2014 security risk in contract upgrade or admin mechanisms.",
+      "required": [
+        "code",
+        "category",
+        "location",
+        "message",
+        "suggestion"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S010" },
+        "code": {
+          "type": "string",
+          "const": "S010"
+        },
         "category": {
           "type": "string",
-          "enum": ["admin_control", "timelock", "init_pattern", "storage_layout", "governance"]
+          "enum": [
+            "admin_control",
+            "timelock",
+            "init_pattern",
+            "storage_layout",
+            "governance"
+          ]
         },
-        "function_name": { "type": ["string", "null"] },
-        "location": { "type": "string" },
-        "message": { "type": "string" },
-        "suggestion": { "type": "string" }
+        "function_name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "location": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "suggestion": {
+          "type": "string"
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingSmtIssue": {
       "type": "object",
-      "description": "S011 — Z3 proved a mathematical invariant violation.",
-      "required": ["code", "function_name", "description", "location"],
+      "description": "S011 \u2014 Z3 proved a mathematical invariant violation.",
+      "required": [
+        "code",
+        "function_name",
+        "description",
+        "location"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S011" },
-        "function_name": { "type": "string" },
-        "description": { "type": "string" },
-        "location": { "type": "string" }
+        "code": {
+          "type": "string",
+          "const": "S011"
+        },
+        "function_name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingSep41Issue": {
       "type": "object",
-      "description": "S012 — SEP-41 token interface deviation.",
-      "required": ["code", "function_name", "kind", "location", "message", "expected_signature"],
+      "description": "S012 \u2014 SEP-41 token interface deviation.",
+      "required": [
+        "code",
+        "function_name",
+        "kind",
+        "location",
+        "message",
+        "expected_signature"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S012" },
-        "function_name": { "type": "string" },
+        "code": {
+          "type": "string",
+          "const": "S012"
+        },
+        "function_name": {
+          "type": "string"
+        },
         "kind": {
           "type": "string",
-          "enum": ["missing_function", "signature_mismatch", "authorization_mismatch"]
+          "enum": [
+            "missing_function",
+            "signature_mismatch",
+            "authorization_mismatch"
+          ]
         },
-        "location": { "type": "string" },
-        "message": { "type": "string" },
-        "expected_signature": { "type": "string" },
-        "actual_signature": { "type": ["string", "null"] }
+        "location": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "expected_signature": {
+          "type": "string"
+        },
+        "actual_signature": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
       }
     },
     "FindingTimeout": {
       "type": "object",
-      "description": "S000 — per-file analysis timeout.",
-      "required": ["code", "file", "message"],
+      "description": "S000 \u2014 per-file analysis timeout.",
+      "required": [
+        "code",
+        "file",
+        "message"
+      ],
       "additionalProperties": false,
       "properties": {
-        "code": { "type": "string", "const": "S000" },
-        "file": { "type": "string", "description": "Path of the file that timed out." },
-        "message": { "type": "string" }
+        "code": {
+          "type": "string",
+          "const": "S000"
+        },
+        "file": {
+          "type": "string",
+          "description": "Path of the file that timed out."
+        },
+        "message": {
+          "type": "string"
+        },
+        "source_provenance": {
+          "$ref": "#/definitions/SourceProvenance"
+        }
+      }
+    },
+    "SourceProvenance": {
+      "type": "object",
+      "description": "Sentry-style provenance that pins a finding to a specific git revision and provides a reformat-stable identifier.",
+      "required": [
+        "line",
+        "stable_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "git_blob_sha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "description": "SHA-1 blob hash of the analysed source file (git hash-object output). Null when git metadata is unavailable."
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "1-based line number of the finding within the source file."
+        },
+        "stable_id": {
+          "type": "string",
+          "description": "16-character hex digest derived from the rule name and normalised code context. Survives minor reformats because it is content-based, not line-number-based.",
+          "pattern": "^[0-9a-f]{16}$"
+        }
       }
     }
   }

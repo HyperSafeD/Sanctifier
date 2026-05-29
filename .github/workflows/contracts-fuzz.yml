@@ -1,0 +1,112 @@
+name: Contracts Fuzz Harness
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "contracts/my-contract/**"
+      - ".github/workflows/contracts-fuzz.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "contracts/my-contract/**"
+      - ".github/workflows/contracts-fuzz.yml"
+  schedule:
+    # Nightly extended fuzzing — 02:00 UTC.
+    - cron: "0 2 * * *"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # -------------------------------------------------------------------------
+  # PR/push smoke: exercises the bolero fuzz harness in unit-test mode and
+  # the cross-contract integration suite on every change.  Stable toolchain,
+  # short wall-clock — keeps PR feedback under a couple of minutes.
+  # -------------------------------------------------------------------------
+  fuzz-smoke:
+    name: Fuzz harness smoke (stable)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-fuzz-smoke-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-fuzz-smoke-
+
+      - name: Run bolero fuzz tests + cross-contract e2e
+        run: cargo test -p my-contract --tests
+
+      - name: Build cargo-fuzz harness (compile-only)
+        working-directory: contracts/my-contract/fuzz
+        run: cargo check --bin fuzz_cross_contract
+
+  # -------------------------------------------------------------------------
+  # Scheduled deep run: nightly fuzz with libFuzzer via cargo-bolero and
+  # cargo-fuzz.  Requires nightly toolchain.  Time-boxed so a stuck target
+  # cannot wedge the runner.
+  # -------------------------------------------------------------------------
+  fuzz-deep:
+    name: Fuzz harness deep (nightly)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule'
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install nightly Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-fuzz-deep-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-fuzz-deep-
+
+      - name: Install cargo-bolero
+        run: cargo install --locked cargo-bolero
+
+      - name: Bolero — fuzz_raw_bytes_no_panic (60s)
+        working-directory: contracts/my-contract
+        run: cargo bolero test fuzz_raw_bytes_no_panic --time 60s
+
+      - name: Bolero — fuzz_structured_message_no_panic (60s)
+        working-directory: contracts/my-contract
+        run: cargo bolero test fuzz_structured_message_no_panic --time 60s
+
+      - name: Install cargo-fuzz
+        run: cargo install --locked cargo-fuzz
+
+      - name: cargo-fuzz — fuzz_cross_contract (120s)
+        working-directory: contracts/my-contract
+        run: cargo fuzz run fuzz_cross_contract -- -max_total_time=120
+
+      - name: Upload corpus and crashes (if any)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fuzz-artifacts
+          path: |
+            contracts/my-contract/fuzz/corpus/
+            contracts/my-contract/fuzz/artifacts/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -175,13 +175,11 @@ fn scan_block(block: &syn::Block, fn_name: &str, state: &mut FnReentrancyState) 
                 }
             }
             syn::Stmt::Expr(expr, _) => scan_expr(expr, fn_name, state),
-            syn::Stmt::Macro(m) => {
+            syn::Stmt::Macro(m) if m.mac.path.is_ident("panic") => {
                 // detect panic!("reentrant call") as a guard indicator
-                if m.mac.path.is_ident("panic") {
-                    let tokens = m.mac.tokens.to_string();
-                    if tokens.contains("reentrant") || tokens.contains("reentrancy") {
-                        state.has_guard = true;
-                    }
+                let tokens = m.mac.tokens.to_string();
+                if tokens.contains("reentrant") || tokens.contains("reentrancy") {
+                    state.has_guard = true;
                 }
             }
             _ => {}

@@ -1,0 +1,144 @@
+openapi: 3.0.3
+info:
+  title: Sanctifier HTTP Server API
+  description: |
+    HTTP API for Sanctifier security analysis in server mode.
+    Start with: `sanctifier serve --port 9100 --bind 127.0.0.1`
+  version: 1.0.0
+  contact:
+    name: Sanctifier Team
+    url: https://github.com/HyperSafeD/Sanctifier
+
+servers:
+  - url: http://127.0.0.1:9100
+    description: Local development server
+
+paths:
+  /analyze:
+    post:
+      summary: Analyze a Soroban contract
+      description: |
+        Upload a Soroban contract source file for security analysis.
+        Results are cached across requests for improved performance.
+      operationId: analyzeContract
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - contract
+              properties:
+                contract:
+                  type: string
+                  format: binary
+                  description: Rust source file (.rs) containing the Soroban contract
+      responses:
+        '200':
+          description: Analysis completed successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Finding'
+              example:
+                - code: "S001"
+                  severity: "HIGH"
+                  message: "Unchecked arithmetic operation"
+                  file: "contract.rs"
+                  line: 42
+                  column: 15
+                - code: "S004"
+                  severity: "CRITICAL"
+                  message: "Missing authorization check"
+                  file: "contract.rs"
+                  line: 58
+                  column: 5
+        '400':
+          description: Invalid request (e.g., missing contract file, invalid format)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '413':
+          description: Contract file too large (exceeds 5MB limit)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error during analysis
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /health:
+    get:
+      summary: Health check endpoint
+      description: Returns server status
+      operationId: healthCheck
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+
+components:
+  schemas:
+    Finding:
+      type: object
+      required:
+        - code
+        - severity
+        - message
+        - file
+        - line
+      properties:
+        code:
+          type: string
+          description: Finding code (e.g., S001, S004)
+          example: "S001"
+        severity:
+          type: string
+          enum: [CRITICAL, HIGH, MEDIUM, LOW, INFO]
+          description: Severity level of the finding
+          example: "HIGH"
+        message:
+          type: string
+          description: Human-readable description of the issue
+          example: "Unchecked arithmetic operation"
+        file:
+          type: string
+          description: File path where the issue was found
+          example: "contract.rs"
+        line:
+          type: integer
+          description: Line number (1-indexed)
+          example: 42
+        column:
+          type: integer
+          description: Column number (1-indexed)
+          example: 15
+        suggestion:
+          type: string
+          description: Optional fix suggestion
+          example: "Use checked_add() instead of +"
+
+    Error:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Invalid contract source"

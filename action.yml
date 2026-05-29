@@ -10,8 +10,15 @@ inputs:
     description: Contract path to analyze
     required: false
     default: "."
+  version:
+    description: >-
+      sanctifier-cli version to install (e.g. 0.2.3). If omitted and the action
+      is used via a semver tag (e.g. HyperSafeD/Sanctifier@v0.2.3), the tag
+      version is used automatically.
+    required: false
+    default: ""
   min-severity:
-    description: Minimum severity to report (critical|high|medium|low)
+    description: Minimum severity to report (critical|high|medium|low|info)
     required: false
     default: high
   format:
@@ -26,6 +33,10 @@ inputs:
     description: Path for generated SARIF report
     required: false
     default: sanctifier-results.sarif
+  debug:
+    description: Enable verbose debug logging for the action steps (safe-by-default; no secrets)
+    required: false
+    default: "false"
 
 outputs:
   findings-count:
@@ -35,22 +46,55 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Validate action inputs
+      shell: bash
+      run: |
+        python "${{ github.action_path }}/scripts/action_inputs.py" \
+          --path "${{ inputs.path }}" \
+          --min-severity "${{ inputs.min-severity }}" \
+          --format "${{ inputs.format }}" \
+          --upload-sarif "${{ inputs.upload-sarif }}" \
+          --sarif-output "${{ inputs.sarif-output }}" \
+          --debug "${{ inputs.debug }}" \
+          --output "$RUNNER_TEMP/sanctifier_action_inputs"
+        cat "$RUNNER_TEMP/sanctifier_action_inputs" >> "$GITHUB_ENV"
+
     - name: Install Sanctifier CLI
       shell: bash
-      run: cargo install sanctifier-cli --locked
+      run: |
+        python "${{ github.action_path }}/scripts/resolve_action_version.py" \
+          --action-ref "${{ github.action_ref }}" \
+          --requested "${{ inputs.version }}" \
+          --output "$RUNNER_TEMP/sanctifier_cli_version"
+
+        version="$(cat "$RUNNER_TEMP/sanctifier_cli_version" || true)"
+        if [ "${SANCTIFIER_ACTION_DEBUG:-false}" = "true" ]; then
+          echo "[sanctifier-action][debug] action_ref=${{ github.action_ref }} requested_version=${{ inputs.version }} resolved_version=${version:-latest}"
+        fi
+        if [ -n "$version" ]; then
+          echo "Installing sanctifier-cli==$version"
+          cargo install sanctifier-cli --locked --version "$version"
+        else
+          echo "Installing sanctifier-cli (latest)"
+          cargo install sanctifier-cli --locked
+        fi
 
     - name: Analyze project
       shell: bash
       run: |
-        if [ "${{ inputs.format }}" = "sarif" ]; then
-          sanctifier analyze "${{ inputs.path }}" \
+        if [ "${SANCTIFIER_ACTION_DEBUG:-false}" = "true" ]; then
+          echo "[sanctifier-action][debug] scan path=$SANCTIFIER_ACTION_PATH format=$SANCTIFIER_ACTION_FORMAT min_severity=$SANCTIFIER_ACTION_MIN_SEVERITY"
+        fi
+        if [ "$SANCTIFIER_ACTION_FORMAT" = "sarif" ]; then
+          mkdir -p "$(dirname "$SANCTIFIER_ACTION_SARIF_OUTPUT")"
+          sanctifier analyze "$SANCTIFIER_ACTION_PATH" \
             --format sarif \
-            --min-severity "${{ inputs.min-severity }}" \
-            --exit-code > "${{ inputs.sarif-output }}"
+            --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
+            --exit-code > "$SANCTIFIER_ACTION_SARIF_OUTPUT"
         else
-          sanctifier analyze "${{ inputs.path }}" \
-            --format "${{ inputs.format }}" \
-            --min-severity "${{ inputs.min-severity }}" \
+          sanctifier analyze "$SANCTIFIER_ACTION_PATH" \
+            --format "$SANCTIFIER_ACTION_FORMAT" \
+            --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
             --exit-code
         fi
 
@@ -58,14 +102,17 @@ runs:
       id: summarize
       shell: bash
       run: |
-        findings_count=0
-        if [ "${{ inputs.format }}" = "json" ]; then
-          findings_count=$(sanctifier analyze "${{ inputs.path }}" --format json | jq -r '.summary.total_findings // 0')
-        fi
-        echo "findings-count=${findings_count}" >> "$GITHUB_OUTPUT"
+        python "${{ github.action_path }}/scripts/action_summary.py" \
+          --format "$SANCTIFIER_ACTION_FORMAT" \
+          --path "$SANCTIFIER_ACTION_PATH" \
+          --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
+          --sarif-output "$SANCTIFIER_ACTION_SARIF_OUTPUT"
 
     - name: Upload SARIF
-      if: ${{ inputs.format == 'sarif' && inputs.upload-sarif == 'true' }}
+      if: >-
+        ${{ env.SANCTIFIER_ACTION_FORMAT == 'sarif'
+          && env.SANCTIFIER_ACTION_UPLOAD_SARIF == 'true'
+          && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
       uses: github/codeql-action/upload-sarif@v3
       with:
-        sarif_file: ${{ inputs.sarif-output }}
+        sarif_file: ${{ env.SANCTIFIER_ACTION_SARIF_OUTPUT }}

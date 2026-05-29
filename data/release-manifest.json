@@ -1,0 +1,31 @@
+{
+  "manifest_version": "1.0.0",
+  "description": "Canonical list of data/ and schemas/ files that are part of every Sanctifier release. The provenance pipeline attests, hashes, and signs every artifact listed here. Adding a file here means it ships with release attestations; removing one means downstream consumers MAY no longer be able to verify it.",
+  "policy": {
+    "json_files_must_be_pretty_printed": true,
+    "yaml_files_must_be_prettier_formatted": true,
+    "schemas_must_declare_draft": "http://json-schema.org/draft-07/schema#",
+    "version_bump_required_when_changing": [
+      "schemas/analysis-output.json:schema_version",
+      "data/vulnerability-db.json:version"
+    ]
+  },
+  "artifacts": {
+    "data": [
+      "data/sarif/rule-metadata.yaml",
+      "data/sarif/severity-map.yaml",
+      "data/security-review/checklist.yaml",
+      "data/security-review/defaults.yaml",
+      "data/security-review/owners.yaml",
+      "data/vulnerability-db.json"
+    ],
+    "schemas": [
+      "schemas/analysis-output.json",
+      "schemas/sanctifier.json",
+      "schemas/sarif-rule-metadata.schema.json",
+      "schemas/security-review.schema.json",
+      "schemas/severity-taxonomy.schema.json",
+      "schemas/vulnerability-db.json"
+    ]
+  }
+}

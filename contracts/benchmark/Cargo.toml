@@ -1,0 +1,14 @@
+[package]
+name = "benchmark"
+version = "0.1.0"
+edition = "2021"
+
+# This crate is a pure test-and-documentation harness.
+# It is never compiled to WASM; rlib only.
+[lib]
+crate-type = ["rlib"]
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+my-contract    = { path = "../my-contract" }
+vesting-contract = { path = "../vesting" }

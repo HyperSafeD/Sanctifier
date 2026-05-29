@@ -44,3 +44,4 @@ jobs:
         with:
           name: soroban-examples-summary
           path: soroban-examples-summary.json
+          retention-days: 7

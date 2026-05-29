@@ -1,0 +1,17 @@
+{
+  "name": "@sanctifier/wasm",
+  "type": "module",
+  "description": "WASM bindings for the Sanctifier analysis engine",
+  "version": "0.2.0",
+  "license": "MIT",
+  "files": [
+    "sanctifier_wasm_bg.wasm",
+    "sanctifier_wasm.js",
+    "sanctifier_wasm.d.ts"
+  ],
+  "main": "sanctifier_wasm.js",
+  "types": "sanctifier_wasm.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}

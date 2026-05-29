@@ -207,6 +207,24 @@ First: Event name (e.g., "guard_wrapper", "pre_exec_guard")
 Second: Status (e.g., "success", "passed", "failure")
 ```
 
+### Event-emission fixture behavior
+
+- All runtime-guard events use the `guard_wrapper` topic.
+- Event name and status are emitted as symbol pairs and are intended to stay stable for downstream parsers.
+- Failure paths emit `guard_failure` with a status that maps to the failure class (argument mismatch, missing function, wrapped-call error).
+
+### Storage-collision fixture behavior
+
+- Runtime state is segmented into instance and persistent storage namespaces.
+- Fixed keys are intentionally centralized to avoid accidental key reuse across guard statistics and execution metadata.
+- Health checks treat abnormal key growth as a fixture failure signal.
+
+### Unhandled-`Result` fixture behavior
+
+- Guarded execution returns Soroban `Error` values for invalid function names, argument mismatches, and wrapped-call decoding failures.
+- Wrapped-call conversion failures are explicitly recorded as guard failures before returning the error.
+- Successful executions increment invariant counters and append execution log entries; failed executions do not mutate those success-only counters.
+
 ## Integration Guide
 
 ### 1. Build the Contract
@@ -290,6 +308,14 @@ Test coverage:
 - Health checks
 - Event emission
 - Storage validation
+- Unhandled-`Result` fixture behavior
+- Event-emission fixture boundaries
+
+## Contribution notes
+
+- Keep event names/status values stable unless there is a migration note and consumer update.
+- When adding new failure paths, record the failure category before returning `Err`.
+- Prefer extending `tests/integration_tests.rs` with fixture-style tests that assert both return value and `get_stats()` effects.
 
 ## Security Considerations
 

@@ -84,3 +84,20 @@ export const WithSeverities: Story = {
     ],
   },
 };
+
+/** Shows internal (same-project) calls in green curves vs external calls in purple dashes. */
+export const InternalVsExternal: Story = {
+  args: {
+    nodes: [
+      { id: "fn-TokenA", label: "TokenA", type: "function" },
+      { id: "fn-TokenB", label: "TokenB", type: "function" },
+      { id: "fn-AmmPool", label: "AmmPool", type: "function" },
+      { id: "external-PriceOracle", label: "PriceOracle", type: "external" },
+    ],
+    edges: [
+      { source: "fn-TokenA", target: "fn-AmmPool", type: "internal", label: "add_liquidity" },
+      { source: "fn-TokenB", target: "fn-AmmPool", type: "internal", label: "swap" },
+      { source: "fn-AmmPool", target: "external-PriceOracle", type: "calls", label: "get_price" },
+    ],
+  },
+};

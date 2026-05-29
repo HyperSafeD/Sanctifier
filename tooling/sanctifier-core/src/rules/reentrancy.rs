@@ -49,7 +49,6 @@ struct FnReentrancyState {
 struct ReentrancyViolation {
     fn_name: String,
     line: usize,
-    col: usize,
 }
 
 // ── Rule implementation ───────────────────────────────────────────────────────
@@ -175,13 +174,11 @@ fn scan_block(block: &syn::Block, fn_name: &str, state: &mut FnReentrancyState) 
                 }
             }
             syn::Stmt::Expr(expr, _) => scan_expr(expr, fn_name, state),
-            syn::Stmt::Macro(m) => {
+            syn::Stmt::Macro(m) if m.mac.path.is_ident("panic") => {
                 // detect panic!("reentrant call") as a guard indicator
-                if m.mac.path.is_ident("panic") {
-                    let tokens = m.mac.tokens.to_string();
-                    if tokens.contains("reentrant") || tokens.contains("reentrancy") {
-                        state.has_guard = true;
-                    }
+                let tokens = m.mac.tokens.to_string();
+                if tokens.contains("reentrant") || tokens.contains("reentrancy") {
+                    state.has_guard = true;
                 }
             }
             _ => {}
@@ -216,15 +213,15 @@ fn scan_expr(expr: &syn::Expr, fn_name: &str, state: &mut FnReentrancyState) {
             }
 
             // Detect invoke_contract / invoke_contract_check
-            if method == "invoke_contract" || method == "invoke_contract_check" {
-                if state.has_prior_mutation && !state.has_guard {
-                    let span = mc.span();
-                    state.violations.push(ReentrancyViolation {
-                        fn_name: fn_name.to_string(),
-                        line: span.start().line,
-                        col: span.start().column,
-                    });
-                }
+            if (method == "invoke_contract" || method == "invoke_contract_check")
+                && state.has_prior_mutation
+                && !state.has_guard
+            {
+                let span = mc.span();
+                state.violations.push(ReentrancyViolation {
+                    fn_name: fn_name.to_string(),
+                    line: span.start().line,
+                });
             }
 
             // Recurse
@@ -237,15 +234,15 @@ fn scan_expr(expr: &syn::Expr, fn_name: &str, state: &mut FnReentrancyState) {
             if let syn::Expr::Path(p) = &*c.func {
                 if let Some(seg) = p.path.segments.last() {
                     let ident = seg.ident.to_string();
-                    if ident == "invoke_contract" || ident == "invoke_contract_check" {
-                        if state.has_prior_mutation && !state.has_guard {
-                            let span = c.span();
-                            state.violations.push(ReentrancyViolation {
-                                fn_name: fn_name.to_string(),
-                                line: span.start().line,
-                                col: span.start().column,
-                            });
-                        }
+                    if (ident == "invoke_contract" || ident == "invoke_contract_check")
+                        && state.has_prior_mutation
+                        && !state.has_guard
+                    {
+                        let span = c.span();
+                        state.violations.push(ReentrancyViolation {
+                            fn_name: fn_name.to_string(),
+                            line: span.start().line,
+                        });
                     }
                 }
             }
@@ -407,8 +404,7 @@ fn contains_invoke_contract(expr: &syn::Expr) -> bool {
             if method == "invoke_contract" || method == "invoke_contract_check" {
                 return true;
             }
-            contains_invoke_contract(&mc.receiver)
-                || mc.args.iter().any(contains_invoke_contract)
+            contains_invoke_contract(&mc.receiver) || mc.args.iter().any(contains_invoke_contract)
         }
         syn::Expr::Call(c) => {
             if let syn::Expr::Path(p) = &*c.func {
@@ -473,7 +469,10 @@ mod tests {
             }
         "#;
         let violations = rule().check(source);
-        assert!(!violations.is_empty(), "token transfer before invoke should be flagged");
+        assert!(
+            !violations.is_empty(),
+            "token transfer before invoke should be flagged"
+        );
     }
 
     #[test]
@@ -487,7 +486,10 @@ mod tests {
             }
         "#;
         let violations = rule().check(source);
-        assert!(!violations.is_empty(), "storage remove before invoke should be flagged");
+        assert!(
+            !violations.is_empty(),
+            "storage remove before invoke should be flagged"
+        );
     }
 
     // ── False-positive / safe cases ───────────────────────────────────────────
@@ -503,7 +505,10 @@ mod tests {
             }
         "#;
         let violations = rule().check(source);
-        assert!(violations.is_empty(), "invoke before write is safe (checks-effects-interactions)");
+        assert!(
+            violations.is_empty(),
+            "invoke before write is safe (checks-effects-interactions)"
+        );
     }
 
     #[test]
@@ -521,7 +526,10 @@ mod tests {
             }
         "#;
         let violations = rule().check(source);
-        assert!(violations.is_empty(), "guarded function must not be flagged");
+        assert!(
+            violations.is_empty(),
+            "guarded function must not be flagged"
+        );
     }
 
     #[test]
@@ -534,7 +542,10 @@ mod tests {
             }
         "#;
         let violations = rule().check(source);
-        assert!(violations.is_empty(), "read-only function must not be flagged");
+        assert!(
+            violations.is_empty(),
+            "read-only function must not be flagged"
+        );
     }
 
     #[test]
@@ -603,6 +614,9 @@ mod tests {
             }
         "#;
         let patches = rule().fix(source);
-        assert!(patches.is_empty(), "already-guarded function must not be patched");
+        assert!(
+            patches.is_empty(),
+            "already-guarded function must not be patched"
+        );
     }
 }

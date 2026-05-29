@@ -1,0 +1,58 @@
+coverage:
+  # Fail the CI check when coverage drops below the thresholds below.
+  status:
+    project:
+      default:
+        # Overall project target.
+        target: 80%
+        threshold: 2%   # allow up to 2 percentage-point drop before failing
+
+    patch:
+      default:
+        # Every PR must cover at least 80% of the lines it changes.
+        target: 80%
+        threshold: 2%
+
+  # Per-crate coverage flags.
+  # Each flag maps to a Codecov flag uploaded in CI (--flags argument to the
+  # Codecov upload step).  Override the global threshold per crate here.
+  flags:
+    sanctifier-core:
+      paths:
+        - tooling/sanctifier-core/src/
+      target: 80%
+      threshold: 2%
+
+    sanctifier-cli:
+      paths:
+        - tooling/sanctifier-cli/src/
+      target: 80%
+      threshold: 2%
+
+    sanctifier-wasm:
+      paths:
+        - tooling/sanctifier-wasm/src/
+      target: 80%
+      threshold: 2%
+
+# Ignore auto-generated or test-only files.
+ignore:
+  - "**/*_tests.rs"
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/benchmarks/**"
+  - "contracts/**"       # example contracts are not production code
+
+comment:
+  layout: "reach,diff,flags,tree"
+  behavior: default
+  require_changes: true  # only comment when coverage changes
+
+# How to run coverage locally:
+#
+#   cargo install cargo-llvm-cov
+#   cargo llvm-cov --lcov --output-path lcov.info \
+#       -p sanctifier-core -p sanctifier-cli
+#
+# The CI uploads the resulting lcov.info to Codecov automatically.
+# See .github/workflows/rust.yml (coverage job) for the full command.

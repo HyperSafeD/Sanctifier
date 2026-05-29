@@ -1,0 +1,8 @@
+[0;34m[INFO][0m Deployment script started
+[0;34m[INFO][0m Network: testnet
+[0;34m[INFO][0m Validate after deploy: true
+[0;34m[INFO][0m Continuous validation: true
+[0;34m[INFO][0m Validating environment...
+[0;31m[✗][0m Invalid validation interval: abc
+[0;34m[INFO][0m Interval must be a positive integer (seconds).
+[0;31m[✗][0m Environment validation failed

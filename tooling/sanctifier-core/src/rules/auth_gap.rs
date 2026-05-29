@@ -148,12 +148,11 @@ fn check_fn_body(block: &syn::Block, summary: &mut FunctionSecuritySummary) {
                     check_expr(&init.expr, summary);
                 }
             }
-            syn::Stmt::Macro(m) => {
+            syn::Stmt::Macro(m)
                 if m.mac.path.is_ident("require_auth")
-                    || m.mac.path.is_ident("require_auth_for_args")
-                {
-                    summary.has_auth = true;
-                }
+                    || m.mac.path.is_ident("require_auth_for_args") =>
+            {
+                summary.has_auth = true;
             }
             _ => {}
         }
@@ -177,8 +176,11 @@ fn check_expr(expr: &syn::Expr, summary: &mut FunctionSecuritySummary) {
         }
         syn::Expr::MethodCall(m) => {
             let method_name = m.method.to_string();
-            if method_name == "set" || method_name == "update" || method_name == "remove"
-                || method_name == "extend_ttl"  // Soroban v21: TTL extension counts as storage mutation
+            if method_name == "set"
+                || method_name == "update"
+                || method_name == "remove"
+                || method_name == "extend_ttl"
+            // Soroban v21: TTL extension counts as storage mutation
             {
                 let receiver_str = quote::quote!(#m.receiver).to_string();
                 if receiver_str.contains("storage")

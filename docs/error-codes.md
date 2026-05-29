@@ -16,6 +16,7 @@ Sanctifier uses a unified finding code system across `sanctifier-core` and `sanc
 | `S010` | upgrades | Security risk in contract upgrade or admin mechanisms |
 | `S011` | formal_verification | Z3 proved a mathematical violation of an invariant |
 | `S012` | token_interface | SEP-41 token interface compatibility or authorization deviation |
+| `S022` | error_handling | Raw `invoke_contract` call that panics on callee failure; use `try_invoke_contract` with explicit `Result` handling |
 
 ## Vulnerability Database Codes
 

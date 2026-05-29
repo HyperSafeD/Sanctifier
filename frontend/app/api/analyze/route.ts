@@ -3,8 +3,8 @@ import { spawn } from "child_process";
 import path from "path";
 import os from "os";
 import { mkdtemp, rm, writeFile } from "fs/promises";
-import { normalizeReport, transformReport } from "../../lib/transform";
-import type { Finding } from "../../types";
+import { normalizeReport } from "../../lib/transform";
+import { SANCTIFIER_BIN, RATE_LIMIT_REQUESTS_PER_MINUTE } from "../../lib/env";
 
 export const runtime = "nodejs";
 
@@ -12,8 +12,6 @@ const REPO_ROOT = path.resolve(process.cwd(), "..");
 const SUPPORTED_SOURCE_EXTENSIONS = new Set([".rs"]);
 const MAX_FILE_SIZE_BYTES = 250 * 1024;
 const EXECUTION_TIMEOUT_MS = 30000;
-const RATE_LIMIT_REQUESTS_PER_MINUTE = 10;
-const SANCTIFIER_BIN = process.env.SANCTIFIER_BIN?.trim() || "sanctifier";
 
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
@@ -262,7 +260,6 @@ export async function POST(request: NextRequest) {
   }
 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "sanctifier-contract-"));
-
   try {
     const contentType = request.headers.get("content-type") ?? "";
 
@@ -299,6 +296,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Capture file metadata for the audit record now that we have a parsed payload.
     if (!looksLikeSorobanContract(sourcePayload.source)) {
       return Response.json(
         { error: "Source is not a Soroban contract (missing soroban-sdk import)." },
@@ -313,8 +311,7 @@ export async function POST(request: NextRequest) {
     const report = parseJsonResponse(stdout);
 
     if (report) {
-      const findings: Finding[] = transformReport(normalizeReport(report));
-      return Response.json(findings);
+      return Response.json(normalizeReport(report));
     }
 
     return Response.json(

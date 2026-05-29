@@ -59,6 +59,8 @@ external report is made.
 
 ## Reproducing the Benchmark
 
+To ensure the benchmark is a reliable measurement of progress, it follows the project's [Benchmark Methodology](../../specs/BENCHMARK_METHODOLOGY.md).
+
 The repository now includes:
 
 - `.github/workflows/soroban-examples.yml` for CI execution

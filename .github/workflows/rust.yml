@@ -1,0 +1,144 @@
+name: Rust CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo registry & build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run Clippy
+        run: cargo clippy -p sanctifier-cli -p sanctifier-core --all-targets -- -D warnings
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@nextest
+
+      - name: Run tests (JUnit XML)
+        run: cargo nextest run -p sanctifier-cli -p sanctifier-core --profile ci
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-test-results
+          path: target/nextest/ci/junit.xml
+          retention-days: 7
+
+      - name: Build release binary
+        run: cargo build --release -p sanctifier-cli
+
+  coverage:
+    name: Coverage Gate (≥ 80% per crate)
+    runs-on: ubuntu-latest
+    # Only enforce on push/PR to main to avoid gating dependabot bumps
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-cov-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-cov-
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      - name: Collect coverage — sanctifier-core
+        run: |
+          cargo llvm-cov --lcov --output-path lcov-core.info \
+            -p sanctifier-core \
+            --ignore-filename-regex '(_tests\.rs|/tests/|/benches/)'
+
+      - name: Collect coverage — sanctifier-cli
+        run: |
+          cargo llvm-cov --lcov --output-path lcov-cli.info \
+            -p sanctifier-cli \
+            --ignore-filename-regex '(_tests\.rs|/tests/|/benches/)'
+
+      - name: Upload coverage to Codecov (sanctifier-core)
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov-core.info
+          flags: sanctifier-core
+          fail_ci_if_error: true
+
+      - name: Upload coverage to Codecov (sanctifier-cli)
+        uses: codecov/codecov-action@v5
+        with:
+          files: lcov-cli.info
+          flags: sanctifier-cli
+          fail_ci_if_error: true
+
+  sarif-snapshots:
+    name: SARIF Snapshot Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-snapshots-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-snapshots-
+
+      - name: Install cargo-insta
+        run: cargo install cargo-insta --locked
+
+      - name: Generate missing snapshots
+        env:
+          INSTA_UPDATE: new
+        run: cargo test --test sarif_snapshots -p sanctifier-core
+
+      - name: Verify snapshots are committed and unchanged
+        run: cargo insta review --no-input --check

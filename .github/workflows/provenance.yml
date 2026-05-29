@@ -1,0 +1,93 @@
+name: Supply-Chain Provenance
+
+on:
+  push:
+    branches: ["main"]
+    tags:
+      - "v*"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "data/**"
+      - "schemas/**"
+      - "scripts/verify-artifacts.sh"
+      - "scripts/generate-provenance.sh"
+      - "scripts/validate_release_artifacts.js"
+      - ".github/workflows/provenance.yml"
+      - "CHECKSUMS.txt"
+
+jobs:
+  verify:
+    name: Verify Artifact Determinism
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify artifact set against release manifest
+        run: ./scripts/verify-artifacts.sh --check
+
+      - name: Validate release artifact integrity (schema versions, draft, coverage)
+        run: npm run lint:release-artifacts
+
+      - name: Verify checksum manifest
+        run: |
+          if [ -f CHECKSUMS.txt ]; then
+            echo "Verifying existing manifest..."
+            grep -v '^#' CHECKSUMS.txt | sha256sum -c
+          else
+            echo "No manifest found, skipping checksum verification."
+          fi
+
+  provenance:
+    name: Generate Provenance & Attestations
+    needs: verify
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      attestations: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate Checksums
+        run: ./scripts/generate-provenance.sh
+
+      - name: Compute attestation subject list
+        id: subjects
+        run: |
+          # Manifest-driven subject list: every release artifact +
+          # CHECKSUMS.txt itself.  Newline-delimited for the action.
+          {
+            jq -r '.artifacts.data[], .artifacts.schemas[]' data/release-manifest.json
+            echo "CHECKSUMS.txt"
+          } > /tmp/attest-subjects.txt
+          {
+            echo 'subject-paths<<EOF'
+            cat /tmp/attest-subjects.txt
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Attest release artifacts
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: ${{ steps.subjects.outputs.subject-paths }}
+
+      - name: Commit manifest update
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add CHECKSUMS.txt
+          git commit -m "docs: update artifact checksums for ${{ github.ref_name }}" || echo "No changes to commit"
+          git push origin main

@@ -135,5 +135,18 @@ export interface CallGraphEdge {
   source: string;
   target: string;
   label?: string;
-  type: "calls" | "mutates" | "reads";
+  /** internal = both contracts are in the same project; calls = external contract */
+  type: "calls" | "mutates" | "reads" | "internal";
+}
+export interface WorkspaceMember {
+  name: string;
+  total_findings: number;
+  report?: AnalysisReport;
+}
+
+export interface WorkspaceSummary {
+  workspace: string;
+  contracts: WorkspaceMember[];
+  shared_libs: string[];
+  grand_total_findings: number;
 }

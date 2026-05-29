@@ -1,0 +1,31 @@
+{
+  "findings": [
+    {
+      "code": "S001",
+      "category": "authentication",
+      "message": "Missing authentication guard in `transfer`_name",
+      "location": "transfer"
+    },
+    {
+      "code": "S002",
+      "category": "panic_handling",
+      "message": "`panic!` usage in `transfer`",
+      "location": "line:16"
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "auth_gaps": 1,
+    "panic_issues": 1,
+    "arithmetic_issues": 0,
+    "size_warnings": 0,
+    "unsafe_patterns": 0,
+    "storage_collisions": 0,
+    "event_issues": 0,
+    "unhandled_results": 0,
+    "upgrade_risks": 0,
+    "sep41_issues": 0,
+    "has_critical": false,
+    "has_high": true
+  }
+}

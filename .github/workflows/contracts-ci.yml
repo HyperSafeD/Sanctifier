@@ -1,0 +1,126 @@
+name: Contracts CI Matrix
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "contracts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "contracts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # -------------------------------------------------------------------------
+  # Job 1: check + clippy + test for every contract in the workspace.
+  # Uses fail-fast: false so a single failure surfaces all broken contracts.
+  # -------------------------------------------------------------------------
+  contract-check:
+    name: Check ${{ matrix.contract }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        contract:
+          - amm-pool
+          - flashloan-token
+          - governance-contract
+          - kani-poc-contract
+          - multisig-wallet
+          - my-contract
+          - uups-proxy
+          - reentrancy-guard
+          - runtime-guard-wrapper
+          - timelock
+          - token-with-bugs
+          - vesting-contract
+          - vulnerable-contract
+          - benchmark
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-contract-check-${{ matrix.contract }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-contract-check-${{ matrix.contract }}-
+
+      - name: cargo check — ${{ matrix.contract }}
+        run: cargo check -p ${{ matrix.contract }}
+
+      - name: cargo clippy — ${{ matrix.contract }}
+        run: cargo clippy -p ${{ matrix.contract }} -- -D warnings
+
+      - name: cargo test — ${{ matrix.contract }}
+        run: cargo test -p ${{ matrix.contract }}
+
+  # -------------------------------------------------------------------------
+  # Job 2: WASM release build for contracts whose Soroban dependency does not
+  # require the `testutils` feature in production code (i.e. testutils lives
+  # only in [dev-dependencies]).  Contracts with testutils in [dependencies]
+  # cannot be compiled to wasm32-unknown-unknown in release mode.
+  # -------------------------------------------------------------------------
+  contract-wasm:
+    name: WASM ${{ matrix.contract }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        contract:
+          - flashloan-token
+          - governance-contract
+          - kani-poc-contract
+          - uups-proxy
+          - reentrancy-guard
+          - timelock
+          - token-with-bugs
+          - vulnerable-contract
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain with wasm32 target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-contract-wasm-${{ matrix.contract }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-contract-wasm-${{ matrix.contract }}-
+
+      - name: Build WASM — ${{ matrix.contract }}
+        run: cargo build -p ${{ matrix.contract }} --target wasm32-unknown-unknown --release
+
+      - name: Report WASM size — ${{ matrix.contract }}
+        run: |
+          find target/wasm32-unknown-unknown/release -name "*.wasm" -newer Cargo.toml \
+            | xargs -I{} sh -c 'echo "${{ matrix.contract }}: $(du -h {} | cut -f1)"'

@@ -12,6 +12,7 @@ import type {
   UpgradeFinding,
   VulnMatch,
 } from "../types";
+import { canonicalizeFindingCode } from "./finding-filters";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -23,6 +24,49 @@ function arrayValue<T>(value: unknown): T[] {
 
 export function normalizeReport(input: unknown): AnalysisReport {
   const parsed = isRecord(input) ? input : {};
+  
+  // Handle new WASM engine format (AnalysisResult with findings array)
+  if (Array.isArray(parsed.findings)) {
+    const findingsArray = parsed.findings as Array<Record<string, unknown>>;
+    const report: AnalysisReport = {
+      size_warnings: [],
+      unsafe_patterns: [],
+      auth_gaps: [],
+      panic_issues: [],
+      arithmetic_issues: [],
+      storage_collisions: [],
+      event_issues: [],
+      unhandled_results: [],
+      upgrade_reports: [],
+      smt_violations: [],
+      vuln_matches: [],
+      call_graph: [],
+    };
+
+    findingsArray.forEach((f) => {
+      const code = String(f.code || "");
+      const category = String(f.category || "");
+      const message = String(f.message || "");
+      const location = String(f.location || "");
+
+      if (category === "authentication") {
+        report.auth_gaps!.push({ code, function_name: location });
+      } else if (category === "panic_handling") {
+        report.panic_issues!.push({ code, function_name: location, issue_type: "panic", location });
+      } else if (category === "arithmetic") {
+        report.arithmetic_issues!.push({ code, function_name: location, operation: message, suggestion: "", location });
+      } else if (category === "storage_limits") {
+        report.size_warnings!.push({ code, struct_name: location, estimated_size: 0, limit: 0, level: "ExceedsLimit" });
+      } else {
+        // Fallback to vuln_matches or similar
+        report.vuln_matches!.push({ code, vuln_id: code, title: message, severity: "medium", location, description: message });
+      }
+    });
+
+    return report;
+  }
+
+  // Handle legacy format (direct AnalysisReport structure)
   const findings = isRecord(parsed.findings) ? parsed.findings : parsed;
   const authGaps: AnalysisReport["auth_gaps"] = [];
 
@@ -93,7 +137,7 @@ function toFinding(
 ): Finding {
   return {
     id,
-    code,
+    code: canonicalizeFindingCode(code),
     severity,
     category,
     title,
@@ -402,9 +446,14 @@ function extractReportedCallGraph(
   const nodeMap = new Map<string, CallGraphNode>();
   const edges: CallGraphEdge[] = [];
 
+  // First pass: collect all known caller names so we can classify edges.
+  const knownCallers = new Set(reportedEdges.map((e) => e.caller));
+
   reportedEdges.forEach((edge) => {
     const sourceId = `fn-${edge.caller}`;
-    const targetId = `external-${edge.callee}`;
+    // If the callee is also a known caller in this project it's an internal call.
+    const isInternal = knownCallers.has(edge.callee);
+    const targetId = isInternal ? `fn-${edge.callee}` : `external-${edge.callee}`;
 
     if (!nodeMap.has(sourceId)) {
       nodeMap.set(sourceId, {
@@ -419,7 +468,7 @@ function extractReportedCallGraph(
       nodeMap.set(targetId, {
         id: targetId,
         label: edge.callee,
-        type: "external",
+        type: isInternal ? "function" : "external",
       });
     }
 
@@ -429,7 +478,7 @@ function extractReportedCallGraph(
       label: edge.function_expr
         ? `${edge.function_expr} (${edge.file}:${edge.line})`
         : `${edge.file}:${edge.line}`,
-      type: "calls",
+      type: isInternal ? "internal" : "calls",
     });
   });
 

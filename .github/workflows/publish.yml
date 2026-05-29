@@ -5,6 +5,8 @@ on:
     tags:
       - "v*"
 
+permissions: {}
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -12,6 +14,8 @@ jobs:
   publish:
     name: Publish crates on version tag
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

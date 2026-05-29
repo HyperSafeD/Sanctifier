@@ -1,0 +1,18 @@
+rules:
+  - id: SANC001
+    name: Unsafe External Call
+    shortDescription: Detects unsafe external calls
+    helpUri: https://docs.sanctifier.dev/rules/SANC001
+    defaultSeverity: high
+    tags:
+      - security
+      - reentrancy
+
+  - id: SANC002
+    name: Missing Access Control
+    shortDescription: Detects missing auth checks
+    helpUri: https://docs.sanctifier.dev/rules/SANC002
+    defaultSeverity: critical
+    tags:
+      - auth
+      - access-control

@@ -2,13 +2,6 @@
 
 import React, { useEffect, useRef, useState } from "react";
 
-interface LogEntry {
-  id: string;
-  text: string;
-  timestamp: Date;
-  type: "info" | "error" | "warning" | "success";
-}
-
 interface AnalysisTerminalProps {
   logs: string[];
   isAnalyzing: boolean;
@@ -16,7 +9,6 @@ interface AnalysisTerminalProps {
 
 const parseAnsi = (text: string) => {
   // Simple ANSI stripper for now, can be expanded to support actual colors if needed
-  // eslint-disable-next-line no-control-regex
   return text.replace(/\x1b\[[0-9;]*[mK]/g, "");
 };
 
