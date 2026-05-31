@@ -1,4 +1,4 @@
-# Sanctifier Discord Bot
+# Sanctifier Node Discord Bot
 
 Minimal Discord integration for querying Sanctifier findings from slash commands.
 
@@ -13,7 +13,7 @@ Minimal Discord integration for querying Sanctifier findings from slash commands
 ## Setup
 
 1. Create a Discord application and bot at <https://discord.com/developers/applications>.
-2. Copy `.env.example` to `.env` or set the same variables in your deployment environment.
+2. Copy `.env.node.example` to `.env` or set the same variables in your deployment environment.
 3. Install dependencies:
 
    ```bash
