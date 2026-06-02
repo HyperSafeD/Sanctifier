@@ -6,6 +6,7 @@ import { AnalysisTerminal } from "../components/AnalysisTerminal";
 import { FindingsList } from "../components/FindingsList";
 import { Play, RotateCcw, Save, Share2, Sparkles, Terminal, Copy, Check, Trash2, X } from "lucide-react";
 import type { Finding } from "../types";
+import { getSettingsHeaders } from "../lib/settings";
 
 const DEFAULT_CODE = `use soroban_sdk::{contract, contractimpl, Env, Symbol};
 
@@ -221,6 +222,7 @@ export default function PlaygroundPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getSettingsHeaders(),
         },
         body: JSON.stringify({ source: code }),
       });

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import React, { useState } from "react";
 import type { RejectedFile } from "../lib/upload-validation";
+import type { WorkspaceSummary, AnalysisReport } from "../types";
 
 export type FileProgress = "pending" | "analyzing" | "done" | "error";
 
@@ -13,6 +14,7 @@ interface DashboardHeaderProps {
   handleFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onContractFiles: (files: File[]) => void;
   exportToPdf: () => void;
+  shareReport?: () => Promise<void>;
   hasData: boolean;
   isProcessing: boolean;
   uploadStatus: string | null;
@@ -36,6 +38,7 @@ export function DashboardHeader({
   handleFileUpload,
   onContractFiles,
   exportToPdf,
+  shareReport,
   hasData,
   isProcessing,
   uploadStatus,
@@ -45,6 +48,14 @@ export function DashboardHeader({
   rejectedFiles,
 }: DashboardHeaderProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+
+  const handleShare = async () => {
+    if (!shareReport) return;
+    await shareReport();
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2000);
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -124,6 +135,16 @@ export function DashboardHeader({
         >
           Export PDF
         </button>
+        {shareReport && (
+          <button
+            onClick={handleShare}
+            disabled={!hasData}
+            className="flex-1 sm:flex-none rounded-lg border border-zinc-300 dark:border-zinc-600 theme-high-contrast:border-white px-4 py-2 text-sm disabled:opacity-50 hover:bg-zinc-100 dark:hover:bg-zinc-800 theme-high-contrast:hover:bg-zinc-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 disabled:focus-visible:ring-0"
+            aria-label="Copy share link to clipboard"
+          >
+            {shareCopied ? "Link Copied!" : "Share"}
+          </button>
+        )}
       </div>
 
       {/* Drag-and-drop batch upload zone */}

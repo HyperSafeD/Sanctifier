@@ -166,6 +166,7 @@ This creates `.sanctify.toml` with sensible defaults:
 ignore_paths  = ["target", ".git"]
 enabled_rules = ["auth_gaps", "panics", "arithmetic", "ledger_size"]
 ledger_limit  = 64000
+telemetry     = false
 strict_mode   = false
 
 # Optional: define regex-based custom rules
@@ -181,6 +182,7 @@ severity = "warning"
 ```
 
 Adjust `enabled_rules` to enable or disable specific checks, and add entries to `[[custom_rules]]` to enforce your own patterns.
+If you want to opt in to telemetry, run `sanctifier init --telemetry on` or set `telemetry = true` in `.sanctify.toml`. Telemetry only sends rule IDs, analysis duration, and the sanitized tool version. To point it at your own collector, set `SANCTIFIER_TELEMETRY_URL`.
 
 ---
 

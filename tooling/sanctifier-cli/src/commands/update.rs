@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use anyhow::{anyhow, Context};
 use std::process::Command;
 use tracing::info;

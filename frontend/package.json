@@ -18,12 +18,15 @@
     "test:e2e:schema": "playwright test tests/e2e/dashboard.spec.ts",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
+    "chromatic": "chromatic --exit-zero-on-changes",
+    "chromatic:ci": "chromatic --exit-zero-on-changes --auto-accept-changes main",
     "prepare": "husky"
   },
   "dependencies": {
     "@sanctifier/wasm": "file:../tooling/sanctifier-wasm/pkg",
     "jspdf": "^4.2.0",
     "lucide-react": "^1.11.0",
+    "shiki": "^3.2.2",
     "next": "^16.2.4",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
@@ -48,6 +51,7 @@
     "@types/react-dom": "^19",
     "@types/react-window": "^1.8.8",
     "babel-plugin-react-compiler": "1.0.0",
+    "chromatic": "^11.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
     "happy-dom": "^17.4.4",

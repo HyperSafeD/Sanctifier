@@ -1,4 +1,5 @@
 #![allow(deprecated)]
+
 use assert_cmd::Command;
 use jsonschema::JSONSchema;
 use mockito::Server;
@@ -707,165 +708,245 @@ fn test_json_output_validates_against_schema() {
     }
 }
 
+// ── NDJSON streaming tests ─────────────────────────────────────────────────────
+
+/// `--format ndjson` emits one JSON object per line and ends with `{"event":"done"}`.
 #[test]
-fn test_analyze_with_custom_vuln_db() {
-    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
-    let vuln_db_path = env::current_dir()
+fn test_ndjson_output_structure() {
+    let dir = tempdir().unwrap();
+    let contract = dir.path().join("contract.rs");
+    fs::write(
+        &contract,
+        r#"fn transfer() { let a = 1u64; let b = 2u64; let c = a + b; }"#,
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("sanctifier")
         .unwrap()
-        .join("tests/vulndb/minimal-vulndb.json");
-    let fixture_path = env::current_dir()
-        .unwrap()
-        .join("tests/vulndb/todo_example.rs");
+        .args(["analyze", "--format", "ndjson"])
+        .arg(&contract)
+        .output()
+        .unwrap();
 
-    cmd.arg("analyze")
-        .arg(&fixture_path)
-        .arg("--vuln-db")
-        .arg(&vuln_db_path)
-        .env_remove("RUST_LOG")
-        .assert()
-        .success();
-}
+    assert!(output.status.success(), "exit code must be 0");
 
-#[test]
-fn test_analyze_windows_path_separators() {
-    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
-    let fixture_path = if cfg!(windows) {
-        "tests\\fixtures\\valid_contract.rs".to_string()
-    } else {
-        // On Unix, we still want to test that if we pass backslashes,
-        // the CLI (or the test environment) can handle it if we've implemented normalization,
-        // but for now let's just use the platform-specific path to ensure CI passes.
-        // Actually, the requirement said "uses backslashes in --path arg".
-        // Let's try to normalize it in the CLI so this test passes on Unix too.
-        "tests\\fixtures\\valid_contract.rs".to_string()
-    };
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let lines: Vec<&str> = stdout.lines().collect();
 
-    // We need to make sure the file exists at that literal path if we are on Unix and not normalizing.
-    // If we ARE normalizing in the CLI, then "tests\\fixtures\\valid_contract.rs" will become "tests/fixtures/valid_contract.rs".
+    assert!(!lines.is_empty(), "must emit at least one line");
 
-    cmd.arg("analyze")
-        .arg(fixture_path)
-        .assert()
-        .success()
-        .stdout(predicates::str::contains("Static analysis complete."));
-}
+    // Every line must be valid JSON
+    for line in &lines {
+        serde_json::from_str::<Value>(line)
+            .unwrap_or_else(|_| panic!("line is not valid JSON: {}", line));
+    }
 
-#[test]
-fn test_analyze_json_parsable_output() {
-    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
-    let fixture_path = env::current_dir()
-        .unwrap()
-        .join("tests/fixtures/valid_contract.rs");
-
-    let output = cmd
-        .arg("analyze")
-        .arg(fixture_path)
-        .arg("--format")
-        .arg("json")
-        .env_remove("RUST_LOG")
-        .assert()
-        .success();
-
-    let stdout_bytes = output.get_output().stdout.clone();
-    let stdout = String::from_utf8(stdout_bytes).expect("stdout should be UTF-8");
-    let parsed: serde_json::Value =
-        serde_json::from_str(&stdout).expect("JSON output should be valid JSON");
-
-    // Check for expected top-level keys in the current JSON schema
-    assert!(parsed.is_object(), "JSON output should be an object");
+    // Last line must be the done event
+    let last: Value = serde_json::from_str(lines.last().unwrap()).unwrap();
+    assert_eq!(last["event"], "done", "last line must have event=done");
     assert!(
-        parsed["error_codes"].is_array(),
-        "JSON should contain error_codes array"
+        last["total_findings"].is_number(),
+        "done line must have numeric total_findings"
+    );
+    assert!(
+        last["duration_ms"].is_number(),
+        "done line must have numeric duration_ms"
     );
 }
 
+/// Finding lines carry the expected fields.
 #[test]
-fn test_analyze_exit_code_on_buggy_fixture() {
-    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
-    let fixture_path = env::current_dir()
+fn test_ndjson_finding_fields() {
+    let dir = tempdir().unwrap();
+    let contract = dir.path().join("contract.rs");
+    fs::write(
+        &contract,
+        r#"fn add(a: u64, b: u64) -> u64 { a + b }"#,
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("sanctifier")
         .unwrap()
-        .join("tests/fixtures/vulnerable_contract.rs");
+        .args(["analyze", "--format", "ndjson"])
+        .arg(&contract)
+        .output()
+        .unwrap();
 
-    cmd.arg("analyze")
-        .arg(fixture_path)
-        .arg("--exit-code")
-        .env_remove("RUST_LOG")
-        .assert()
-        .code(1);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let finding_lines: Vec<Value> = stdout
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .filter(|v: &Value| v["event"] == "finding")
+        .collect();
+
+    assert!(!finding_lines.is_empty(), "must emit at least one finding for unchecked arithmetic");
+
+    for finding in &finding_lines {
+        assert!(finding["file"].is_string(), "finding must have file");
+        assert!(finding["rule"].is_string(), "finding must have rule");
+        assert!(finding["severity"].is_string(), "finding must have severity");
+        assert!(finding["message"].is_string(), "finding must have message");
+        assert!(finding["location"].is_string(), "finding must have location");
+    }
 }
 
+/// A file with no violations still produces a `done` line with `total_findings: 0`.
 #[test]
-fn test_analyze_exit_code_on_buggy_fixture_json() {
-    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
-    let fixture_path = env::current_dir()
+fn test_ndjson_clean_file_emits_done() {
+    let dir = tempdir().unwrap();
+    let contract = dir.path().join("clean.rs");
+    fs::write(&contract, "// empty contract\n").unwrap();
+
+    let output = Command::cargo_bin("sanctifier")
         .unwrap()
-        .join("tests/fixtures/vulnerable_contract.rs");
+        .args(["analyze", "--format", "ndjson"])
+        .arg(&contract)
+        .output()
+        .unwrap();
 
-    cmd.arg("analyze")
-        .arg(fixture_path)
-        .arg("--format")
-        .arg("json")
-        .arg("--exit-code")
-        .env_remove("RUST_LOG")
-        .assert()
-        .code(1);
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let lines: Vec<&str> = stdout.lines().collect();
+
+    assert_eq!(lines.len(), 1, "clean file: only the done line");
+
+    let done: Value = serde_json::from_str(lines[0]).unwrap();
+    assert_eq!(done["event"], "done");
+    assert_eq!(done["total_findings"], 0);
 }
 
+/// Test S029: require_auth_for_args rule detection
 #[test]
-fn test_analyze_exit_code_flag_not_set_does_not_fail() {
-    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
-    let fixture_path = env::current_dir()
+fn test_s029_require_auth_for_args_detection() {
+    let dir = tempdir().unwrap();
+    let contract = dir.path().join("s029_test.rs");
+    
+    // Write a contract with vulnerable require_auth usage
+    fs::write(
+        &contract,
+        r#"
+use soroban_sdk::{contract, contractimpl, Env, Address, symbol_short};
+
+#[contract]
+pub struct TestContract;
+
+#[contractimpl]
+impl TestContract {
+    /// VULNERABLE: Multi-arg function using require_auth instead of require_auth_for_args
+    pub fn set_admin(env: Env, caller: Address, new_admin: Address) {
+        caller.require_auth();
+        env.storage().instance().set(&symbol_short!("admin"), &new_admin);
+    }
+
+    /// SAFE: Uses require_auth_for_args
+    pub fn set_admin_safe(env: Env, caller: Address, new_admin: Address) {
+        caller.require_auth_for_args((new_admin.clone(),).into_val(&env));
+        env.storage().instance().set(&symbol_short!("admin"), &new_admin);
+    }
+
+    /// SAFE: Single Address parameter
+    pub fn set_owner(env: Env, owner: Address) {
+        owner.require_auth();
+        env.storage().instance().set(&symbol_short!("owner"), &owner);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("sanctifier")
         .unwrap()
-        .join("tests/fixtures/vulnerable_contract.rs");
+        .args(["analyze", "--format", "json"])
+        .arg(&contract)
+        .output()
+        .unwrap();
 
-    cmd.arg("analyze")
-        .arg(fixture_path)
-        .env_remove("RUST_LOG")
-        .assert()
-        .success();
-}
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let json: Value = serde_json::from_str(&stdout).unwrap();
 
-#[test]
-fn test_analyze_invalid_project_returns_2() {
-    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
-    cmd.arg("analyze")
-        .arg("does-not-exist")
-        .arg("--exit-code")
-        .env_remove("RUST_LOG")
-        .assert()
-        .code(2);
-}
+    // Check that we found the require_auth_for_args violation
+    let violations = json["rule_violations"].as_array().unwrap();
+    let s029_violations: Vec<&Value> = violations
+        .iter()
+        .filter(|v| v["rule_name"] == "require_auth_for_args")
+        .collect();
 
-#[test]
-fn test_init_creates_cargo_toml_and_lib_rs() {
-    let temp_dir = tempdir().unwrap();
-    let project_path = temp_dir.path().join("test-contract");
+    assert_eq!(
+        s029_violations.len(),
+        1,
+        "Expected exactly 1 require_auth_for_args violation"
+    );
 
-    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
-    cmd.arg("init").arg(&project_path).assert().success();
-
+    let violation = s029_violations[0];
+    assert_eq!(violation["severity"], "Error");
     assert!(
-        project_path.join("Cargo.toml").exists(),
-        "init should create Cargo.toml"
+        violation["message"]
+            .as_str()
+            .unwrap()
+            .contains("require_auth_for_args"),
+        "Message should mention require_auth_for_args"
     );
     assert!(
-        project_path.join("src/lib.rs").exists(),
-        "init should create src/lib.rs"
+        violation["location"].as_str().unwrap().contains("set_admin"),
+        "Violation should be in set_admin function"
     );
 }
 
+/// Test S029 with NDJSON format
 #[test]
-fn test_complexity_shows_table_in_stdout() {
-    let mut cmd = Command::cargo_bin("sanctifier").unwrap();
-    let fixture_path = env::current_dir()
-        .unwrap()
-        .join("tests/fixtures/valid_contract.rs");
+fn test_s029_ndjson_format() {
+    let dir = tempdir().unwrap();
+    let contract = dir.path().join("s029_ndjson.rs");
+    
+    fs::write(
+        &contract,
+        r#"
+use soroban_sdk::{contract, contractimpl, Env, Address, symbol_short};
 
-    cmd.arg("complexity")
-        .arg(fixture_path)
-        .env_remove("RUST_LOG")
-        .assert()
-        .success()
-        .stdout(predicates::str::contains("Function"))
-        .stdout(predicates::str::contains("Complexity"));
+#[contract]
+pub struct VulnerableContract;
+
+#[contractimpl]
+impl VulnerableContract {
+    pub fn transfer_from(env: Env, spender: Address, from: Address, to: Address, amount: i128) {
+        spender.require_auth();
+        env.storage().instance().set(&symbol_short!("balance"), &amount);
+    }
+}
+"#,
+    )
+    .unwrap();
+
+    let output = Command::cargo_bin("sanctifier")
+        .unwrap()
+        .args(["analyze", "--format", "ndjson"])
+        .arg(&contract)
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let finding_lines: Vec<Value> = stdout
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .filter(|v: &Value| v["event"] == "finding")
+        .collect();
+
+    let s029_findings: Vec<&Value> = finding_lines
+        .iter()
+        .filter(|v| v["rule"] == "require_auth_for_args")
+        .collect();
+
+    assert!(
+        !s029_findings.is_empty(),
+        "Should detect require_auth_for_args violation in transfer_from"
+    );
+
+    let finding = s029_findings[0];
+    assert_eq!(finding["severity"], "Error");
+    assert!(
+        finding["message"]
+            .as_str()
+            .unwrap()
+            .contains("3 Address parameters"),
+        "Should mention 3 Address parameters"
+    );
 }

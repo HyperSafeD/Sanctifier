@@ -74,9 +74,7 @@ pub fn exec(args: BenchmarkArgs) -> anyhow::Result<()> {
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let config = SanctifyConfig::default();
-    let analyzer = Analyzer::new(config);
-    let rule_names: Vec<String> = analyzer
+    let rule_names: Vec<String> = sanctifier_core::rules::RuleRegistry::with_default_rules()
         .available_rules()
         .iter()
         .map(|s| s.to_string())

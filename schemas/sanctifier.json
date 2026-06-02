@@ -35,6 +35,11 @@
       "description": "Maximum ledger size limit in bytes for the analysis engine",
       "default": 64000
     },
+    "telemetry": {
+      "type": "boolean",
+      "description": "Opt-in anonymous telemetry for rule IDs, run duration, and sanitized tool version",
+      "default": false
+    },
     "strict_mode": {
       "type": "boolean",
       "description": "If true, the tool will exit with a non-zero code if any warnings are found",

@@ -5,9 +5,12 @@
 
 #[cfg(test)]
 mod crlf_tests {
-    use sanctifier_core::rules::{
-        PanicDetectionRule, ReentrancyRule, UnhandledResultRule,
-        InstanceStorageMisuseRule, Rule,
+    use crate::rules::{
+        instance_storage_misuse::InstanceStorageMisuseRule,
+        panic_detection::PanicDetectionRule,
+        reentrancy::ReentrancyRule,
+        unhandled_result::UnhandledResultRule,
+        Rule,
     };
 
     /// Convert LF source to CRLF by replacing every `\n` with `\r\n`.

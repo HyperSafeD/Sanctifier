@@ -57,7 +57,7 @@ export default function Home() {
         <div className="mt-32 grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
           <div className="group p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm transition-all hover:border-emerald-500/30 hover:shadow-2xl hover:shadow-emerald-500/5">
             <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-500 mb-6 group-hover:scale-110 transition-transform">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /></svg>
             </div>
             <h3 className="text-xl font-bold mb-3 text-zinc-900 dark:text-zinc-50">Deep Static Analysis</h3>
             <p className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
@@ -67,7 +67,7 @@ export default function Home() {
 
           <div className="group p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm transition-all hover:border-blue-500/30 hover:shadow-2xl hover:shadow-blue-500/5">
             <div className="w-12 h-12 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-500 mb-6 group-hover:scale-110 transition-transform">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>
             </div>
             <h3 className="text-xl font-bold mb-3 text-zinc-900 dark:text-zinc-50">Real-time Verification</h3>
             <p className="text-zinc-600 dark:text-zinc-400 leading-relaxed">
@@ -77,7 +77,7 @@ export default function Home() {
 
           <div className="group p-8 rounded-3xl border border-zinc-200 dark:border-zinc-800 bg-white/50 dark:bg-zinc-900/50 backdrop-blur-sm transition-all hover:border-indigo-500/30 hover:shadow-2xl hover:shadow-indigo-500/5">
             <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-500 mb-6 group-hover:scale-110 transition-transform">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2v20" /><path d="m17 7-5-5-5 5" /><path d="M17 17l-5 5-5-5" /></svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 2v20" /><path d="m17 7-5-5-5 5" /><path d="M17 17l-5 5-5-5" /></svg>
             </div>
             <h3 className="text-xl font-bold mb-3 text-zinc-900 dark:text-zinc-50">Protocol Compliance</h3>
             <p className="text-zinc-600 dark:text-zinc-400 leading-relaxed">

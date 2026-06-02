@@ -4,7 +4,7 @@ use crate::commands::analyze::{
 };
 use crate::vulndb::{VulnDatabase, VulnMatch};
 use clap::Args;
-use colored::*;
+use crate::commands::color as c;
 use rayon::prelude::*;
 use sanctifier_core::{Analyzer, SanctifyConfig};
 use serde_json::Value;
@@ -927,7 +927,7 @@ pub fn exec(args: DiffArgs) -> anyhow::Result<()> {
         if !is_json {
             println!(
                 "{} Baseline updated: {}",
-                "✅".green(),
+                c::green("✅"),
                 args.baseline.display()
             );
         }
@@ -986,17 +986,17 @@ pub fn exec(args: DiffArgs) -> anyhow::Result<()> {
     } else {
         println!(
             "\n{} Diff analysis complete. ({} ms)",
-            "✨".green(),
+            c::green("✨"),
             duration_ms
         );
         println!("   Baseline: {}", args.baseline.display());
 
         if new_count == 0 {
-            println!("   {} No new findings compared to baseline.", "✅".green());
+            println!("   {} No new findings compared to baseline.", c::green("✅"));
         } else {
             println!(
                 "   {} {} new finding(s) compared to baseline:",
-                "⚠️".yellow(),
+                c::yellow("⚠️"),
                 new_count
             );
 
@@ -1018,9 +1018,9 @@ fn print_new_text_findings(new: &Value) {
             if let Some(name) = item.get("function_name").and_then(|v| v.as_str()) {
                 println!(
                     "   {} [{}] Auth gap: {}",
-                    "->".red(),
-                    finding_codes::AUTH_GAP.bold(),
-                    name.bold()
+                    c::red("->"),
+                    c::bold(finding_codes::AUTH_GAP),
+                    c::bold(name)
                 );
             }
         }
@@ -1031,9 +1031,9 @@ fn print_new_text_findings(new: &Value) {
             let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
             println!(
                 "   {} [{}] Arithmetic: {} at {}",
-                "->".red(),
-                finding_codes::ARITHMETIC_OVERFLOW.bold(),
-                op.bold(),
+                c::red("->"),
+                c::bold(finding_codes::ARITHMETIC_OVERFLOW),
+                c::bold(op),
                 loc
             );
         }
@@ -1047,9 +1047,9 @@ fn print_new_text_findings(new: &Value) {
             let loc = item.get("location").and_then(|v| v.as_str()).unwrap_or("");
             println!(
                 "   {} [{}] Panic: {} at {}",
-                "->".red(),
-                finding_codes::PANIC_USAGE.bold(),
-                it.bold(),
+                c::red("->"),
+                c::bold(finding_codes::PANIC_USAGE),
+                c::bold(it),
                 loc
             );
         }
@@ -1059,9 +1059,9 @@ fn print_new_text_findings(new: &Value) {
             let key = item.get("key_value").and_then(|v| v.as_str()).unwrap_or("");
             println!(
                 "   {} [{}] Storage collision: {}",
-                "->".red(),
-                finding_codes::STORAGE_COLLISION.bold(),
-                key.bold()
+                c::red("->"),
+                c::bold(finding_codes::STORAGE_COLLISION),
+                c::bold(key)
             );
         }
     }
@@ -1070,8 +1070,8 @@ fn print_new_text_findings(new: &Value) {
             let snippet = item.get("snippet").and_then(|v| v.as_str()).unwrap_or("");
             println!(
                 "   {} [{}] Unsafe: {}",
-                "->".red(),
-                finding_codes::UNSAFE_PATTERN.bold(),
+                c::red("->"),
+                c::bold(finding_codes::UNSAFE_PATTERN),
                 snippet
             );
         }
@@ -1084,9 +1084,9 @@ fn print_new_text_findings(new: &Value) {
                 .unwrap_or("");
             println!(
                 "   {} [{}] Size: {}",
-                "->".red(),
-                finding_codes::LEDGER_SIZE_RISK.bold(),
-                name.bold()
+                c::red("->"),
+                c::bold(finding_codes::LEDGER_SIZE_RISK),
+                c::bold(name)
             );
         }
     }
@@ -1098,9 +1098,9 @@ fn print_new_text_findings(new: &Value) {
                 .unwrap_or("");
             println!(
                 "   {} [{}] SMT: {}",
-                "->".red(),
-                finding_codes::SMT_INVARIANT_VIOLATION.bold(),
-                fname.bold()
+                c::red("->"),
+                c::bold(finding_codes::SMT_INVARIANT_VIOLATION),
+                c::bold(fname)
             );
         }
     }
@@ -1112,9 +1112,9 @@ fn print_new_text_findings(new: &Value) {
                 .unwrap_or("");
             println!(
                 "   {} [{}] SEP-41: {}",
-                "->".red(),
-                finding_codes::SEP41_INTERFACE_DEVIATION.bold(),
-                fname.bold()
+                c::red("->"),
+                c::bold(finding_codes::SEP41_INTERFACE_DEVIATION),
+                c::bold(fname)
             );
         }
     }
@@ -1126,9 +1126,9 @@ fn print_new_text_findings(new: &Value) {
                 .unwrap_or("");
             println!(
                 "   {} [{}] Event: {}",
-                "->".red(),
-                finding_codes::EVENT_INCONSISTENCY.bold(),
-                name.bold()
+                c::red("->"),
+                c::bold(finding_codes::EVENT_INCONSISTENCY),
+                c::bold(name)
             );
         }
     }
@@ -1140,9 +1140,9 @@ fn print_new_text_findings(new: &Value) {
                 .unwrap_or("");
             println!(
                 "   {} [{}] Unhandled result: {}",
-                "->".red(),
-                finding_codes::UNHANDLED_RESULT.bold(),
-                fname.bold()
+                c::red("->"),
+                c::bold(finding_codes::UNHANDLED_RESULT),
+                c::bold(fname)
             );
         }
     }
@@ -1153,8 +1153,8 @@ fn print_new_text_findings(new: &Value) {
                     let msg = item.get("message").and_then(|v| v.as_str()).unwrap_or("");
                     println!(
                         "   {} [{}] Upgrade: {}",
-                        "->".red(),
-                        finding_codes::UPGRADE_RISK.bold(),
+                        c::red("->"),
+                        c::bold(finding_codes::UPGRADE_RISK),
                         msg
                     );
                 }
@@ -1168,13 +1168,13 @@ fn print_new_text_findings(new: &Value) {
         for item in arr {
             let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("");
             let sev = item.get("severity").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [VULN-DB] {} ({})", "->".red(), name.bold(), sev);
+            println!("   {} [VULN-DB] {} ({})", c::red("->"), c::bold(name), sev);
         }
     }
     if let Some(arr) = new.get("custom_rules").and_then(|v| v.as_array()) {
         for item in arr {
             let name = item.get("rule_name").and_then(|v| v.as_str()).unwrap_or("");
-            println!("   {} [CUSTOM] {}", "->".red(), name.bold());
+            println!("   {} [CUSTOM] {}", c::red("->"), c::bold(name));
         }
     }
 }

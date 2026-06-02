@@ -181,7 +181,7 @@ fn transfer_from_fails_on_expired_allowance() {
 
     let result = client.try_transfer_from(&bob, &alice, &carol, &100i128);
     let err = result.unwrap_err().unwrap();
-    assert_eq!(err, TokenError::AllowanceExpired);
+    assert_eq!(err, TokenError::AllowanceExpired.into());
 }
 
 #[test]
@@ -195,7 +195,10 @@ fn double_initialize_fails() {
         &String::from_str(&env, "Test Token"),
         &String::from_str(&env, "TEST"),
     );
-    assert_eq!(result.unwrap_err().unwrap(), TokenError::AlreadyInitialized);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TokenError::AlreadyInitialized.into()
+    );
 }
 
 #[test]
@@ -212,7 +215,7 @@ fn transfer_from_consumes_exact_allowance() {
     let result = client.try_transfer_from(&bob, &alice, &carol, &1i128);
     assert_eq!(
         result.unwrap_err().unwrap(),
-        TokenError::InsufficientAllowance
+        TokenError::InsufficientAllowance.into()
     );
 }
 
@@ -269,7 +272,10 @@ fn mint_fails_when_not_initialized() {
     let to = Address::generate(&env);
 
     let result = client.try_mint(&to, &100i128);
-    assert_eq!(result.unwrap_err().unwrap(), TokenError::NotInitialized);
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TokenError::NotInitialized.into()
+    );
 }
 
 #[test]
@@ -282,7 +288,7 @@ fn transfer_fails_with_insufficient_balance() {
     let result = client.try_transfer(&alice, &bob, &100i128);
     assert_eq!(
         result.unwrap_err().unwrap(),
-        TokenError::InsufficientBalance
+        TokenError::InsufficientBalance.into()
     );
 }
 
@@ -295,7 +301,7 @@ fn burn_fails_with_insufficient_balance() {
     let result = client.try_burn(&alice, &100i128);
     assert_eq!(
         result.unwrap_err().unwrap(),
-        TokenError::InsufficientBalance
+        TokenError::InsufficientBalance.into()
     );
 }
 
@@ -312,6 +318,6 @@ fn transfer_from_fails_with_insufficient_allowance() {
     let result = client.try_transfer_from(&bob, &alice, &carol, &100i128);
     assert_eq!(
         result.unwrap_err().unwrap(),
-        TokenError::InsufficientAllowance
+        TokenError::InsufficientAllowance.into()
     );
 }

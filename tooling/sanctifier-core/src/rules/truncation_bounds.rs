@@ -80,8 +80,11 @@ pub(crate) struct TruncationBoundsVisitor {
     pub(crate) test_mod_depth: u32,
 }
 
-/// Narrowing target types that indicate potential truncation.
-const NARROWING_TYPES: &[&str] = &["u32", "u16", "u8", "i32", "i16", "i8"];
+/// Narrowing target types that may silently truncate bits (wider→narrower or signed↔unsigned).
+///
+/// Includes u64/i64 to catch u128→u64 and i128→i64 truncations, and also
+/// captures same-width sign changes like `u64 as i64` or `i32 as u32`.
+const NARROWING_TYPES: &[&str] = &["u8", "u16", "u32", "u64", "i8", "i16", "i32", "i64"];
 
 impl<'ast> Visit<'ast> for TruncationBoundsVisitor {
     // ── Module-level: skip #[cfg(test)] modules entirely ─────────────────────
@@ -99,6 +102,9 @@ impl<'ast> Visit<'ast> for TruncationBoundsVisitor {
         if self.test_mod_depth > 0 || has_test_attr(&node.attrs) {
             return;
         }
+        if has_allow_truncate(&node.attrs) {
+            return;
+        }
         let prev = self.current_fn.take();
         self.current_fn = Some(node.sig.ident.to_string());
         syn::visit::visit_impl_item_fn(self, node);
@@ -107,6 +113,9 @@ impl<'ast> Visit<'ast> for TruncationBoundsVisitor {
 
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
         if self.test_mod_depth > 0 || has_test_attr(&node.attrs) {
+            return;
+        }
+        if has_allow_truncate(&node.attrs) {
             return;
         }
         let prev = self.current_fn.take();
@@ -133,7 +142,8 @@ impl<'ast> Visit<'ast> for TruncationBoundsVisitor {
                                 expression: expr_str,
                                 suggestion: format!(
                                     "Use `{ty_name}::try_from(val).unwrap_or(...)` or \
-                                     `.try_into()` with proper error handling instead of `as {ty_name}`"
+                                     `.try_into()` with proper error handling instead of `as {ty_name}`; \
+                                     suppress with `#[allow(sanctifier::truncate)]` if intentional"
                                 ),
                                 location: format!("{}:{}", fn_name, line),
                             });
@@ -178,6 +188,16 @@ fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
     attrs
         .iter()
         .any(|a| a.path().is_ident("cfg") && quote::quote!(#a).to_string().contains("test"))
+}
+
+/// Returns true if the item has `#[allow(sanctifier::truncate)]`, allowing the
+/// developer to opt out of truncation warnings for a specific function.
+fn has_allow_truncate(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|a| {
+        a.path().is_ident("allow")
+            && quote::quote!(#a).to_string().contains("sanctifier")
+            && quote::quote!(#a).to_string().contains("truncate")
+    })
 }
 
 #[cfg(test)]
@@ -271,5 +291,149 @@ mod tests {
         "#;
         let violations = rule.check(source);
         assert_eq!(violations.len(), 2);
+    }
+
+    // ── Extended truncation detection (u64/i64 targets) ───────────────────────
+
+    #[test]
+    fn test_detect_u128_as_u64_truncation() {
+        let rule = TruncationBoundsRule::new();
+        let source = r#"
+            fn compress(val: u128) -> u64 {
+                val as u64
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(violations.len(), 1, "u128 as u64 should be flagged as truncation");
+        assert!(violations[0].message.contains("truncation"));
+        assert!(violations[0].message.contains("as u64"));
+    }
+
+    #[test]
+    fn test_detect_i128_as_i64_truncation() {
+        let rule = TruncationBoundsRule::new();
+        let source = r#"
+            fn compress(val: i128) -> i64 {
+                val as i64
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(violations.len(), 1, "i128 as i64 should be flagged as truncation");
+        assert!(violations[0].message.contains("as i64"));
+    }
+
+    #[test]
+    fn test_detect_u64_as_i64_sign_change() {
+        let rule = TruncationBoundsRule::new();
+        let source = r#"
+            fn reinterpret(val: u64) -> i64 {
+                val as i64
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(violations.len(), 1, "u64 as i64 sign change should be flagged");
+        assert!(violations[0].message.contains("as i64"));
+    }
+
+    #[test]
+    fn test_detect_i64_as_u64_sign_change() {
+        let rule = TruncationBoundsRule::new();
+        let source = r#"
+            fn reinterpret(val: i64) -> u64 {
+                val as u64
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(violations.len(), 1, "i64 as u64 sign change should be flagged");
+        assert!(violations[0].message.contains("as u64"));
+    }
+
+    #[test]
+    fn test_detect_i32_as_u32_sign_change() {
+        let rule = TruncationBoundsRule::new();
+        let source = r#"
+            fn reinterpret(val: i32) -> u32 {
+                val as u32
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(violations.len(), 1, "i32 as u32 sign change should be flagged");
+    }
+
+    // ── #[allow(sanctifier::truncate)] opt-out ────────────────────────────────
+
+    #[test]
+    fn test_allow_truncate_suppresses_violation_on_item_fn() {
+        let rule = TruncationBoundsRule::new();
+        let source = r#"
+            #[allow(sanctifier::truncate)]
+            fn convert(val: u128) -> u64 {
+                val as u64
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(
+            violations.len(),
+            0,
+            "#[allow(sanctifier::truncate)] should suppress truncation warnings"
+        );
+    }
+
+    #[test]
+    fn test_allow_truncate_suppresses_violation_on_impl_fn() {
+        let rule = TruncationBoundsRule::new();
+        let source = r#"
+            impl Codec {
+                #[allow(sanctifier::truncate)]
+                pub fn pack(val: u128) -> u64 {
+                    val as u64
+                }
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(
+            violations.len(),
+            0,
+            "#[allow(sanctifier::truncate)] on impl fn should suppress warnings"
+        );
+    }
+
+    #[test]
+    fn test_allow_truncate_only_suppresses_annotated_function() {
+        let rule = TruncationBoundsRule::new();
+        let source = r#"
+            #[allow(sanctifier::truncate)]
+            fn allowed(val: u128) -> u64 {
+                val as u64
+            }
+
+            fn not_allowed(val: u128) -> u64 {
+                val as u64
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(
+            violations.len(),
+            1,
+            "Only the un-annotated function should fire"
+        );
+        assert!(violations[0].location.contains("not_allowed"));
+    }
+
+    #[test]
+    fn test_suggestion_mentions_opt_out() {
+        let rule = TruncationBoundsRule::new();
+        let source = r#"
+            fn compress(val: u128) -> u64 {
+                val as u64
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(violations.len(), 1);
+        let suggestion = violations[0].suggestion.as_deref().unwrap_or("");
+        assert!(
+            suggestion.contains("sanctifier::truncate"),
+            "suggestion should mention the opt-out attribute"
+        );
     }
 }

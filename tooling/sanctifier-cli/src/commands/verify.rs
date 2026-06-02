@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use anyhow::{bail, Context};
 use clap::Args;
-use colored::Colorize;
+use crate::commands::color as c;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use tracing::info;
@@ -26,7 +26,7 @@ pub struct VerifyArgs {
 }
 
 pub fn exec(args: VerifyArgs) -> anyhow::Result<()> {
-    println!("{}", "sanctifier verify — bytecode verification".bold());
+    println!("{}", c::bold("sanctifier verify — bytecode verification"));
     println!();
 
     // Step 1: Build local WASM
@@ -68,14 +68,14 @@ pub fn exec(args: VerifyArgs) -> anyhow::Result<()> {
     if local_hash == remote_hash {
         println!(
             "{} Source matches the on-chain deployment.",
-            "✓".green().bold()
+            c::green_bold("✓")
         );
-        println!("  Full hash: {}", local_hash.dimmed());
+        println!("  Full hash: {}", c::dimmed(&local_hash));
         Ok(())
     } else {
         println!(
             "{} MISMATCH — local source does NOT match the on-chain WASM.",
-            "✗".red().bold()
+            c::red_bold("✗")
         );
         println!("  Local  sha256: {}", local_hash);
         println!("  Remote sha256: {}", remote_hash);

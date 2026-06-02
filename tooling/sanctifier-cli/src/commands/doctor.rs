@@ -1,5 +1,5 @@
 use clap::Args;
-use colored::Colorize;
+use crate::commands::color as c;
 use std::process::Command;
 
 #[derive(Args, Debug)]
@@ -16,7 +16,7 @@ struct CheckResult {
 }
 
 pub fn exec(args: DoctorArgs) -> anyhow::Result<()> {
-    println!("{}", "sanctifier doctor — environment sanity check".bold());
+    println!("{}", c::bold("sanctifier doctor — environment sanity check"));
     println!();
 
     let checks = vec![
@@ -29,14 +29,14 @@ pub fn exec(args: DoctorArgs) -> anyhow::Result<()> {
     let mut all_passed = true;
     for check in &checks {
         let icon = if check.passed {
-            "✓".green().bold()
+            c::green_bold("✓")
         } else {
-            "✗".red().bold()
+            c::red_bold("✗")
         };
 
         println!("  {} {}", icon, check.name);
         if args.verbose || !check.passed {
-            println!("    {}", check.detail.dimmed());
+            println!("    {}", c::dimmed(&check.detail));
         }
         if !check.passed {
             all_passed = false;
@@ -45,11 +45,11 @@ pub fn exec(args: DoctorArgs) -> anyhow::Result<()> {
 
     println!();
     if all_passed {
-        println!("{}", "All checks passed. Your environment is ready.".green());
+        println!("{}", c::green("All checks passed. Your environment is ready."));
     } else {
         println!(
             "{}",
-            "Some checks failed. Fix the issues above before running sanctifier.".yellow()
+            c::yellow("Some checks failed. Fix the issues above before running sanctifier.")
         );
     }
 

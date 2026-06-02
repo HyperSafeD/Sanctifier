@@ -9,6 +9,12 @@ pull request that modifies a file under `contracts/` or the root `Cargo.toml` /
 
 ## Jobs
 
+### `workspace-check` (matrix)
+
+Runs `cargo check --workspace --locked` on both Ubuntu and macOS. This job is
+the fast sanity gate for workspace-wide resolution and catches cross-crate
+breakage before the per-contract matrix fans out.
+
 ### `contract-check` (matrix)
 
 Runs on `ubuntu-latest` for each contract listed in the matrix:
@@ -30,6 +36,18 @@ contracts whose `[dependencies]` section does **not** include
 feature pulls in `std`-only code that cannot be compiled for WASM.
 
 The step also prints the size of the resulting `.wasm` file.
+
+The contracts that explicitly require the `wasm32-unknown-unknown` target in
+CI are:
+
+- `flashloan-token`
+- `governance-contract`
+- `kani-poc-contract`
+- `uups-proxy`
+- `reentrancy-guard`
+- `timelock`
+- `token-with-bugs`
+- `vulnerable-contract`
 
 ## Adding a new contract
 

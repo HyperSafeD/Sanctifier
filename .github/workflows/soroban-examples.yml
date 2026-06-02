@@ -9,6 +9,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   soroban-examples:
@@ -16,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -27,20 +28,40 @@ jobs:
           sudo apt-get install -y clang libz3-dev libdbus-1-dev
 
       - name: Clone official Soroban examples
-        run: git clone https://github.com/stellar/soroban-examples.git
+        run: |
+          for attempt in 1 2 3; do
+            rm -rf soroban-examples
+            if git clone --depth 1 --single-branch https://github.com/stellar/soroban-examples.git; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to clone soroban-examples after $attempt attempts"
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
 
       - name: Build sanctifier CLI
         run: cargo build --manifest-path tooling/sanctifier-cli/Cargo.toml --release
 
       - name: Analyze Soroban examples
         run: |
-          python scripts/analyze-soroban-examples.py \
-            soroban-examples \
-            target/release/sanctifier \
-            soroban-examples-summary.json
+          for attempt in 1 2 3; do
+            if python scripts/analyze-soroban-examples.py \
+              soroban-examples \
+              target/release/sanctifier \
+              soroban-examples-summary.json; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to analyze soroban-examples after $attempt attempts"
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
 
       - name: Upload summary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: soroban-examples-summary
           path: soroban-examples-summary.json

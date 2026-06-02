@@ -8,15 +8,13 @@ on:
       - ".github/workflows/contracts-fuzz.yml"
   pull_request:
     branches: ["main"]
-    paths:
-      - "contracts/my-contract/**"
-      - ".github/workflows/contracts-fuzz.yml"
   schedule:
     # Nightly extended fuzzing — 02:00 UTC.
     - cron: "0 2 * * *"
 
 env:
   CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # -------------------------------------------------------------------------
@@ -29,13 +27,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache cargo artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -47,7 +45,7 @@ jobs:
           restore-keys: ${{ runner.os }}-fuzz-smoke-
 
       - name: Run bolero fuzz tests + cross-contract e2e
-        run: cargo test -p my-contract --tests
+        run: cargo test -p my-contract --lib --tests
 
       - name: Build cargo-fuzz harness (compile-only)
         working-directory: contracts/my-contract/fuzz
@@ -65,13 +63,13 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install nightly Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
 
       - name: Cache cargo artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -102,7 +100,7 @@ jobs:
 
       - name: Upload corpus and crashes (if any)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: fuzz-artifacts
           path: |
@@ -110,3 +108,59 @@ jobs:
             contracts/my-contract/fuzz/artifacts/
           if-no-files-found: ignore
           retention-days: 14
+
+  fuzz-corpus-replay:
+    name: Fuzz corpus replay (PR)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install nightly Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-fuzz-replay-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-fuzz-replay-
+
+      - name: Install cargo-fuzz
+        run: cargo install --locked cargo-fuzz
+
+      - name: Seed replay corpus
+        run: |
+          corpus_dir="$RUNNER_TEMP/fuzz-corpus/fuzz_cross_contract"
+          mkdir -p "$corpus_dir"
+          python - <<'PY'
+          import os
+          from pathlib import Path
+
+          corpus_dir = Path(os.environ["RUNNER_TEMP"]) / "fuzz-corpus" / "fuzz_cross_contract"
+          samples = {
+              "empty": b"",
+              "unknown-opcode": bytes([0xFF]) + bytes(64),
+              "truncated-mint": bytes([0x01]) + bytes([0x11]) * 32 + bytes(8),
+              "negative-mint": bytes([0x01]) + bytes([0x11]) * 32 + (-1).to_bytes(16, "little", signed=True),
+              "valid-mint": bytes([0x01]) + bytes([0x11]) * 32 + (1_000_000).to_bytes(16, "little", signed=True),
+              "valid-burn": bytes([0x02]) + bytes([0x22]) * 32 + (42).to_bytes(16, "little", signed=True),
+              "valid-transfer": bytes([0x03]) + bytes([0x11]) * 32 + bytes([0x22]) * 32 + (7).to_bytes(16, "little", signed=True),
+              "valid-approve": bytes([0x04]) + bytes([0x11]) * 32 + bytes([0x22]) * 32 + (1234).to_bytes(16, "little", signed=True) + (999_999).to_bytes(4, "little", signed=False),
+              "valid-transfer-from": bytes([0x05]) + bytes([0x33]) * 32 + bytes([0x11]) * 32 + bytes([0x22]) * 32 + (88).to_bytes(16, "little", signed=True),
+          }
+
+          for name, data in samples.items():
+              (corpus_dir / name).write_bytes(data)
+          PY
+
+      - name: Replay corpus for 10 minutes
+        working-directory: contracts/my-contract/fuzz
+        run: cargo fuzz run fuzz_cross_contract "$RUNNER_TEMP/fuzz-corpus/fuzz_cross_contract" -- -max_total_time=600

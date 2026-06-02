@@ -1,9 +1,21 @@
+use crate::commands::color as c;
 use clap::Args;
-use colored::Colorize;
 use sanctifier_core::{CustomRule, SanctifyConfig};
 use std::fs;
 use std::path::{Path, PathBuf};
 use tracing::{error, warn};
+
+#[derive(Debug, Clone, Copy, clap::ValueEnum)]
+pub enum TelemetrySetting {
+    On,
+    Off,
+}
+
+impl TelemetrySetting {
+    fn as_bool(self) -> bool {
+        matches!(self, Self::On)
+    }
+}
 
 #[derive(Args, Debug)]
 pub struct InitArgs {
@@ -14,6 +26,10 @@ pub struct InitArgs {
     /// Force overwrite existing configuration file
     #[arg(short, long)]
     pub force: bool,
+
+    /// Opt into minimal anonymous telemetry collection
+    #[arg(long, value_enum)]
+    pub telemetry: Option<TelemetrySetting>,
 }
 
 pub struct ConfigGenerator;
@@ -29,22 +45,23 @@ impl ConfigGenerator {
                 "ledger_size".to_string(),
             ],
             ledger_limit: 64000,
+            telemetry: false,
             strict_mode: false,
-            custom_rules: vec![
+            rules: vec![
                 CustomRule {
                     name: "no_unsafe_block".to_string(),
                     pattern: "unsafe\\s*\\{".to_string(),
+                    description: String::new(),
                     severity: sanctifier_core::RuleSeverity::Critical,
                 },
                 CustomRule {
                     name: "no_mem_forget".to_string(),
                     pattern: "std::mem::forget".to_string(),
+                    description: String::new(),
                     severity: sanctifier_core::RuleSeverity::High,
                 },
             ],
             approaching_threshold: 0.8,
-            max_findings: 0,
-            fail_fast: false,
         }
     }
 }
@@ -68,7 +85,7 @@ pub struct OutputFormatter;
 
 impl OutputFormatter {
     pub fn display_success(config_path: &Path) {
-        println!("{} Configuration file created successfully!", "✓".green());
+        println!("{} Configuration file created successfully!", c::green("✓"));
         println!("   Location: {}", config_path.display());
     }
 
@@ -105,7 +122,10 @@ pub fn exec(args: InitArgs, path: Option<PathBuf>) -> anyhow::Result<()> {
     }
 
     // Generate default configuration
-    let config = ConfigGenerator::generate_default_config();
+    let mut config = ConfigGenerator::generate_default_config();
+    if let Some(telemetry) = args.telemetry {
+        config.telemetry = telemetry.as_bool();
+    }
 
     // Write configuration to file
     match FileWriter::write_config(&config, &target_dir) {
@@ -189,13 +209,13 @@ mod tests {
         assert_eq!(config.approaching_threshold, 0.8);
 
         // Verify custom_rules
-        assert_eq!(config.custom_rules.len(), 2);
+        assert_eq!(config.rules.len(), 2);
 
-        let rule1 = &config.custom_rules[0];
+        let rule1 = &config.rules[0];
         assert_eq!(rule1.name, "no_unsafe_block");
         assert_eq!(rule1.pattern, "unsafe\\s*\\{");
 
-        let rule2 = &config.custom_rules[1];
+        let rule2 = &config.rules[1];
         assert_eq!(rule2.name, "no_mem_forget");
         assert_eq!(rule2.pattern, "std::mem::forget");
     }
@@ -224,7 +244,7 @@ mod tests {
     fn test_custom_rules_have_valid_patterns() {
         let config = ConfigGenerator::generate_default_config();
 
-        for rule in &config.custom_rules {
+        for rule in &config.rules {
             assert!(
                 !rule.name.is_empty(),
                 "Custom rule name should not be empty"

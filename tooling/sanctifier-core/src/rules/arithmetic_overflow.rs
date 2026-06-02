@@ -78,6 +78,36 @@ pub(crate) struct ArithVisitor {
 // Redundant ArithmeticIssue struct removed
 
 impl ArithVisitor {
+    fn is_constant_expr(expr: &syn::Expr) -> bool {
+        match expr {
+            syn::Expr::Lit(_) => true,
+            syn::Expr::Unary(syn::ExprUnary {
+                op: syn::UnOp::Neg(_),
+                expr,
+                ..
+            }) => {
+                matches!(expr.as_ref(), syn::Expr::Lit(_))
+            }
+            syn::Expr::Paren(syn::ExprParen { expr, .. }) => Self::is_constant_expr(expr),
+            syn::Expr::Cast(syn::ExprCast { expr, .. }) => Self::is_constant_expr(expr),
+            syn::Expr::Path(path) => {
+                if let Some(seg) = path.path.segments.last() {
+                    let name = seg.ident.to_string();
+                    name.chars()
+                        .all(|c| c.is_uppercase() || c == '_' || c.is_ascii_digit())
+                        && !name.is_empty()
+                } else {
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    fn is_non_constant_divisor(op: &syn::BinOp, right: &syn::Expr) -> bool {
+        matches!(op, syn::BinOp::Div(_) | syn::BinOp::Rem(_)) && !Self::is_constant_expr(right)
+    }
+
     fn classify_op(op: &syn::BinOp) -> Option<(&'static str, &'static str)> {
         match op {
             syn::BinOp::Add(_) => Some((
@@ -92,6 +122,12 @@ impl ArithVisitor {
                 "*",
                 "Use .checked_mul(rhs) or .saturating_mul(rhs) to handle overflow",
             )),
+            syn::BinOp::Div(_) => {
+                Some(("/", "Use .checked_div(rhs) to avoid division-by-zero panic"))
+            }
+            syn::BinOp::Rem(_) => {
+                Some(("%", "Use .checked_rem(rhs) to avoid modulo-by-zero panic"))
+            }
             syn::BinOp::AddAssign(_) => Some((
                 "+=",
                 "Replace a += b with a = a.checked_add(b).expect(\"overflow\")",
@@ -103,6 +139,15 @@ impl ArithVisitor {
             syn::BinOp::MulAssign(_) => Some((
                 "*=",
                 "Replace a *= b with a = a.checked_mul(b).expect(\"overflow\")",
+            )),
+
+            syn::BinOp::DivAssign(_) => Some((
+                "/=",
+                "Replace a /= b with a = a.checked_div(b).expect(\"division by zero\")",
+            )),
+            syn::BinOp::RemAssign(_) => Some((
+                "%=",
+                "Replace a %= b with a = a.checked_rem(b).expect(\"modulo by zero\")",
             )),
             _ => None,
         }
@@ -276,10 +321,12 @@ mod tests {
                 let c = a + b;
                 let d = a - b;
                 let e = a * b;
+                let f = a / b;
+                let g = a % b;
             }
         "#;
         let violations = rule.check(source);
-        assert_eq!(violations.len(), 3);
+        assert_eq!(violations.len(), 5);
     }
 
     #[test]
@@ -391,3 +438,4 @@ mod tests {
         );
     }
 }
+

@@ -1,4 +1,10 @@
 <div align="center">
+
+**[English](README.md)** | **[Español](README.es.md)** | **[中文](README.zh-CN.md)** | **[日本語](README.ja.md)** | **[Français](README.fr.md)**
+
+</div>
+
+<div align="center">
   <img src="branding/logo.png" width="220" alt="Sanctifier" />
 
   # Sanctifier
@@ -11,6 +17,7 @@
   [![Codecov](https://codecov.io/gh/HyperSafeD/Sanctifier/graph/badge.svg)](https://codecov.io/gh/HyperSafeD/Sanctifier)
   [![crates.io](https://img.shields.io/crates/v/sanctifier-cli.svg)](https://crates.io/crates/sanctifier-cli)
   [![Soroban Testnet](https://img.shields.io/badge/Soroban%20Testnet-Live-2dd4bf?style=flat-square&logo=stellar)](LIVE_TESTNET.md)
+  [![Testnet Monitor](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/HyperSafeD/Sanctifier/monitor/badges/testnet-monitor.json)](LIVE_TESTNET.md)
   [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 </div>
 
@@ -242,6 +249,7 @@ Sanctifier is shipping in waves. What's done, what's next, what's wishlist:
 **Shipped**
 - 12 canonical analysis rules (S001–S012) with stable codes
 - CLI, GitHub Action, Web Dashboard, VS Code extension, WASM build
+- Off-chain anomaly detector for recorded runtime calls with Slack/Discord alerts
 - Live testnet runtime-guard contracts emitting on-chain audit events
 - SARIF + JSON output, draft-07 schema, badge generator
 - Diff mode, watch mode, cargo-workspace scan, patcher
@@ -264,6 +272,7 @@ Sanctifier is shipping in waves. What's done, what's next, what's wishlist:
 Sanctifier/
 ├── tooling/
 │   ├── sanctifier-cli/        # CLI binary (the one you install)
+│   ├── sanctifier-detector/   # Off-chain anomaly detection service
 │   ├── sanctifier-core/       # Static-analysis engine + Z3 backend
 │   └── sanctifier-wasm/       # Browser/Node WASM build of the engine
 ├── frontend/                  # Next.js dashboard, playground, terminal

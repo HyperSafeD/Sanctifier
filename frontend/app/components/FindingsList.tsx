@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { FixedSizeList, type ListChildComponentProps } from "react-window";
 import type { Finding, Severity } from "../types";
 import { CodeSnippet } from "./CodeSnippet";
-import { Sparkles } from "lucide-react";
+import { SourceViewer } from "./SourceViewer";
+import { Sparkles, FileCode } from "lucide-react";
 import { AiFixPanel } from "./AiFixPanel";
 import { filterFindings } from "../lib/finding-filters";
 
@@ -12,6 +13,8 @@ interface FindingsListProps {
   findings: Finding[];
   severityFilter: Severity | "all";
   codeFilter?: string;
+  getSource?: (finding: Finding) => string | undefined;
+  getFileName?: (finding: Finding) => string | undefined;
 }
 
 /** Height reserved for each finding row in the virtual list (px). */
@@ -38,9 +41,10 @@ const severityLabels: Record<Severity, string> = {
 interface FindingCardProps {
   finding: Finding;
   onSelectAiFix: (finding: Finding) => void;
+  onViewSource?: (finding: Finding) => void;
 }
 
-function FindingCard({ finding, onSelectAiFix }: FindingCardProps) {
+function FindingCard({ finding, onSelectAiFix, onViewSource }: FindingCardProps) {
   return (
     <div className={`rounded-lg border p-4 ${severityColors[finding.severity]}`}>
       <div className="flex items-start justify-between gap-4">
@@ -52,6 +56,7 @@ function FindingCard({ finding, onSelectAiFix }: FindingCardProps) {
             <h3 className="mt-1 font-medium">{finding.title}</h3>
             <button 
               onClick={() => onSelectAiFix(finding)}
+              aria-label="Get AI-powered fix suggestion for this finding"
               className="mt-1 flex items-center gap-1.5 px-2 py-1 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold border border-emerald-500/20 hover:bg-emerald-500/20 transition-colors"
             >
               <Sparkles size={10} />
@@ -64,13 +69,24 @@ function FindingCard({ finding, onSelectAiFix }: FindingCardProps) {
           )}
         </div>
         <div className="shrink-0 flex items-center gap-2">
+          {onViewSource && (
+            <button
+              onClick={() => onViewSource(finding)}
+              aria-label="View full source file"
+              className="flex items-center gap-1 px-2 py-1 rounded-md bg-zinc-500/10 text-zinc-400 dark:text-zinc-400 text-[10px] font-bold border border-zinc-500/20 hover:bg-zinc-500/20 transition-colors"
+              title="View full source file"
+            >
+              <FileCode size={10} />
+              SOURCE
+            </button>
+          )}
           <span
             className={`rounded px-2 py-1 text-xs font-medium border ${severityColors[finding.severity]}`}
             aria-label={severityLabels[finding.severity]}
           >
             {finding.severity}
           </span>
-          <span className="font-mono text-xs rounded border border-zinc-300/70 dark:border-zinc-600 px-2 py-1 text-zinc-700 dark:text-zinc-300 theme-high-contrast:border-white theme-high-contrast:text-white">
+          <span className="font-mono text-xs rounded border border-zinc-300/70 dark:border-zinc-600 px-2 py-1 text-zinc-700 dark:text-zinc-300 theme-high-contrast:border-white theme-high-contrast:text-white" aria-label={`Error code: ${finding.code}`}>
             {finding.code}
           </span>
         </div>
@@ -84,8 +100,9 @@ function FindingCard({ finding, onSelectAiFix }: FindingCardProps) {
   );
 }
 
-export function FindingsList({ findings, severityFilter, codeFilter = "" }: FindingsListProps) {
+export function FindingsList({ findings, severityFilter, codeFilter = "", getSource, getFileName }: FindingsListProps) {
   const [selectedFinding, setSelectedFinding] = useState<Finding | null>(null);
+  const [sourceViewerFinding, setSourceViewerFinding] = useState<Finding | null>(null);
   const listRef = useRef<FixedSizeList>(null);
   
   const filtered = useMemo(() => {
@@ -97,16 +114,25 @@ export function FindingsList({ findings, severityFilter, codeFilter = "" }: Find
     listRef.current?.scrollToItem(0);
   }, [severityFilter, codeFilter]);
 
+  const handleViewSource = useCallback((finding: Finding) => {
+    setSourceViewerFinding(finding);
+  }, []);
+
+  const handleCloseSource = useCallback(() => {
+    setSourceViewerFinding(null);
+  }, []);
+
   const Row = useCallback(
     ({ index, style }: ListChildComponentProps) => (
       <div style={{ ...style, paddingBottom: 16 }}>
         <FindingCard 
           finding={filtered[index]} 
           onSelectAiFix={(f) => setSelectedFinding(f)} 
+          onViewSource={getSource ? handleViewSource : undefined}
         />
       </div>
     ),
-    [filtered],
+    [filtered, getSource, handleViewSource],
   );
 
   if (filtered.length === 0) {
@@ -117,37 +143,47 @@ export function FindingsList({ findings, severityFilter, codeFilter = "" }: Find
     );
   }
 
-  // For small lists render items directly — no virtualisation overhead.
-  if (filtered.length < VIRTUALISE_THRESHOLD) {
-    return (
-      <div className="space-y-4">
-        <AiFixPanel finding={selectedFinding} onClose={() => setSelectedFinding(null)} />
-        {filtered.map((f) => (
-          <FindingCard 
-            key={f.id} 
-            finding={f} 
-            onSelectAiFix={(finding) => setSelectedFinding(finding)} 
-          />
-        ))}
-      </div>
-    );
-  }
-
-  // For large lists (1000+) use a fixed-size virtual window.
-  const listHeight = Math.min(filtered.length * ITEM_HEIGHT, MAX_LIST_HEIGHT);
+  const sourceViewerSource = sourceViewerFinding && getSource ? getSource(sourceViewerFinding) : undefined;
 
   return (
     <div className="relative">
+      {sourceViewerSource && sourceViewerFinding && (
+        <SourceViewer
+          source={sourceViewerSource}
+          fileName={getFileName?.(sourceViewerFinding) ?? "contract.rs"}
+          highlightLine={sourceViewerFinding.line}
+          highlightEndLine={sourceViewerFinding.line}
+          onClose={handleCloseSource}
+        />
+      )}
       <AiFixPanel finding={selectedFinding} onClose={() => setSelectedFinding(null)} />
-      <FixedSizeList
-        height={listHeight}
-        itemCount={filtered.length}
-        itemSize={ITEM_HEIGHT}
-        width="100%"
-        ref={listRef}
-      >
-        {Row}
-      </FixedSizeList>
+
+      {/* For small lists render items directly — no virtualisation overhead. */}
+      {filtered.length < VIRTUALISE_THRESHOLD ? (
+        <div className="space-y-4">
+          {filtered.map((f) => (
+            <FindingCard 
+              key={f.id} 
+              finding={f} 
+              onSelectAiFix={(finding) => setSelectedFinding(finding)} 
+              onViewSource={getSource ? handleViewSource : undefined}
+            />
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* For large lists (1000+) use a fixed-size virtual window. */}
+          <FixedSizeList
+            height={Math.min(filtered.length * ITEM_HEIGHT, MAX_LIST_HEIGHT)}
+            itemCount={filtered.length}
+            itemSize={ITEM_HEIGHT}
+            width="100%"
+            ref={listRef}
+          >
+            {Row}
+          </FixedSizeList>
+        </>
+      )}
     </div>
   );
 }

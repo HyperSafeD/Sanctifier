@@ -1,0 +1,17 @@
+{
+  "projectId": "PROJECT_ID_PLACEHOLDER",
+  "buildScriptName": "build-storybook",
+  "storybookBuildDir": "storybook-static",
+  "exitZeroOnChanges": true,
+  "exitOnceUploaded": true,
+  "autoAcceptChanges": "main",
+  "skip": "dependabot/**",
+  "externals": [
+    "public/**"
+  ],
+  "ignoreLastBuildOnBranch": "main",
+  "onlyChanged": true,
+  "traceChanged": "expanded",
+  "diagnostics": false,
+  "zip": true
+}

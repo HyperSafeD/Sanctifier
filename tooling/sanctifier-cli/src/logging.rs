@@ -1,5 +1,6 @@
 use tracing_subscriber::EnvFilter;
 
+#[allow(dead_code)]
 pub enum LogOutput {
     Text,
     Json,

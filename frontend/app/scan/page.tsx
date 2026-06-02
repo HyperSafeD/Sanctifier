@@ -68,6 +68,7 @@ export default function ScanPage() {
       const response = await fetch("/api/analyze", {
         method: "POST",
         body: formData,
+        headers: getSettingsHeaders() as Record<string, string>,
       });
 
       clearInterval(logsTimer);

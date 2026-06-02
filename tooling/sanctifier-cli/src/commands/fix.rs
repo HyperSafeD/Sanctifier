@@ -1,5 +1,5 @@
 use clap::Args;
-use colored::*;
+use crate::commands::color as c;
 use sanctifier_core::{patcher::Patcher, rules::Patch, RuleRegistry};
 use std::fs;
 use std::io::{self, BufRead, Write};
@@ -39,7 +39,7 @@ pub fn exec(args: FixArgs) -> anyhow::Result<()> {
             continue;
         }
 
-        println!("\n{} {}", "📄".blue(), file_path.display());
+        println!("\n{} {}", c::blue("📄"), file_path.display());
 
         let selected: Vec<Patch> = if !args.interactive || apply_all {
             all_patches.clone()
@@ -51,7 +51,7 @@ pub fn exec(args: FixArgs) -> anyhow::Result<()> {
                     continue;
                 }
 
-                println!("\n  {} {}", "→".yellow(), patch.description);
+                println!("\n  {} {}", c::yellow("→"), patch.description);
                 print_diff(&source, patch);
 
                 loop {
@@ -94,12 +94,12 @@ pub fn exec(args: FixArgs) -> anyhow::Result<()> {
         let patched = Patcher::apply_patches(&source, &selected);
         fs::write(file_path, patched)?;
         total_applied += selected.len();
-        println!("  {} Applied {} patch(es)", "✅".green(), selected.len());
+        println!("  {} Applied {} patch(es)", c::green_check(), selected.len());
     }
 
     println!(
         "\n{} Done: {} applied, {} skipped",
-        "✨".green(),
+        c::green("✨"),
         total_applied,
         total_skipped
     );
@@ -110,14 +110,14 @@ fn print_diff(source: &str, patch: &Patch) {
     let lines: Vec<&str> = source.lines().collect();
     let start = patch.start_line.saturating_sub(1);
     let end = patch.end_line.min(lines.len());
-    println!("  {}", "──────".dimmed());
+    println!("  {}", c::dimmed("──────"));
     for (i, line) in lines[start..end].iter().enumerate() {
-        println!("  {:<6} {}", format!("-{}", start + i + 1).red(), line);
+        println!("  {:<6} {}", c::red(&format!("-{}", start + i + 1)), line);
     }
     for new_line in patch.replacement.lines() {
-        println!("  {:<6} {}", "+".green(), new_line);
+        println!("  {:<6} {}", c::green("+"), new_line);
     }
-    println!("  {}", "──────".dimmed());
+    println!("  {}", c::dimmed("──────"));
 }
 
 fn collect_rs_files(path: &Path) -> Vec<PathBuf> {

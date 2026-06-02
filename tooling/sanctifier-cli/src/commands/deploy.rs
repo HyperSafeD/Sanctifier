@@ -1,7 +1,9 @@
+#![allow(dead_code)]
+
 use clap::Args;
-use colored::*;
+use crate::commands::color as c;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 #[derive(Args, Debug)]
@@ -45,7 +47,7 @@ pub fn exec(args: DeployArgs) -> anyhow::Result<()> {
     if !args.contract_path.exists() {
         eprintln!(
             "{} Error: Contract path not found: {}",
-            "❌".red(),
+            c::red("❌"),
             args.contract_path.display()
         );
         std::process::exit(1);
@@ -58,16 +60,13 @@ pub fn exec(args: DeployArgs) -> anyhow::Result<()> {
     };
 
     if secret_key.is_empty() {
-        eprintln!(
-            "{} Error: SOROBAN_SECRET_KEY not provided",
-            "❌".red()
-        );
+
         eprintln!("   Set via --secret-key or SOROBAN_SECRET_KEY environment variable");
         std::process::exit(1);
     }
 
     if !is_json {
-        println!("{} Sanctifier: Deploying to {} testnet...", "🚀".bright_cyan(), args.network);
+
     }
 
     // Build the contract
@@ -79,10 +78,7 @@ pub fn exec(args: DeployArgs) -> anyhow::Result<()> {
     // Find WASM file
     let wasm_path = find_wasm_file(&args.contract_path);
     if wasm_path.is_none() {
-        eprintln!(
-            "{} Error: Could not find compiled WASM file",
-            "❌".red()
-        );
+
         std::process::exit(1);
     }
 
@@ -102,15 +98,15 @@ pub fn exec(args: DeployArgs) -> anyhow::Result<()> {
                     contract_id, args.network
                 );
             } else {
-                println!("{} Contract deployed successfully!", "✅".green());
-                println!("   Contract ID: {}", contract_id.cyan());
+                println!("{} Contract deployed successfully!", c::green("✅"));
+                println!("   Contract ID: {}", c::cyan(&contract_id));
                 println!("   Network: {}", args.network);
             }
 
             // Optionally run validation
             if args.validate {
                 if !is_json {
-                    println!("{} Running continuous validation...", "🔍".blue());
+                    println!("{} Running continuous validation...", c::blue("🔍"));
                 }
                 validate_deployment(&contract_id, &args.network, is_json)?;
             }
@@ -121,7 +117,7 @@ pub fn exec(args: DeployArgs) -> anyhow::Result<()> {
             if is_json {
                 println!("{{\"status\":\"error\",\"message\":\"{}\"}} ", e);
             } else {
-                eprintln!("{} Deployment failed: {}", "❌".red(), e);
+                eprintln!("{} Deployment failed: {}", c::red("❌"), e);
             }
             std::process::exit(1);
         }
@@ -130,21 +126,21 @@ pub fn exec(args: DeployArgs) -> anyhow::Result<()> {
 
 fn build_contract(contract_path: &PathBuf, is_json: bool) -> bool {
     if !is_json {
-        println!("{} Building contract...", "🔨".bright_yellow());
+        println!("{} Building contract...", c::bright_yellow("🔨"));
     }
 
     let cargo_toml = contract_path.join("Cargo.toml");
     if !cargo_toml.exists() {
-        eprintln!(
-            "{} Error: Cargo.toml not found in {}",
-            "❌".red(),
-            contract_path.display()
-        );
+            eprintln!(
+                "{} Error: Cargo.toml not found in {}",
+                c::red("❌"),
+                contract_path.display()
+            );
         return false;
     }
 
     let output = Command::new("cargo")
-        .args(&["build", "--release", "--target", "wasm32-unknown-unknown"])
+        .args(["build", "--release", "--target", "wasm32-unknown-unknown"])
         .current_dir(contract_path)
         .output();
 
@@ -152,26 +148,26 @@ fn build_contract(contract_path: &PathBuf, is_json: bool) -> bool {
         Ok(result) => {
             if result.status.success() {
                 if !is_json {
-                    println!("{} Contract built successfully", "✓".green());
+                    println!("{} Contract built successfully", c::green("✓"));
                 }
                 true
             } else {
                 eprintln!(
                     "{} Build failed:\n{}",
-                    "❌".red(),
+                    c::red("❌"),
                     String::from_utf8_lossy(&result.stderr)
                 );
                 false
             }
         }
         Err(e) => {
-            eprintln!("{} Failed to run cargo build: {}", "❌".red(), e);
+            eprintln!("{} Failed to run cargo build: {}", c::red("❌"), e);
             false
         }
     }
 }
 
-fn find_wasm_file(contract_path: &PathBuf) -> Option<PathBuf> {
+fn find_wasm_file(contract_path: &Path) -> Option<PathBuf> {
     let target_dir = contract_path.join("target/wasm32-unknown-unknown/release");
 
     if target_dir.exists() {
@@ -192,11 +188,11 @@ fn find_wasm_file(contract_path: &PathBuf) -> Option<PathBuf> {
 
 fn deploy_contract(config: &DeploymentConfig, is_json: bool) -> Result<String, String> {
     if !is_json {
-        println!("{} Deploying to {}...", "📦".bright_cyan(), config.network);
+        println!("{} Deploying to {}...", c::bright_cyan("📦"), config.network);
     }
 
     let output = Command::new("soroban")
-        .args(&[
+        .args([
             "contract",
             "deploy",
             "--wasm",
@@ -210,9 +206,7 @@ fn deploy_contract(config: &DeploymentConfig, is_json: bool) -> Result<String, S
         .map_err(|e| format!("Failed to deploy: {}", e))?;
 
     if output.status.success() {
-        let contract_id = String::from_utf8_lossy(&output.stdout)
-            .trim()
-            .to_string();
+        let contract_id = String::from_utf8_lossy(&output.stdout).trim().to_string();
         Ok(contract_id)
     } else {
         Err(String::from_utf8_lossy(&output.stderr).to_string())
@@ -223,15 +217,15 @@ fn validate_deployment(contract_id: &str, network: &str, is_json: bool) -> anyho
     if !is_json {
         println!(
             "{} Validating contract {} on {}...",
-            "✓".green(),
-            contract_id.cyan(),
+            c::green("✓"),
+            c::cyan(contract_id),
             network
         );
     }
 
     // Invoke health check
     let output = Command::new("soroban")
-        .args(&[
+        .args([
             "contract",
             "invoke",
             "--id",
@@ -245,13 +239,13 @@ fn validate_deployment(contract_id: &str, network: &str, is_json: bool) -> anyho
 
     if output.status.success() {
         if !is_json {
-            println!("{} Validation passed!", "✅".green());
+            println!("{} Validation passed!", c::green("✅"));
         }
         Ok(())
     } else {
         let error = String::from_utf8_lossy(&output.stderr);
         if !is_json {
-            eprintln!("{} Validation failed: {}", "❌".red(), error);
+            eprintln!("{} Validation failed: {}", c::red("❌"), error);
         }
         Err(anyhow::anyhow!("Validation failed: {}", error))
     }

@@ -126,7 +126,7 @@ fn bench_ast_parsing_and_rules(c: &mut Criterion) {
         let config = SanctifyConfig::default();
         let analyzer = Analyzer::new(config);
 
-        b.iter(|| analyzer.run_rules(COMPLEX_CONTRACT_PAYLOAD))
+        b.iter(|| analyzer.scan_auth_gaps(COMPLEX_CONTRACT_PAYLOAD))
     });
 
     // Benchmark specific targeted rules

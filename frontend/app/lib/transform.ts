@@ -291,11 +291,12 @@ export function transformReport(report: AnalysisReport): Finding[] {
   });
 
   (report.upgrade_reports ?? []).forEach((up: UpgradeFinding) => {
+    const sev: Severity = (up.severity as Severity) || "high";
     findings.push(
       toFinding(
         `upgrade-${idx++}`,
         up.code ?? "S010",
-        "high",
+        sev,
         "Upgrade Issue",
         up.finding_type,
         up.location,

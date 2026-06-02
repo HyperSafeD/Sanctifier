@@ -26,15 +26,52 @@
 //! * [`asset_cache_key`] — return a deterministic browser cache-bust key.
 //! * [`cache_metadata`] — return full cache metadata for offline-first consumers.
 
+use sanctifier_core::{
+    finding_codes, Analyzer, ArithmeticIssue, EventIssue, PanicIssue, SanctifyConfig,
+    SizeWarning, StorageCollisionIssue, UnhandledResultIssue, UnsafePattern,
+};
+use serde::Serialize;
 use wasm_bindgen::prelude::*;
 
 // ── Module declarations ────────────────────────────────────────────────────────
 
-mod analysis;
-pub mod constants;
-mod converters;
-pub mod types;
-pub mod validation;
+/// Top-level result returned by [`analyze`] and [`analyze_with_config`].
+#[derive(Serialize)]
+pub struct AnalysisResult {
+    /// Flat list of all findings across every analysis pass.
+    pub findings: Vec<Finding>,
+    /// Pre-computed counts so JS consumers don't have to iterate.
+    pub summary: Summary,
+}
+
+/// Aggregate counts included in every [`AnalysisResult`].
+#[derive(Serialize)]
+pub struct Summary {
+    pub total: usize,
+    pub auth_gaps: usize,
+    pub panic_issues: usize,
+    pub arithmetic_issues: usize,
+    pub size_warnings: usize,
+    pub unsafe_patterns: usize,
+    pub storage_collisions: usize,
+    pub event_issues: usize,
+    pub unhandled_results: usize,
+    pub upgrade_risks: usize,
+    pub sep41_issues: usize,
+    pub has_critical: bool,
+    pub has_high: bool,
+}
+
+// ── Helpers to convert core types into Finding ───────────────────────────────
+
+fn auth_gap_finding(issue: &String) -> Finding {
+    Finding {
+        code: finding_codes::AUTH_GAP,
+        category: "authentication",
+        message: format!("Missing authentication guard in `{}`", issue),
+        location: Some(issue.clone()),
+    }
+}
 
 // Re-export the public API types so consumers can import them directly.
 pub use types::{

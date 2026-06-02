@@ -31,6 +31,8 @@ pub mod unhandled_result;
 pub mod unsafe_prng;
 /// Unused local variables.
 pub mod unused_variable;
+/// Direct xdr::ScVal raw construction detection.
+pub mod xdr_raw_construction;
 
 /// Variable shadowing in nested scopes.
 pub mod variable_shadowing;
@@ -40,6 +42,18 @@ pub mod raw_invoke_contract;
 pub mod shallow_test;
 /// transfer_from-style flows that consume 'from' balance without allowance checks.
 pub mod transfer_from_no_allowance;
+/// Persistent/Temporary storage writes without a TTL bump (extend_ttl).
+pub mod missing_ttl_bump;
+/// Taint propagation through tuple and struct destructures.
+pub mod taint_propagation;
+/// Static reentrancy — external call before state write (complement to runtime guard).
+pub mod static_reentrancy;
+/// Soroban SDK v22 deprecated storage/deployment API patterns.
+pub mod deprecated_sdk_usage;
+/// Detect env.ledger().timestamp() used as entropy for randomness.
+pub mod timestamp_randomness;
+/// require_auth used instead of require_auth_for_args in multi-arg admin operations.
+pub mod require_auth_for_args;
 use serde::Serialize;
 use std::any::Any;
 
@@ -192,6 +206,7 @@ impl RuleRegistry {
         registry.register(unhandled_result::UnhandledResultRule::new());
         registry.register(unused_variable::UnusedVariableRule::new());
         registry.register(shadow_storage::ShadowStorageRule::new());
+        registry.register(xdr_raw_construction::XdrRawConstructionRule::new());
         registry.register(storage_update_state_check::StorageUpdateStateCheckRule::new());
         registry.register(reentrancy::ReentrancyRule::new());
         registry.register(truncation_bounds::TruncationBoundsRule::new());
@@ -203,6 +218,12 @@ impl RuleRegistry {
         registry.register(raw_invoke_contract::RawInvokeContractRule::new());
         registry.register(shallow_test::ShallowTestRule::new());
         registry.register(transfer_from_no_allowance::TransferFromNoAllowanceRule::new());
+        registry.register(missing_ttl_bump::MissingTtlBumpRule::new());
+        registry.register(taint_propagation::TaintPropagationRule::new());
+        registry.register(static_reentrancy::StaticReentrancyRule::new());
+        registry.register(deprecated_sdk_usage::DeprecatedSdkUsageRule::new());
+        registry.register(timestamp_randomness::TimestampRandomnessRule::new());
+        registry.register(require_auth_for_args::RequireAuthForArgsRule::new());
         registry
     }
 }

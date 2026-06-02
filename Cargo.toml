@@ -2,6 +2,7 @@
 members = [
     "tooling/sanctifier-core",
     "tooling/sanctifier-cli",
+    "tooling/sanctifier-detector",
     "tooling/sanctifier-wasm",
     "contracts/security-disclaimers",
     "contracts/vulnerable-contract",
@@ -39,8 +40,8 @@ debug = 0
 strip = "symbols"
 debug-assertions = false
 panic = "abort"
-codegen-units = 1
 lto = true
+codegen-units = 1
 
 [profile.release-with-logs]
 inherits = "release"

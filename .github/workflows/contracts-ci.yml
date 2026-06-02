@@ -16,8 +16,42 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  workspace-check:
+    name: Workspace check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Z3 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libz3-dev libdbus-1-dev libudev-dev pkg-config
+
+      - name: Install Z3 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install z3 llvm
+          echo "Z3_SYS_Z3_HEADER=$(brew --prefix z3)/include/z3.h" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$(brew --prefix z3)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+          echo "CPATH=$(brew --prefix z3)/include:$CPATH" >> $GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
+
+      - name: cargo check --workspace
+        run: cargo check --workspace --locked
+
   # -------------------------------------------------------------------------
   # Job 1: check + clippy + test for every contract in the workspace.
   # Uses fail-fast: false so a single failure surfaces all broken contracts.
@@ -46,7 +80,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -54,7 +88,7 @@ jobs:
           components: clippy
 
       - name: Cache cargo artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -98,7 +132,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install stable Rust toolchain with wasm32 target
         uses: dtolnay/rust-toolchain@stable
@@ -106,7 +140,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Cache cargo artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/

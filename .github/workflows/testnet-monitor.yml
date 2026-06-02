@@ -1,0 +1,115 @@
+name: Testnet Health Monitor
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  monitor:
+    name: Check deployed testnet contracts
+    runs-on: ubuntu-latest
+    env:
+      XDG_CONFIG_HOME: /tmp/stellar-xdg
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Stellar CLI
+        uses: stellar/stellar-cli@v23.0.1
+
+      - name: Create funded testnet monitor identity
+        run: |
+          stellar keys generate testnet-monitor --network testnet --fund --overwrite
+          stellar keys public-key testnet-monitor
+
+      - name: Run contract health checks
+        id: health
+        run: node .github/scripts/testnet-monitor.js
+
+      - name: Open tracking issues for failures
+        if: steps.health.outputs.healthy != 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require("node:fs");
+            const failures = JSON.parse(fs.readFileSync("monitor/failures.json", "utf8"));
+
+            for (const failure of failures) {
+              const query = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open label:testnet label:bug "${failure.id}"`;
+              const existing = await github.rest.search.issuesAndPullRequests({ q: query, per_page: 1 });
+              const title = `Testnet health check failed: ${failure.name}`;
+              const body = [
+                "The scheduled testnet health monitor could not verify a deployed contract.",
+                "",
+                `- Contract: ${failure.name}`,
+                `- Address: \`${failure.id}\``,
+                `- Checked at: ${failure.checkedAt}`,
+                `- Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                "",
+                "```text",
+                failure.output || `stellar exited with ${failure.exitCode}`,
+                "```",
+              ].join("\n");
+
+              if (existing.data.items.length === 0) {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body,
+                  labels: ["testnet", "bug"],
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.data.items[0].number,
+                  body,
+                });
+              }
+            }
+
+      - name: Publish status badge JSON
+        if: always() && steps.health.outputs.total != ''
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          worktree="$(mktemp -d)"
+          if git ls-remote --exit-code --heads origin monitor >/dev/null 2>&1; then
+            git fetch origin monitor
+            git worktree add "$worktree" origin/monitor
+          else
+            git worktree add --detach "$worktree"
+            git -C "$worktree" checkout --orphan monitor
+            git -C "$worktree" rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          mkdir -p "$worktree/badges"
+          cp monitor/status.json "$worktree/badges/testnet-monitor.json"
+
+          git -C "$worktree" add badges/testnet-monitor.json
+          if git -C "$worktree" diff --cached --quiet; then
+            echo "Badge JSON already up to date."
+            exit 0
+          fi
+
+          git -C "$worktree" commit -m "chore: update testnet monitor badge"
+          git -C "$worktree" push origin HEAD:monitor
+
+      - name: Fail when any contract is unhealthy
+        if: steps.health.outputs.healthy != 'true'
+        run: exit 1

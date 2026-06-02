@@ -35,6 +35,7 @@ CONTINUOUS_VALIDATION=true
 VALIDATION_INTERVAL=300  # 5 minutes
 MAX_RETRIES=3
 DRY_RUN=false
+MIN_TESTNET_BALANCE=5
 
 #======================================================================
 # Logging and Utility Functions
@@ -148,6 +149,75 @@ validate_network() {
             return 1
             ;;
     esac
+}
+
+extract_first_number() {
+    grep -oE '[0-9]+([.][0-9]+)?' | head -1
+}
+
+ensure_network_reachable() {
+    log_info "Checking Soroban network: $NETWORK"
+    if ! soroban network info --network "$NETWORK" >/dev/null 2>&1; then
+        log_error "Soroban network check failed for $NETWORK"
+        return 1
+    fi
+    log_success "Soroban network is reachable: $NETWORK"
+}
+
+extract_account_balance() {
+    local balance_output=$1
+    local balance
+    balance=$(printf '%s\n' "$balance_output" | extract_first_number)
+    if [[ -z "$balance" ]]; then
+        return 1
+    fi
+    printf '%s' "$balance"
+}
+
+fund_testnet_account_if_needed() {
+    if [[ -z "${SOROBAN_ACCOUNT_ID:-}" ]]; then
+        log_warning "SOROBAN_ACCOUNT_ID not set; skipping balance preflight"
+        return 0
+    fi
+
+    if [[ "$NETWORK" != "testnet" && "$NETWORK" != "futurenet" ]]; then
+        log_info "Skipping Friendbot preflight on $NETWORK"
+        return 0
+    fi
+
+    local balance_output
+    if ! balance_output=$(soroban account balance --account "$SOROBAN_ACCOUNT_ID" --network "$NETWORK" 2>&1); then
+        log_warning "Unable to read account balance for $SOROBAN_ACCOUNT_ID"
+        log_debug "$balance_output"
+        return 0
+    fi
+
+    local balance
+    if ! balance=$(extract_account_balance "$balance_output"); then
+        log_warning "Could not parse account balance for $SOROBAN_ACCOUNT_ID"
+        log_debug "$balance_output"
+        return 0
+    fi
+
+    log_info "Current balance for $SOROBAN_ACCOUNT_ID: $balance XLM"
+
+    if awk "BEGIN { exit !($balance < $MIN_TESTNET_BALANCE) }"; then
+        log_warning "Balance below ${MIN_TESTNET_BALANCE} XLM, funding from Friendbot"
+        if curl --silent --show-error --fail \
+            "https://friendbot.stellar.org?addr=$SOROBAN_ACCOUNT_ID" >/dev/null; then
+            log_success "Friendbot funding completed for $SOROBAN_ACCOUNT_ID"
+        else
+            log_error "Friendbot funding failed for $SOROBAN_ACCOUNT_ID"
+            return 1
+        fi
+    else
+        log_success "Account balance is sufficient"
+    fi
+}
+
+preflight_checks() {
+    ensure_network_reachable
+    fund_testnet_account_if_needed
 }
 
 #======================================================================
@@ -494,6 +564,7 @@ Options:
 
 Environment Variables:
     SOROBAN_SECRET_KEY        Your Soroban secret key (required)
+    SOROBAN_ACCOUNT_ID        Your public account ID for balance checks (optional)
     DEBUG                     Set to 'true' to enable debug logging
 
 Examples:
@@ -530,6 +601,11 @@ main() {
 
     if ! validate_environment; then
         log_error "Environment validation failed"
+        exit 1
+    fi
+
+    if ! preflight_checks; then
+        log_error "Preflight checks failed"
         exit 1
     fi
 

@@ -114,3 +114,7 @@ Or use the automation script:
 - The wrapper is initialized with the deployer wallet as both `admin` and `wrapped_contract` for demonstration purposes. In production deployments, `wrapped_contract` should be the address of an actual target protocol.
 - Storage TTL on testnet is shorter than mainnet. After ~30 days, archived state may need to be restored before reads succeed.
 - These addresses are intended for review and demonstration. Production deployments will be announced via the LIVE_MAINNET.md document after security audit.
+
+## Telegram Event Watcher
+
+If you want Telegram alerts for testnet runtime-guard events, use the scaffold in [`integrations/telegram/README.md`](integrations/telegram/README.md). It supports severity and contract-address filtering and can read from a local JSON event cache.

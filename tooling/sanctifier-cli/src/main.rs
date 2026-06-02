@@ -10,6 +10,7 @@ use tracing::error;
 
 mod commands;
 mod logging;
+mod telemetry;
 pub mod vulndb;
 
 #[derive(Parser)]
@@ -23,6 +24,10 @@ pub mod vulndb;
     "\nBuilt with: rustc ", env!("VERGEN_RUSTC_SEMVER")
 ))]
 struct Cli {
+    /// Disable coloured output (also respects NO_COLOR env var)
+    #[arg(long, global = true)]
+    no_color: bool,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -43,6 +48,8 @@ pub enum Commands {
     Storage(commands::storage::StorageArgs),
     /// Initialize Sanctifier in a new project
     Init(commands::init::InitArgs),
+    /// Install git hooks (pre-commit, pre-push) to run Sanctifier automatically
+    InstallHooks(commands::install_hooks::InstallHooksArgs),
     /// Show per-contract complexity metrics (cyclomatic complexity, nesting, LOC)
     Complexity(commands::complexity::ComplexityArgs),
     /// Generate a Graphviz DOT call graph of cross-contract calls (env.invoke_contract)
@@ -61,8 +68,12 @@ pub enum Commands {
     },
     /// Apply auto-fix patches to a contract; use --interactive to review each patch
     Fix(commands::fix::FixArgs),
+    /// Explain a finding code (e.g. S001, S003) with details and remediation
+    Explain(commands::explain::ExplainArgs),
     /// Check for and download the latest Sanctifier binary
     Update,
+    /// Self-update with checksum verification via GitHub Releases
+    Upgrade(commands::upgrade::UpgradeArgs),
     /// Detect reentrancy vulnerabilities (state mutation before external call)
     Reentrancy(commands::reentrancy::ReentrancyArgs),
     /// Verify local source against on-chain bytecode
@@ -95,7 +106,7 @@ fn main() {
 fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     let log_output = match &cli.command {
-        Commands::Analyze(args) if args.format == "json" => logging::LogOutput::Json,
+        Commands::Analyze(args) if args.format == "json" || args.format == "ndjson" => logging::LogOutput::Json,
         Commands::Diff(args) if args.format == "json" => logging::LogOutput::Json,
         Commands::Gas(args) if args.format == commands::gas::OutputFormat::Json => {
             logging::LogOutput::Json
@@ -106,6 +117,7 @@ fn run() -> anyhow::Result<()> {
         _ => logging::LogOutput::Text,
     };
     logging::init(log_output)?;
+    commands::color::init(cli.no_color);
 
     match cli.command {
         Commands::Analyze(args) => commands::analyze::exec(args)?,
@@ -129,12 +141,23 @@ fn run() -> anyhow::Result<()> {
             let path = Some(args.path.clone());
             commands::init::exec(args, path)?;
         }
+        Commands::InstallHooks(args) => {
+            commands::install_hooks::exec(args)?;
+        }
         Commands::Callgraph {
             path,
             format,
             output,
         } => {
-            use sanctifier_core::{callgraph_to_dot, Analyzer};
+            use sanctifier_core::Analyzer;
+            fn callgraph_to_dot(edges: &[sanctifier_core::ReentrancyEdge]) -> String {
+                let mut dot = String::from("digraph callgraph {\n");
+                for e in edges {
+                    dot.push_str(&format!("  \"{}\" -> \"{}\";\n", e.caller_function, e.target_contract));
+                }
+                dot.push_str("}\n");
+                dot
+            }
             let config = load_config(&path);
             let analyzer = Analyzer::new(config.clone());
             let is_json = format == "json";
@@ -191,8 +214,14 @@ fn run() -> anyhow::Result<()> {
         Commands::Fix(args) => {
             commands::fix::exec(args)?;
         }
+        Commands::Explain(args) => {
+            commands::explain::exec(args)?;
+        }
         Commands::Update => {
             commands::update::exec()?;
+        }
+        Commands::Upgrade(args) => {
+            commands::upgrade::exec(args)?;
         }
         Commands::Reentrancy(args) => {
             commands::reentrancy::exec(args)?;

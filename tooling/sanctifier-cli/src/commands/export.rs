@@ -3,7 +3,7 @@ use crate::commands::analyze::{
 };
 use crate::vulndb::VulnDatabase;
 use clap::{Args, ValueEnum};
-use colored::*;
+use crate::commands::color as c;
 use rayon::prelude::*;
 use sanctifier_core::Analyzer;
 use std::fs;
@@ -86,7 +86,7 @@ pub fn exec(args: ExportArgs) -> anyhow::Result<()> {
     };
 
     if rs_files.is_empty() {
-        eprintln!("{} No Rust source files found at {:?}", "⚠️".yellow(), args.path);
+        eprintln!("{} No Rust source files found at {:?}", c::yellow_warning(), args.path);
         return Ok(());
     }
 
@@ -289,7 +289,7 @@ pub fn exec(args: ExportArgs) -> anyhow::Result<()> {
     let total_rows = results.iter().map(count_findings).sum::<usize>();
     println!(
         "{} Exported {} finding(s) to {:?}",
-        "✅".green(),
+        c::green_check(),
         total_rows,
         output_path
     );
