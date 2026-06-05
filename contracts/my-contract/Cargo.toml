@@ -11,6 +11,6 @@ soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
-bolero = "0.10"
-bolero-generator = "0.10"
+bolero = "0.13"
+bolero-generator = "0.13"
 
