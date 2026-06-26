@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
   "label": "testnet monitor",
-  "message": "1/3 healthy",
-  "color": "red"
+  "message": "3/3 healthy",
+  "color": "brightgreen"
 }
