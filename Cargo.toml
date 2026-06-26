@@ -25,7 +25,7 @@ members = [
 resolver = "2"
 
 [workspace.dependencies]
-soroban-sdk = { version = "21.7.0" }
+soroban-sdk = { version = "26.1.0" }
 
 [workspace.package]
 rust-version = "1.78"
