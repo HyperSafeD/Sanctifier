@@ -164,7 +164,7 @@ jobs:
         continue-on-error: true
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
           path: frontend/coverage/
@@ -269,7 +269,7 @@ jobs:
 
       - name: Upload Playwright artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-artifacts
           path: |
@@ -369,14 +369,14 @@ jobs:
         run: cargo test -p amm-pool --test integration_tests abi_ -- --nocapture
 
       - name: Upload rustdoc artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: contract-rustdoc
           path: target/doc/
           retention-days: 14
 
       - name: Upload interface JSON artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: contract-interfaces-json
           path: docs/generated/contract-interfaces.json
@@ -454,7 +454,7 @@ jobs:
           node scripts/verify-csp-compliance.js
 
       - name: Upload WASM artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sanctifier-wasm-pkg
           path: tooling/sanctifier-wasm/pkg/

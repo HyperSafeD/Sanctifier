@@ -109,7 +109,7 @@ jobs:
 
       - name: Upload Storybook build artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: storybook-build
           path: frontend/storybook-static/
@@ -161,7 +161,7 @@ jobs:
 
       - name: Upload accessibility report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: accessibility-report
           path: frontend/test-results/
