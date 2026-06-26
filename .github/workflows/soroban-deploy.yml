@@ -177,7 +177,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download deployment manifest
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: deployment-manifest-${{ github.run_id }}
 
