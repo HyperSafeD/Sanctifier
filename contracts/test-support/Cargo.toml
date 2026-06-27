@@ -1,0 +1,14 @@
+[package]
+name = "sanctifier-test-support"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# This crate is intentionally a plain `rlib` — no `cdylib` — so it can be
+# compiled once and reused across every contract's test harness rather than
+# being re-linked into each WASM binary.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
