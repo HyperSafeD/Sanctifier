@@ -20,7 +20,9 @@ use soroban_sdk::{testutils::Address as _, token, Address, Env};
 /// ```
 pub fn create_token(env: &Env, recipient: &Address, amount: i128) -> Address {
     let admin = Address::generate(env);
-    let token_addr = env.register_stellar_asset_contract_v2(admin.clone()).address();
+    let token_addr = env
+        .register_stellar_asset_contract_v2(admin.clone())
+        .address();
     let sac = token::StellarAssetClient::new(env, &token_addr);
     sac.mint(recipient, &amount);
     token_addr
@@ -29,7 +31,7 @@ pub fn create_token(env: &Env, recipient: &Address, amount: i128) -> Address {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::Env;
 
     #[test]
     fn create_token_mints_expected_amount() {
