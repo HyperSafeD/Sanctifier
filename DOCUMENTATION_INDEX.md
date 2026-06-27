@@ -160,6 +160,13 @@
 
 ### Finding Code Documentation
 
+**[docs/rules/s001-auth-gap.md](docs/rules/s001-auth-gap.md)** - S001: Missing Authorization Guard (`auth_gap`)
+
+- What constitutes a privileged operation (storage mutation, external call)
+- Vulnerable vs fixed code examples
+- Input validation behaviour (null bytes, oversized source)
+- Auto-fix notes and suppression guidance
+
 **[docs/rules/s012-sep41-interface.md](docs/rules/s012-sep41-interface.md)** - S012: SEP-41 Token Interface Compliance
 
 - Complete SEP-41 standard interface verification
