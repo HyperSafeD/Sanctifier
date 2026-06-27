@@ -273,7 +273,9 @@ fn is_init_fn(name: &str) -> bool {
 
 // ── ArithmeticIssue (NEW) ─────────────────────────────────────────────────────
 
-/// Represents an unchecked arithmetic operation that could overflow or underflow.
+/// Represents a panic, unwrap, or expect usage detected in contract code.
+///
+/// This is the structured finding type for S002 (Panic Usage).
 #[derive(Debug, Serialize, Clone)]
 pub struct PanicIssue {
     pub function_name: String,
@@ -281,6 +283,60 @@ pub struct PanicIssue {
     pub location: String,
 }
 
+/// Represents an unchecked arithmetic operation that could overflow or underflow.
+///
+/// This is the structured finding type for S003 (Arithmetic Overflow / Underflow).
+/// Each instance represents one detected risky operation in the contract code.
+///
+/// # Fields
+///
+/// - `function_name`: The name of the function containing the risky operation
+/// - `operation`: The operator or method name (e.g., `"+"`, `"-"`, `"mul_div"`)
+/// - `suggestion`: Remediation guidance (e.g., "Use .checked_add(rhs)...")
+/// - `location`: Human-readable location string (e.g., "transfer:42")
+///
+/// # Deduplication
+///
+/// The detection logic ensures at most one `ArithmeticIssue` per
+/// (function_name, operation) pair. This prevents redundant findings when
+/// an operator is used multiple times in the same function.
+///
+/// # JSON Output
+///
+/// When serialized to JSON (via `--format json`), each issue appears in the
+/// `arithmetic_issues` array:
+///
+/// ```json
+/// {
+///   "arithmetic_issues": [{
+///     "function_name": "transfer",
+///     "operation": "+",
+///     "suggestion": "Use .checked_add(rhs) or .saturating_add(rhs) to handle overflow",
+///     "location": "transfer:42"
+///   }]
+/// }
+/// ```
+///
+/// # SARIF Output
+///
+/// When exported to SARIF format, these become `result` objects with:
+/// - `ruleId`: "S003"
+/// - `level`: "warning"
+/// - `message.text`: "Unchecked '{operation}' operation could overflow"
+/// - `locations[0].physicalLocation.region.startLine`: extracted from `location`
+///
+/// # Example
+///
+/// ```rust,ignore
+/// pub fn risky_add(a: u64, b: u64) -> u64 {
+///     a + b  // Produces ArithmeticIssue {
+///            //   function_name: "risky_add",
+///            //   operation: "+",
+///            //   suggestion: "Use .checked_add(rhs)...",
+///            //   location: "risky_add:2"
+///            // }
+/// }
+/// ```
 #[derive(Debug, Serialize, Clone)]
 pub struct ArithmeticIssue {
     pub function_name: String,
