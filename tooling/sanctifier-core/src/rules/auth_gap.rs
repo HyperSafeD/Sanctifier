@@ -1,3 +1,4 @@
+use crate::input_validation::{validate_no_null_bytes, validate_source_size};
 use crate::rules::{Patch, Rule, RuleViolation, Severity};
 use syn::spanned::Spanned;
 use syn::{parse_str, File, Item};
@@ -45,6 +46,37 @@ impl Rule for AuthGapRule {
     }
 
     fn check(&self, source: &str) -> Vec<RuleViolation> {
+        // Guard: empty source has no findings (fast-path, no parse needed).
+        if let Err(e) = validate_source_size(source) {
+            if e.code == "EMPTY_SOURCE" {
+                return vec![];
+            }
+            // Source too large — emit a structured diagnostic so CI can surface it.
+            return vec![RuleViolation::new(
+                self.name(),
+                Severity::Error,
+                format!("Input rejected by auth_gap rule: {}", e.message),
+                "<source>".to_string(),
+            )
+            .with_suggestion(
+                "Split the contract into smaller files and analyse each separately.".to_string(),
+            )];
+        }
+
+        // Guard: null bytes are never valid in Rust source and indicate binary
+        // data or a potential injection attempt.
+        if let Err(e) = validate_no_null_bytes(source) {
+            return vec![RuleViolation::new(
+                self.name(),
+                Severity::Error,
+                format!("Input rejected by auth_gap rule: {}", e.message),
+                "<source>".to_string(),
+            )
+            .with_suggestion(
+                "Ensure the file is saved as UTF-8 text and contains no binary data.".to_string(),
+            )];
+        }
+
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
             Err(_) => return vec![],
@@ -60,6 +92,7 @@ impl Rule for AuthGapRule {
                             if is_reserved_soroban_entrypoint(&fn_name) {
                                 continue;
                             }
+                            let fn_line = f.sig.ident.span().start().line;
                             let mut summary = FunctionSecuritySummary::default();
                             check_fn_body(&f.block, &mut summary);
                             if summary.has_sensitive_action() && !summary.has_auth {
@@ -67,7 +100,7 @@ impl Rule for AuthGapRule {
                                     self.name(),
                                     Severity::Warning,
                                     format!("Function '{}' performs a privileged operation without authentication", fn_name),
-                                    fn_name.clone(),
+                                    format!("{}:{}", fn_name, fn_line),
                                 ).with_suggestion("Add require_auth() or require_auth_for_args() before storage operations or external contract calls".to_string()));
                             }
                         }
@@ -366,6 +399,102 @@ mod tests {
         assert!(
             violations.is_empty(),
             "parse error must return empty, not panic"
+        );
+    }
+
+    // ── Input validation guards ───────────────────────────────────────────────
+
+    #[test]
+    fn null_byte_source_produces_error_violation() {
+        let rule = AuthGapRule::new();
+        let source = "fn foo() { \0 }";
+        let violations = rule.check(source);
+        assert_eq!(
+            violations.len(),
+            1,
+            "null-byte input must emit exactly one violation"
+        );
+        assert_eq!(violations[0].severity, super::Severity::Error);
+        assert!(
+            violations[0].message.contains("null bytes"),
+            "message must mention null bytes; got: {}",
+            violations[0].message
+        );
+        assert_eq!(violations[0].location, "<source>");
+    }
+
+    #[test]
+    fn oversized_source_produces_error_violation() {
+        use crate::input_validation::MAX_SOURCE_BYTES;
+        let rule = AuthGapRule::new();
+        let over = "x".repeat(MAX_SOURCE_BYTES + 1);
+        let violations = rule.check(&over);
+        assert_eq!(
+            violations.len(),
+            1,
+            "oversized input must emit exactly one violation"
+        );
+        assert_eq!(violations[0].severity, super::Severity::Error);
+        assert!(
+            violations[0].message.contains("too large")
+                || violations[0].message.contains("maximum"),
+            "message must mention size limit; got: {}",
+            violations[0].message
+        );
+        assert_eq!(violations[0].location, "<source>");
+    }
+
+    #[test]
+    fn violation_location_includes_line_number() {
+        let rule = AuthGapRule::new();
+        let source = r#"
+            impl MyContract {
+                pub fn set_value(env: Env, v: u32) {
+                    env.storage().persistent().set(&symbol_short!("V"), &v);
+                }
+            }
+        "#;
+        let violations = rule.check(source);
+        assert!(!violations.is_empty(), "must detect auth gap");
+        let loc = &violations[0].location;
+        assert!(
+            loc.contains(':'),
+            "location must be 'fn_name:line', got: {loc}"
+        );
+        let parts: Vec<&str> = loc.splitn(2, ':').collect();
+        assert_eq!(parts[0], "set_value");
+        let line: usize = parts[1].parse().expect("line part must be a number");
+        assert!(line > 0, "line number must be positive");
+    }
+
+    #[test]
+    fn whitespace_only_source_produces_no_findings() {
+        let rule = AuthGapRule::new();
+        // Whitespace is non-empty (passes size guard) but parses to an empty AST.
+        let violations = rule.check("   \n\t  ");
+        assert!(
+            violations.is_empty(),
+            "whitespace-only source must produce no findings"
+        );
+    }
+
+    #[test]
+    fn crlf_source_produces_same_findings_as_lf() {
+        let rule = AuthGapRule::new();
+        let lf = r#"
+impl MyContract {
+    pub fn set_admin(env: Env, admin: Address) {
+        env.storage().persistent().set(&symbol_short!("A"), &admin);
+    }
+}
+"#;
+        let crlf = lf.replace('\n', "\r\n");
+        let lf_violations = rule.check(lf);
+        let crlf_violations = rule.check(&crlf);
+        assert_eq!(
+            lf_violations.len(),
+            crlf_violations.len(),
+            "violation count must be identical for LF and CRLF input"
         );
     }
 }
