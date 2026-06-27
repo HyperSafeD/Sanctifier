@@ -1,4 +1,4 @@
-.PHONY: build test lint fmt audit release clean docs contract-docs contract-docs-check
+.PHONY: build test lint fmt audit release clean docs docs-publish contract-docs contract-docs-check
 
 ## Build all workspace crates (debug).
 build:
@@ -31,6 +31,10 @@ release:
 ## Generate and open rustdoc for all workspace crates (no deps).
 docs:
 	cargo doc --workspace --no-deps --open
+
+## Build docs for GitHub Pages deployment (no open).
+docs-publish:
+	cargo doc --workspace --no-deps --lib
 
 ## Remove all build artefacts.
 clean:
