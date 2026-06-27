@@ -160,6 +160,15 @@
 
 ### Finding Code Documentation
 
+**[docs/rules/s003-arithmetic-overflow.md](docs/rules/s003-arithmetic-overflow.md)** - S003: Arithmetic Overflow / Underflow Detection
+
+- Unchecked arithmetic operation detection (+, -, *, /, %, compound assignments)
+- Custom math method detection (mul_div, fixed_point_*)
+- Test code and index expression exclusions
+- Comprehensive remediation guidance with checked/saturating alternatives
+- Deduplication strategy and output formats
+- Known limitations and configuration options
+
 **[docs/rules/s001-auth-gap.md](docs/rules/s001-auth-gap.md)** - S001: Missing Authorization Guard (`auth_gap`)
 
 - What constitutes a privileged operation (storage mutation, external call)
