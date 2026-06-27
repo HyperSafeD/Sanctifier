@@ -15,7 +15,7 @@ Sanctifier uses a unified finding code system across `sanctifier-core` and `sanc
 | `S009` | logic | A `Result` return value is not consumed or handled |
 | `S010` | upgrades | Security risk in contract upgrade or admin mechanisms |
 | `S011` | formal_verification | Z3 proved a mathematical violation of an invariant |
-| `S012` | token_interface | SEP-41 token interface compatibility or authorization deviation |
+| `S012` | token_interface | SEP-41 token interface compatibility or authorization deviation. See [docs/rules/s012-sep41-interface.md](rules/s012-sep41-interface.md) for complete documentation |
 | `S022` | error_handling | Raw `invoke_contract` call that panics on callee failure; use `try_invoke_contract` with explicit `Result` handling |
 
 ## Vulnerability Database Codes
