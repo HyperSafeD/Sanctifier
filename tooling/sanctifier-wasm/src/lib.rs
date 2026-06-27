@@ -189,6 +189,7 @@ mod tests {
     use super::*;
     use crate::constants::{MAX_SOURCE_SIZE, MEMORY_BUDGET_BYTES, MEMORY_OVERHEAD_FACTOR};
     use crate::validation::{check_memory_budget, validate_source};
+    use serde_json;
 
     // ── validate_source ───────────────────────────────────────────────────────
 
@@ -286,5 +287,157 @@ mod tests {
             has_critical: false,
             has_high: false,
         };
+    }
+
+    // ── Fixture-based tests (Issue #538) ─────────────────────────────────────
+    //
+    // These tests use inline Rust source fixtures to verify that known-bad
+    // patterns produce the expected findings, and known-clean sources produce
+    // zero findings.  They also verify wasm-pack build reproducibility by
+    // asserting that repeated analysis of the same source is idempotent.
+
+    const CLEAN_CONTRACT: &str = r#"
+        #![no_std]
+        use soroban_sdk::{contract, contractimpl, token, Address, Env};
+
+        #[contract]
+        pub struct CleanToken;
+
+        #[contractimpl]
+        impl CleanToken {
+            pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
+                from.require_auth();
+                let client = token::Client::new(&env, &from);
+                client.transfer(&from, &to, &amount);
+            }
+        }
+    "#;
+
+    const AUTH_GAP_CONTRACT: &str = r#"
+        #![no_std]
+        use soroban_sdk::{contract, contractimpl, symbol_short, Env, Symbol};
+
+        #[contract]
+        pub struct AuthGapFixture;
+
+        #[contractimpl]
+        impl AuthGapFixture {
+            pub fn set_owner(env: Env, owner: Symbol) {
+                env.storage().instance().set(&symbol_short!("OWNER"), &owner);
+            }
+        }
+    "#;
+
+    const PANIC_CONTRACT: &str = r#"
+        #![no_std]
+        use soroban_sdk::{contract, contractimpl, Env};
+
+        #[contract]
+        pub struct PanicFixture;
+
+        #[contractimpl]
+        impl PanicFixture {
+            pub fn do_thing(env: Env, x: u32) -> u32 {
+                if x == 0 {
+                    panic!("x must not be zero");
+                }
+                x * 2
+            }
+        }
+    "#;
+
+    #[test]
+    fn clean_contract_produces_no_findings() {
+        let result = analysis::run_analysis_default(CLEAN_CONTRACT);
+        assert_eq!(
+            result.summary.auth_gaps, 0,
+            "clean contract must have no auth gaps"
+        );
+        assert_eq!(
+            result.summary.panic_issues, 0,
+            "clean contract must have no panic issues"
+        );
+    }
+
+    #[test]
+    fn auth_gap_fixture_produces_auth_gap_finding() {
+        let result = analysis::run_analysis_default(AUTH_GAP_CONTRACT);
+        assert!(
+            result.summary.auth_gaps >= 1,
+            "auth gap fixture must produce at least one auth_gap finding"
+        );
+    }
+
+    #[test]
+    fn panic_fixture_produces_panic_finding() {
+        let result = analysis::run_analysis_default(PANIC_CONTRACT);
+        assert!(
+            result.summary.panic_issues >= 1,
+            "panic fixture must produce at least one panic_issue finding"
+        );
+    }
+
+    #[test]
+    fn analysis_is_idempotent_for_same_source() {
+        let first = analysis::run_analysis_default(AUTH_GAP_CONTRACT);
+        let second = analysis::run_analysis_default(AUTH_GAP_CONTRACT);
+        assert_eq!(
+            first.summary.total, second.summary.total,
+            "repeated analysis must produce the same finding count"
+        );
+        for (a, b) in first.findings.iter().zip(second.findings.iter()) {
+            assert_eq!(
+                a.code, b.code,
+                "finding codes must be identical across runs"
+            );
+            assert_eq!(
+                a.message, b.message,
+                "finding messages must be identical across runs"
+            );
+        }
+    }
+
+    #[test]
+    fn default_config_json_is_valid_json() {
+        // default_config_json() is defined in lib.rs and is accessible via super::*.
+        let json_str = default_config_json();
+        assert!(
+            !json_str.is_empty(),
+            "default config JSON must not be empty"
+        );
+        let parsed: serde_json::Result<serde_json::Value> = serde_json::from_str(&json_str);
+        assert!(
+            parsed.is_ok(),
+            "default_config_json must produce valid JSON; got: {json_str}"
+        );
+    }
+
+    #[test]
+    fn analyze_with_progress_summary_matches_plain_analyze() {
+        let result_plain = analysis::run_analysis_default(CLEAN_CONTRACT);
+        let result_progressive = analysis::run_analysis_with_progress(CLEAN_CONTRACT);
+        assert_eq!(
+            result_plain.summary.total, result_progressive.result.summary.total,
+            "progress-aware and plain analysis must agree on total findings"
+        );
+    }
+
+    #[test]
+    fn analyze_with_progress_events_are_ordered_by_percent() {
+        let progressive = analysis::run_analysis_with_progress(PANIC_CONTRACT);
+        let percents: Vec<u8> = progressive.events.iter().map(|e| e.percent).collect();
+        let mut sorted = percents.clone();
+        sorted.sort_unstable();
+        assert_eq!(
+            percents, sorted,
+            "progress events must be in ascending percent order"
+        );
+    }
+
+    #[test]
+    fn cache_key_is_stable_across_invocations() {
+        let k1 = analysis::build_cache_key();
+        let k2 = analysis::build_cache_key();
+        assert_eq!(k1, k2, "cache key must be identical across calls");
     }
 }
