@@ -4,6 +4,7 @@ members = [
     "tooling/sanctifier-cli",
     "tooling/sanctifier-detector",
     "tooling/sanctifier-wasm",
+    "contracts/test-support",
     "contracts/security-disclaimers",
     "contracts/vulnerable-contract",
     "contracts/token-with-bugs",
@@ -26,6 +27,7 @@ resolver = "2"
 
 [workspace.dependencies]
 soroban-sdk = { version = "21.7.0" }
+sanctifier-test-support = { path = "contracts/test-support" }
 
 [workspace.package]
 rust-version = "1.78"
