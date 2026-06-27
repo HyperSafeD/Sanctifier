@@ -11,5 +11,6 @@ soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+sanctifier-test-support = { workspace = true }
 proptest = "1.4"
 
