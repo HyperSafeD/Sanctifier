@@ -54,6 +54,7 @@ pub mod complexity;
 pub mod finding_codes;
 pub mod gas_estimator;
 pub mod gas_report;
+pub mod input_validation;
 pub mod patcher;
 pub mod reentrancy;
 pub mod rules;
@@ -419,30 +420,25 @@ impl Analyzer {
     }
 
     fn scan_auth_gaps_impl(&self, source: &str) -> Vec<String> {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return vec![],
-        };
-
-        let mut gaps = Vec::new();
-        for item in &file.items {
-            if let Item::Impl(i) = item {
-                for impl_item in &i.items {
-                    if let syn::ImplItem::Fn(f) = impl_item {
-                        if let syn::Visibility::Public(_) = f.vis {
-                            let fn_name = f.sig.ident.to_string();
-                            let mut has_mutation = false;
-                            let mut has_auth = false;
-                            self.check_fn_body(&f.block, &mut has_mutation, &mut has_auth);
-                            if has_mutation && !has_auth {
-                                gaps.push(fn_name);
-                            }
-                        }
-                    }
+        rules::auth_gap::AuthGapRule::new()
+            .check(source)
+            .into_iter()
+            .filter_map(|v| {
+                // Validation-error violations use a "<source>" pseudo-location;
+                // skip them — they are not real auth-gap findings.
+                if v.location.starts_with('<') {
+                    return None;
                 }
-            }
-        }
-        gaps
+                // Location format is "fn_name:line"; extract the function name.
+                let name = v
+                    .location
+                    .split(':')
+                    .next()
+                    .unwrap_or(&v.location)
+                    .to_string();
+                Some(name)
+            })
+            .collect()
     }
 
     pub fn scan_panics(&self, source: &str) -> Vec<PanicIssue> {

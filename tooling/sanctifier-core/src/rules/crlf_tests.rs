@@ -7,8 +7,9 @@
 #[allow(clippy::module_inception)]
 mod crlf_tests {
     use crate::rules::{
-        instance_storage_misuse::InstanceStorageMisuseRule, panic_detection::PanicDetectionRule,
-        reentrancy::ReentrancyRule, unhandled_result::UnhandledResultRule, Rule,
+        auth_gap::AuthGapRule, instance_storage_misuse::InstanceStorageMisuseRule,
+        panic_detection::PanicDetectionRule, reentrancy::ReentrancyRule,
+        unhandled_result::UnhandledResultRule, Rule,
     };
 
     /// Convert LF source to CRLF by replacing every `\n` with `\r\n`.
@@ -28,6 +29,32 @@ mod crlf_tests {
                 $label,
             );
         }};
+    }
+
+    // ── AuthGapRule ───────────────────────────────────────────────────────────
+
+    const AUTH_GAP_SOURCE: &str = r#"
+impl Contract {
+    pub fn set_admin(env: Env, admin: Address) {
+        env.storage().persistent().set(&symbol_short!("A"), &admin);
+    }
+}
+"#;
+
+    #[test]
+    fn auth_gap_lf_crlf_parity() {
+        assert_crlf_parity!(AuthGapRule::new(), AUTH_GAP_SOURCE, "AuthGapRule");
+    }
+
+    #[test]
+    fn auth_gap_crlf_finds_violations() {
+        let rule = AuthGapRule::new();
+        let crlf = to_crlf(AUTH_GAP_SOURCE);
+        let v = rule.check(&crlf);
+        assert!(
+            !v.is_empty(),
+            "AuthGapRule must flag missing auth in CRLF input"
+        );
     }
 
     // ── PanicDetectionRule ────────────────────────────────────────────────────
