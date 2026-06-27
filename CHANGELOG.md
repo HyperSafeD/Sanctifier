@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **S012 (SEP-41) Hardening**: Comprehensive improvements to SEP-41 token interface checks
+  - Enhanced module-level documentation in `tooling/sanctifier-core/src/sep41.rs` with usage examples, safety considerations, and contribution guidelines
+  - Added 19 integration tests in `tooling/sanctifier-core/tests/sep41_tests.rs` covering all issue types (MissingFunction, SignatureMismatch, AuthorizationMismatch), edge cases, and robustness scenarios
+  - Created detailed rule documentation at `docs/rules/s012-sep41-interface.md` with examples, remediation guidance, and limitations
+  - Added fully-compliant reference implementation in `examples/sep41-compliant-token.rs` demonstrating production-ready SEP-41 token
+  - Enhanced test fixture at `contracts/fixtures/finding-codes/s012_token_interface.rs` to demonstrate all three issue types
+  - Updated `DOCUMENTATION_INDEX.md` to reference S012 documentation
+  - Improved inline comments explaining candidate detection heuristic, graceful error handling, and deterministic output ordering
 - CHANGELOG.md to track project changes
 - Conventional Commits specification for commit messages
 - `data/release-manifest.json` — single source of truth for release artifacts

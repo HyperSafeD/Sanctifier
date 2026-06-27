@@ -158,6 +158,17 @@
 - Severity guidelines and output stability
 - Contribution checklist for rule PRs
 
+### Finding Code Documentation
+
+**[docs/rules/s012-sep41-interface.md](docs/rules/s012-sep41-interface.md)** - S012: SEP-41 Token Interface Compliance
+
+- Complete SEP-41 standard interface verification
+- All 10 required function signatures
+- Authorization pattern checking
+- Issue types: MissingFunction, SignatureMismatch, AuthorizationMismatch
+- Examples and remediation guidance
+- Reference implementations and test coverage
+
 ### WASM Module Versioning & Input Validation
 
 **[docs/wasm-versioning-alignment.md](docs/wasm-versioning-alignment.md)** - WASM module hardening

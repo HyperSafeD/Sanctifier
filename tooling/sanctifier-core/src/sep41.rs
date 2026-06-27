@@ -1,4 +1,75 @@
 //! SEP-41 token-interface compliance verification.
+//!
+//! This module provides robust verification of SEP-41 (Stellar Token Standard) compliance.
+//! It checks that a contract implements all 10 required functions with exact signatures
+//! and proper authorization patterns.
+//!
+//! # Overview
+//!
+//! SEP-41 defines a standard token interface for Stellar smart contracts, including:
+//! - **Core transfer functions**: `transfer`, `transfer_from`, `approve`, `allowance`
+//! - **Burn functions**: `burn`, `burn_from`
+//! - **Query functions**: `balance`
+//! - **Metadata functions**: `name`, `symbol`, `decimals`
+//!
+//! # Verification Process
+//!
+//! 1. **Candidate Detection**: Contract must have ≥2 core functions OR ≥1 core + ≥2 metadata functions
+//! 2. **Signature Matching**: Every function must match exact parameter types and return types
+//! 3. **Authorization Checking**: Functions that mutate state must authorize the correct parameter
+//!
+//! # Issue Types
+//!
+//! - [`Sep41IssueKind::MissingFunction`]: A required function is not present
+//! - [`Sep41IssueKind::SignatureMismatch`]: Function exists but signature is incorrect
+//! - [`Sep41IssueKind::AuthorizationMismatch`]: Function exists but lacks proper authorization
+//!
+//! # Type Aliasing Support
+//!
+//! The `transfer` function accepts `MuxedAddress` for the recipient (parameter 3), which is
+//! semantically equivalent to `Address` but indicates support for Stellar's muxed address format.
+//! This is a deliberate design choice in SEP-41 to enable memo-less transfers.
+//!
+//! # Examples
+//!
+//! ```rust,ignore
+//! use sanctifier_core::sep41;
+//!
+//! let source = r#"
+//!     #[contractimpl]
+//!     impl Token {
+//!         pub fn transfer(env: Env, from: Address, to: MuxedAddress, amount: i128) {
+//!             from.require_auth();
+//!             // ... implementation
+//!         }
+//!         // ... other 9 required functions
+//!     }
+//! "#;
+//!
+//! let report = sep41::verify(source);
+//! if !report.compliant {
+//!     for issue in report.issues {
+//!         eprintln!("S012: {} - {}", issue.function_name, issue.message);
+//!     }
+//! }
+//! ```
+//!
+//! # Safety Considerations
+//!
+//! This checker validates interface compliance but does NOT verify:
+//! - Allowance decrements in `transfer_from` (see S024)
+//! - Total supply invariants (see S011 formal verification)
+//! - Reentrancy protection (see S015)
+//! - Arithmetic overflow protection (handled by Soroban runtime)
+//!
+//! # Contributing
+//!
+//! When modifying this module:
+//! - Maintain exact SEP-41 specification adherence
+//! - Update both unit tests in this file AND integration tests in `tests/sep41_tests.rs`
+//! - Keep `SEP41_FUNCTIONS` constant synchronized with the official spec
+//! - Document any new issue types in the `Sep41IssueKind` enum
+//! - Ensure parse errors return `default()` to avoid breaking analysis pipeline
 
 use quote::quote;
 use serde::{Deserialize, Serialize};
@@ -152,16 +223,53 @@ const SEP41_FUNCTIONS: [ExpectedSep41Function; 10] = [
 ];
 
 /// Verify that `source` implements all 10 required SEP-41 functions.
+///
+/// # Behavior
+///
+/// 1. Parse the source code into a syntax tree
+/// 2. Collect all public methods from `impl` blocks
+/// 3. Check if contract looks like a token candidate
+/// 4. Verify each SEP-41 function for:
+///    - Presence (function exists)
+///    - Signature match (exact parameter types and return type)
+///    - Authorization (correct parameter has `require_auth()` called on it)
+///
+/// # Returns
+///
+/// A [`Sep41VerificationReport`] with:
+/// - `candidate`: `true` if contract looks like a token, `false` otherwise
+/// - `compliant`: `true` if all 10 functions are present and correct
+/// - `verified_functions`: List of functions that passed all checks
+/// - `issues`: List of all detected problems
+///
+/// # Graceful Degradation
+///
+/// Parse errors return a default (non-candidate) report to avoid breaking the analysis pipeline.
+/// This ensures that syntax errors in one file don't prevent checking other files.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let report = sep41::verify(contract_source);
+/// assert!(report.candidate, "Contract should be recognized as a token");
+/// assert!(report.compliant, "All SEP-41 functions should be correct");
+/// ```
 pub fn verify(source: &str) -> Sep41VerificationReport {
     let file = match parse_str::<File>(source) {
         Ok(file) => file,
-        Err(_) => return Sep41VerificationReport::default(),
+        Err(_) => {
+            // Parse errors are treated as non-candidates to gracefully handle
+            // incomplete or syntactically invalid code during development.
+            return Sep41VerificationReport::default();
+        }
     };
 
     let methods = collect_public_methods(&file);
     let candidate = looks_like_sep41_candidate(&methods);
 
     if !candidate {
+        // Non-token contracts are silently skipped - this is intentional to avoid
+        // flooding output with irrelevant findings for every contract in the project.
         return Sep41VerificationReport::default();
     }
 
@@ -170,14 +278,17 @@ pub fn verify(source: &str) -> Sep41VerificationReport {
 
     for expected in SEP41_FUNCTIONS {
         match methods.get(expected.name) {
-            None => issues.push(Sep41Issue {
-                function_name: expected.name.to_string(),
-                kind: Sep41IssueKind::MissingFunction,
-                location: expected.name.to_string(),
-                message: format!("Missing SEP-41 function '{}'.", expected.name),
-                expected_signature: render_expected_signature(&expected),
-                actual_signature: None,
-            }),
+            None => {
+                // Missing function: most severe issue, always reported
+                issues.push(Sep41Issue {
+                    function_name: expected.name.to_string(),
+                    kind: Sep41IssueKind::MissingFunction,
+                    location: expected.name.to_string(),
+                    message: format!("Missing SEP-41 function '{}'.", expected.name),
+                    expected_signature: render_expected_signature(&expected),
+                    actual_signature: None,
+                });
+            }
             Some(actual) => {
                 let expected_arg_types: Vec<String> = expected
                     .args
@@ -185,6 +296,7 @@ pub fn verify(source: &str) -> Sep41VerificationReport {
                     .map(|(_, ty)| (*ty).to_string())
                     .collect();
 
+                // Check signature match (parameter types and return type)
                 if actual.arg_types != expected_arg_types
                     || actual.return_type != expected.return_type
                 {
@@ -199,9 +311,12 @@ pub fn verify(source: &str) -> Sep41VerificationReport {
                         expected_signature: render_expected_signature(&expected),
                         actual_signature: Some(actual.signature.clone()),
                     });
+                    // Skip authorization check if signature is wrong - one issue at a time
+                    // for clearer output and to avoid cascading false positives
                     continue;
                 }
 
+                // Check authorization for functions that require it
                 if let Some(auth_index) = expected.auth_param_index {
                     if !actual.authorized_params.contains(&auth_index) {
                         let expected_authorizer = expected
@@ -225,11 +340,13 @@ pub fn verify(source: &str) -> Sep41VerificationReport {
                     }
                 }
 
+                // Function passed all checks
                 verified_functions.push(expected.name.to_string());
             }
         }
     }
 
+    // Sort for deterministic output (important for CI stability and diffs)
     verified_functions.sort();
 
     Sep41VerificationReport {
@@ -312,6 +429,45 @@ fn collect_public_methods(file: &File) -> BTreeMap<String, ParsedMethod> {
     methods
 }
 
+/// Determines if a contract is a potential SEP-41 token candidate.
+///
+/// # Heuristic
+///
+/// A contract is considered a token candidate if it has:
+/// - At least 2 core token functions (allowance, approve, balance, transfer, transfer_from, burn, burn_from), OR
+/// - At least 1 core function AND at least 2 metadata functions (decimals, name, symbol)
+///
+/// This heuristic reduces false positives on non-token contracts while still catching
+/// partial implementations that need correction.
+///
+/// # Rationale
+///
+/// - Too strict (e.g., requiring all 10): Won't catch incomplete implementations during development
+/// - Too loose (e.g., any 1 function): Floods output with false positives on generic contracts
+/// - Current balance: Catches real tokens while avoiding most false alarms
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// // Candidate: has transfer + balance (2 core)
+/// impl Token {
+///     pub fn transfer(...) {}
+///     pub fn balance(...) -> i128 { 0 }
+/// }
+///
+/// // Candidate: has transfer (1 core) + name + symbol (2 metadata)
+/// impl Token {
+///     pub fn transfer(...) {}
+///     pub fn name(...) -> String {}
+///     pub fn symbol(...) -> String {}
+/// }
+///
+/// // NOT a candidate: only has unrelated functions
+/// impl Counter {
+///     pub fn increment(...) {}
+///     pub fn get(...) -> u32 { 0 }
+/// }
+/// ```
 fn looks_like_sep41_candidate(methods: &BTreeMap<String, ParsedMethod>) -> bool {
     let core_names = [
         "allowance",

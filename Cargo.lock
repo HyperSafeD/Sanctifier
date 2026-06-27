@@ -45,6 +45,7 @@ name = "amm-pool"
 version = "0.1.0"
 dependencies = [
  "proptest",
+ "sanctifier-test-support",
  "soroban-sdk",
 ]
 
@@ -1392,6 +1393,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 name = "governance-contract"
 version = "0.2.0"
 dependencies = [
+ "sanctifier-test-support",
  "security-disclaimers",
  "soroban-sdk",
 ]
@@ -3226,6 +3228,13 @@ dependencies = [
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "sanctifier-test-support"
+version = "0.1.0"
+dependencies = [
+ "soroban-sdk",
 ]
 
 [[package]]
