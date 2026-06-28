@@ -31,7 +31,7 @@ pub fn create_token(env: &Env, recipient: &Address, amount: i128) -> Address {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Address as _, Env};
+    use soroban_sdk::Env;
 
     #[test]
     fn create_token_mints_expected_amount() {

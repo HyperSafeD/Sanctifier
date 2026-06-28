@@ -189,7 +189,6 @@ mod tests {
     use super::*;
     use crate::constants::{MAX_SOURCE_SIZE, MEMORY_BUDGET_BYTES, MEMORY_OVERHEAD_FACTOR};
     use crate::validation::{check_memory_budget, validate_source};
-    use serde_json;
 
     // ── validate_source ───────────────────────────────────────────────────────
 
