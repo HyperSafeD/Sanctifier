@@ -200,6 +200,38 @@
 - Examples and remediation guidance
 - Reference implementations and test coverage
 
+### Rule Engine Orchestration — Integration/E2E Coverage
+
+**[specs/rule-engine-behavior.md](specs/rule-engine-behavior.md)**
+
+- Formal specification: discovery order, filtering, deduplication, exit codes
+- Integration/e2e test suite: [`tooling/sanctifier-core/tests/rule_engine_orchestration_test.rs`](tooling/sanctifier-core/tests/rule_engine_orchestration_test.rs)
+  - Registry population and deduplication
+  - Per-rule firing and `run_all` consistency
+  - Determinism across repeated calls
+  - Custom regex rule execution
+  - Registry extensibility without breaking existing rules
+  - End-to-end multi-file scan pipeline
+  - Output format (`RuleViolation`) JSON stability
+- CI job: `rule-engine-e2e` in [`.github/workflows/rust.yml`](.github/workflows/rust.yml)
+
+### Z3 Backend Invariants (S011) — Module Boundaries
+
+**Finding code:** `S011` — see [`docs/error-codes.md`](docs/error-codes.md)
+
+**Module layout** (`tooling/sanctifier-core/src/smt/`):
+
+| Sub-module | File | Responsibility |
+|---|---|---|
+| `types` | [`src/smt/types.rs`](tooling/sanctifier-core/src/smt/types.rs) | All shared data types and error enums |
+| `invariants` | [`src/smt/invariants.rs`](tooling/sanctifier-core/src/smt/invariants.rs) | `#[invariant]` AST parsing + Z3 verification |
+| `backend` | [`src/smt/backend.rs`](tooling/sanctifier-core/src/smt/backend.rs) | `SmtVerifier`, fixed-point proof dispatch |
+| `benchmark` | [`src/smt/benchmark.rs`](tooling/sanctifier-core/src/smt/benchmark.rs) | Latency micro-benchmark for CI artifact |
+| `mod` | [`src/smt/mod.rs`](tooling/sanctifier-core/src/smt/mod.rs) | Public re-export facade (zero breaking surface) |
+
+- Integration/boundary test suite: [`tooling/sanctifier-core/tests/smt_module_boundaries_test.rs`](tooling/sanctifier-core/tests/smt_module_boundaries_test.rs)
+- CI job: `smt-module-boundaries` in [`.github/workflows/rust.yml`](.github/workflows/rust.yml)
+
 ### WASM Module Versioning & Input Validation
 
 **[docs/wasm-versioning-alignment.md](docs/wasm-versioning-alignment.md)** - WASM module hardening
