@@ -387,6 +387,27 @@ pub struct CustomRuleMatch {
     pub rule_name: String,
     pub line: usize,
     pub snippet: String,
+    /// Severity inherited from the rule.
+    pub severity: RuleSeverity,
+}
+
+/// Validation error for a [`CustomRule`] (S007).
+///
+/// Returned by [`Analyzer::validate_custom_rules`] so callers can surface
+/// configuration problems to users with actionable messages rather than
+/// silently skipping broken rules at analysis time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomRuleValidationError {
+    /// Name of the offending rule.
+    pub rule_name: String,
+    /// Human-readable description of the problem.
+    pub message: String,
+}
+
+impl std::fmt::Display for CustomRuleValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "custom rule '{}': {}", self.rule_name, self.message)
+    }
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -469,6 +490,7 @@ impl Analyzer {
                         rule_name: rule.name.clone(),
                         line: line_no + 1,
                         snippet: line.trim().to_string(),
+                        severity: rule.severity,
                     });
                 }
             }
@@ -675,11 +697,6 @@ impl Analyzer {
         visitor.collisions
     }
 
-    pub fn scan_events(&self, _source: &str) -> Vec<EventIssue> {
-        // Event scanning is not implemented in the current core engine.
-        Vec::new()
-    }
-
     pub fn scan_unhandled_results(&self, source: &str) -> Vec<UnhandledResultIssue> {
         with_panic_guard(|| {
             self.run_rule(source, "unhandled_result")
@@ -743,6 +760,151 @@ impl Analyzer {
         warnings
     }
 
+    // ── Event Consistency and Optimization ──────────────────────────────────────
+
+    fn extract_topics(line: &str) -> String {
+        if let Some(start_paren) = line.find('(') {
+            let after_publish = &line[start_paren + 1..];
+            if let Some(end_paren) = after_publish.rfind(')') {
+                let topics_content = &after_publish[..end_paren];
+                if topics_content.contains(',') || topics_content.starts_with('(') {
+                    return topics_content.to_string();
+                }
+            }
+        }
+        if let Some(vec_start) = line.find("vec![") {
+            let after_vec = &line[vec_start + 5..];
+            if let Some(end_bracket) = after_vec.find(']') {
+                return after_vec[..end_bracket].to_string();
+            }
+        }
+        String::new()
+    }
+
+    fn extract_event_name(line: &str) -> Option<String> {
+        if let Some(start) = line.find('(') {
+            let content = &line[start..];
+            if let Some(name_end) = content.find(',') {
+                let name_part = &content[1..name_end];
+                let clean_name = name_part.trim().trim_matches('"');
+                if !clean_name.is_empty() {
+                    return Some(clean_name.to_string());
+                }
+            } else if let Some(end_paren) = content.find(')') {
+                let name_part = &content[1..end_paren];
+                let clean_name = name_part.trim().trim_matches('"');
+                if !clean_name.is_empty() {
+                    return Some(clean_name.to_string());
+                }
+            }
+        }
+        None
+    }
+
+    /// Scans for `env.events().publish(topics, data)` and checks:
+    /// 1. Consistency of topic counts for the same event name.
+    /// 2. Opportunities to use `symbol_short!` for gas savings.
+    pub fn scan_events(&self, source: &str) -> Vec<EventIssue> {
+        with_panic_guard(|| self.scan_events_impl(source))
+    }
+
+    fn scan_events_impl(&self, source: &str) -> Vec<EventIssue> {
+        let mut issues = Vec::new();
+        let mut event_schemas: std::collections::HashMap<String, Vec<usize>> =
+            std::collections::HashMap::new();
+        let mut issue_locations: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+
+        // Normalize multiline event calls: join "env.events()\n.publish(" onto one line
+        // so the line-by-line scanner can detect them.
+        let mut normalized_lines: Vec<(usize, String)> = Vec::new();
+        {
+            let raw: Vec<&str> = source.lines().collect();
+            let mut i = 0;
+            while i < raw.len() {
+                let trimmed = raw[i].trim();
+                if trimmed.ends_with(".events()")
+                    && i + 1 < raw.len()
+                    && raw[i + 1].trim().starts_with(".publish(")
+                {
+                    let joined = format!("{}{}", trimmed, raw[i + 1].trim());
+                    normalized_lines.push((i, joined));
+                    i += 2;
+                } else {
+                    normalized_lines.push((i, trimmed.to_string()));
+                    i += 1;
+                }
+            }
+        }
+
+        for (line_num, line) in &normalized_lines {
+            let line_num = *line_num;
+            let line = line.as_str();
+
+            if line.contains("env.events().publish(") || line.contains("env.events().emit(") {
+                let topics_str = Self::extract_topics(line);
+                let topic_count = if topics_str.is_empty() {
+                    0
+                } else {
+                    topics_str.matches(',').count() + 1
+                };
+
+                let event_name = Self::extract_event_name(line)
+                    .unwrap_or_else(|| format!("unknown_{}", line_num));
+
+                let location = format!("line {}", line_num + 1);
+                let _location_key = format!("{}:{}", event_name, topic_count);
+
+                if let Some(previous_counts) = event_schemas.get(&event_name) {
+                    for &prev_count in previous_counts {
+                        if prev_count != topic_count {
+                            let issue_key = format!("{}:{}:inconsistent", event_name, line_num + 1);
+                            if !issue_locations.contains(&issue_key) {
+                                issue_locations.insert(issue_key);
+                                issues.push(EventIssue {
+                                    event_name: event_name.clone(),
+                                    issue_type: "inconsistent_schema".to_string(),
+                                    message: format!(
+                                        "Event '{}' has inconsistent topic count. Previous: {}, Current: {}",
+                                        event_name, prev_count, topic_count
+                                    ),
+                                    location: location.clone(),
+                                });
+                            }
+                        }
+                    }
+                }
+
+                event_schemas
+                    .entry(event_name.clone())
+                    .or_default()
+                    .push(topic_count);
+
+                if !line.contains("symbol_short!") && topic_count > 0 {
+                    let has_string_topic = line.contains("\"") || line.contains("String");
+                    if has_string_topic {
+                        let issue_key = format!("{}:{}:gas_optimization", event_name, line_num + 1);
+                        if !issue_locations.contains(&issue_key) {
+                            issue_locations.insert(issue_key);
+                            issues.push(EventIssue {
+                                event_name,
+                                issue_type: "optimizable_topic".to_string(),
+                                message: "Consider using symbol_short! for short topic names to save gas.".to_string(),
+                                location: format!("line {}", line_num + 1),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        issues
+    }
+
+    // ── Unsafe-pattern visitor ────────────────────────────────────────────────
+
+    /// Visitor-based scan for `panic!`, `.unwrap()`, `.expect()` with line
+    /// numbers derived from proc-macro2 span locations.
     pub fn analyze_unsafe_patterns(&self, source: &str) -> Vec<UnsafePattern> {
         with_panic_guard(|| self.analyze_unsafe_patterns_impl(source))
     }
@@ -911,6 +1073,47 @@ impl Analyzer {
         }
 
         report
+    }
+
+    /// Validate custom rules before executing them (S007 UX improvement).
+    ///
+    /// Returns a list of [`CustomRuleValidationError`] for every rule whose
+    /// regex pattern fails to compile or whose name is empty.  An empty return
+    /// value means all rules are ready to run.  Call this once at startup so
+    /// broken configuration is surfaced to the user with a clear message rather
+    /// than silently dropped during analysis.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let errors = analyzer.validate_custom_rules(&config.custom_rules);
+    /// if !errors.is_empty() {
+    ///     for e in &errors { eprintln!("Config error: {e}"); }
+    ///     std::process::exit(1);
+    /// }
+    /// ```
+    pub fn validate_custom_rules(&self, rules: &[CustomRule]) -> Vec<CustomRuleValidationError> {
+        use regex::Regex;
+        let mut errors = Vec::new();
+        for rule in rules {
+            if rule.name.trim().is_empty() {
+                errors.push(CustomRuleValidationError {
+                    rule_name: "<unnamed>".to_string(),
+                    message: "rule name must not be empty".to_string(),
+                });
+            }
+            if rule.pattern.is_empty() {
+                errors.push(CustomRuleValidationError {
+                    rule_name: rule.name.clone(),
+                    message: "pattern must not be empty — use a non-empty regex string".to_string(),
+                });
+            } else if let Err(e) = Regex::new(&rule.pattern) {
+                errors.push(CustomRuleValidationError {
+                    rule_name: rule.name.clone(),
+                    message: format!("invalid regex pattern '{}': {}", rule.pattern, e),
+                });
+            }
+        }
+        errors
     }
 
     fn fn_has_auth(&self, block: &syn::Block) -> bool {
