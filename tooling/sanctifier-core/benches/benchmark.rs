@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
 use sanctifier_core::{Analyzer, SanctifyConfig};
 
 const COMPLEX_CONTRACT_PAYLOAD: &str = r#"
@@ -154,5 +154,122 @@ fn bench_ast_parsing_and_rules(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_ast_parsing_and_rules);
+// ── S004 ledger-size payloads ────────────────────────────────────────────────
+
+/// Minimal struct — well under any ledger limit.
+const SMALL_STRUCT: &str = r#"
+    #[contracttype]
+    pub struct Tiny { pub x: u32 }
+"#;
+
+/// Deep nesting — many `#[contracttype]` structs referencing each other.
+const LARGE_NESTED_CONTRACT: &str = r#"
+    #[contracttype] pub struct L1 { pub a: u64, pub b: u64, pub c: u64, pub d: u64 }
+    #[contracttype] pub struct L2 { pub l1a: L1, pub l1b: L1, pub extra: u128 }
+    #[contracttype] pub struct L3 { pub l2a: L2, pub l2b: L2, pub flag: bool }
+    #[contracttype] pub struct L4 { pub l3: L3, pub count: u32, pub tag: u64 }
+    #[contracttype] pub struct L5 { pub l4a: L4, pub l4b: L4, pub meta: u128 }
+"#;
+
+/// Many independent structs to stress throughput.
+const MANY_STRUCTS: &str = r#"
+    #[contracttype] pub struct A1  { pub v: u32 }
+    #[contracttype] pub struct A2  { pub v: u32 }
+    #[contracttype] pub struct A3  { pub v: u32 }
+    #[contracttype] pub struct A4  { pub v: u32 }
+    #[contracttype] pub struct A5  { pub v: u32 }
+    #[contracttype] pub struct A6  { pub v: u32 }
+    #[contracttype] pub struct A7  { pub v: u32 }
+    #[contracttype] pub struct A8  { pub v: u32 }
+    #[contracttype] pub struct A9  { pub v: u32 }
+    #[contracttype] pub struct A10 { pub v: u32 }
+    #[contracttype] pub struct A11 { pub v: u32 }
+    #[contracttype] pub struct A12 { pub v: u32 }
+    #[contracttype] pub struct A13 { pub v: u32 }
+    #[contracttype] pub struct A14 { pub v: u32 }
+    #[contracttype] pub struct A15 { pub v: u32 }
+    #[contracttype] pub struct A16 { pub v: u32 }
+    #[contracttype] pub struct A17 { pub v: u32 }
+    #[contracttype] pub struct A18 { pub v: u32 }
+    #[contracttype] pub struct A19 { pub v: u32 }
+    #[contracttype] pub struct A20 { pub v: u32 }
+"#;
+
+// ── S004 ledger-size benchmarks ──────────────────────────────────────────────
+
+/// Performance budget: ledger-size analysis of a single small struct must
+/// complete under 5 ms (measured as a sanity-check floor, not a hard CI gate).
+fn bench_ledger_size_s004(c: &mut Criterion) {
+    let mut group = c.benchmark_group("S004 Ledger Size Rule");
+
+    group.bench_function("small struct", |b| {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        b.iter(|| analyzer.analyze_ledger_size(SMALL_STRUCT))
+    });
+
+    group.bench_function("deep nested structs", |b| {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        b.iter(|| analyzer.analyze_ledger_size(LARGE_NESTED_CONTRACT))
+    });
+
+    group.bench_function("20 independent structs (throughput)", |b| {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        b.iter(|| analyzer.analyze_ledger_size(MANY_STRUCTS))
+    });
+
+    group.bench_function("complex vault contract", |b| {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        b.iter(|| analyzer.analyze_ledger_size(COMPLEX_CONTRACT_PAYLOAD))
+    });
+
+    // Strict-limit variant: measures overhead of threshold computation.
+    group.bench_function("strict limit (50 bytes)", |b| {
+        let config = SanctifyConfig {
+            ledger_limit: 50,
+            ..Default::default()
+        };
+        let analyzer = Analyzer::new(config);
+        b.iter_batched(
+            || LARGE_NESTED_CONTRACT,
+            |src| analyzer.analyze_ledger_size(src),
+            BatchSize::SmallInput,
+        )
+    });
+
+    group.finish();
+}
+
+// ── S008 event-analysis benchmark ────────────────────────────────────────────
+
+fn bench_event_analysis_s008(c: &mut Criterion) {
+    let mut group = c.benchmark_group("S008 Event Analysis");
+
+    group.bench_function("complex vault contract", |b| {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        b.iter(|| analyzer.scan_events(COMPLEX_CONTRACT_PAYLOAD))
+    });
+
+    group.finish();
+}
+
+// ── S005 storage-collision benchmark ─────────────────────────────────────────
+
+fn bench_storage_collision_s005(c: &mut Criterion) {
+    let mut group = c.benchmark_group("S005 Storage Collision");
+
+    group.bench_function("complex vault contract", |b| {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        b.iter(|| analyzer.scan_storage_collisions(COMPLEX_CONTRACT_PAYLOAD))
+    });
+
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_ast_parsing_and_rules,
+    bench_ledger_size_s004,
+    bench_event_analysis_s008,
+    bench_storage_collision_s005,
+);
 criterion_main!(benches);
