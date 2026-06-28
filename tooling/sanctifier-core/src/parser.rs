@@ -20,6 +20,7 @@ use crate::input_validation::{self, ValidationError};
 use syn::File;
 
 /// A validated and successfully parsed Rust source file.
+#[derive(Debug)]
 pub struct ParsedSource {
     /// The AST produced by `syn`.
     pub file: File,

@@ -38,7 +38,7 @@
 //!   in the file (storage types are file-scoped, not per-contract).
 
 use std::collections::BTreeMap;
-use syn::{spanned::Spanned, File, ImplItem, Item, Meta, Type};
+use syn::{File, ImplItem, Item, Meta, Type};
 
 // ── Public data types ─────────────────────────────────────────────────────────
 

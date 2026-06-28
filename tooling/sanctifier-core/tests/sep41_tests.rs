@@ -597,7 +597,7 @@ fn test_minimal_token_candidate_two_core_functions() {
         "Should be candidate with 2 core functions"
     );
     assert!(!report.compliant, "Should not be compliant");
-    assert!(report.issues.len() > 0, "Should report missing functions");
+    assert!(!report.issues.is_empty(), "Should report missing functions");
 }
 
 #[test]
