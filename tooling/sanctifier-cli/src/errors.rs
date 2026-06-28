@@ -28,6 +28,10 @@ pub enum ErrorCode {
     E008,
     /// Dry-run mode: no changes were made (informational, not a failure).
     E009,
+    /// Deploy target network is not a recognised Soroban network handle.
+    E010,
+    /// Soroban credentials are missing or cannot be sourced from the environment.
+    E011,
 }
 
 impl ErrorCode {
@@ -42,6 +46,8 @@ impl ErrorCode {
             ErrorCode::E007 => "E007",
             ErrorCode::E008 => "E008",
             ErrorCode::E009 => "E009",
+            ErrorCode::E010 => "E010",
+            ErrorCode::E011 => "E011",
         }
     }
 }
@@ -189,6 +195,28 @@ impl SanctifierError {
         )
     }
 
+    pub fn invalid_network(network: &str) -> Self {
+        Self::new(
+            ErrorCode::E010,
+            format!("'{}' is not a recognised Soroban network", network),
+            "Use one of: testnet, futurenet, mainnet. \
+             See https://developers.stellar.org/network/soroban-rpc for RPC endpoints."
+                .to_string(),
+        )
+    }
+
+    pub fn missing_credentials() -> Self {
+        Self::new(
+            ErrorCode::E011,
+            "Soroban secret key not provided",
+            "Pass --secret-key <SK…> or set the SOROBAN_SECRET_KEY environment variable. \
+             Generate a funded testnet key with: \
+             `stellar keys generate --global my-key --network testnet && \
+             stellar keys fund my-key --network testnet`."
+                .to_string(),
+        )
+    }
+
     pub fn dry_run_no_changes(command: &str) -> Self {
         Self::new(
             ErrorCode::E009,
@@ -314,9 +342,58 @@ mod tests {
             (ErrorCode::E007, "E007"),
             (ErrorCode::E008, "E008"),
             (ErrorCode::E009, "E009"),
+            (ErrorCode::E010, "E010"),
+            (ErrorCode::E011, "E011"),
         ];
         for (code, expected) in codes {
             assert_eq!(code.as_str(), expected);
         }
+    }
+
+    #[test]
+    fn invalid_network_hint_lists_valid_options() {
+        let err = SanctifierError::invalid_network("devnet");
+        assert!(
+            err.message.contains("devnet"),
+            "message should echo the bad value"
+        );
+        assert!(
+            err.hint.contains("testnet"),
+            "hint should list valid networks"
+        );
+        assert!(
+            err.hint.contains("futurenet"),
+            "hint should list valid networks"
+        );
+        assert!(
+            err.hint.contains("mainnet"),
+            "hint should list valid networks"
+        );
+        assert_eq!(err.code, ErrorCode::E010);
+    }
+
+    #[test]
+    fn missing_credentials_hint_mentions_env_var_and_generate_command() {
+        let err = SanctifierError::missing_credentials();
+        assert!(err.hint.contains("SOROBAN_SECRET_KEY"));
+        assert!(err.hint.contains("--secret-key"));
+        assert!(err.hint.contains("generate"));
+        assert_eq!(err.code, ErrorCode::E011);
+    }
+
+    #[test]
+    fn e010_display_includes_code() {
+        let err = SanctifierError::invalid_network("staging");
+        let s = err.to_string();
+        assert!(s.contains("[E010]"));
+        assert!(s.contains("hint:"));
+    }
+
+    #[test]
+    fn e011_display_includes_code() {
+        let err = SanctifierError::missing_credentials();
+        let s = err.to_string();
+        assert!(s.contains("[E011]"));
+        assert!(s.contains("hint:"));
     }
 }

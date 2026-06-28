@@ -85,11 +85,15 @@ Same engine under all of them (it cross-compiles to WASM for the browser path), 
 ```bash
 # 1. install
 cargo install sanctifier-cli
+# (skip Z3 with: cargo install sanctifier-cli --no-default-features)
 
 # 2. scan
-sanctifier analyze ./contracts/my-token
+sanctifier analyze ./contracts
 
-# 3. ship a badge for your README
+# 3. integrate into CI — exit 1 on high/critical findings
+sanctifier analyze ./contracts --exit-code --format sarif > sanctifier.sarif
+
+# 4. ship a security badge for your README
 sanctifier analyze . --format json > report.json
 sanctifier badge --report report.json --svg-output sanctifier.svg
 ```
@@ -188,21 +192,32 @@ Skip Z3 entirely with `cargo install sanctifier-cli --no-default-features` — e
 ## CLI reference
 
 ```bash
-sanctifier analyze    [PATH] [--format text|json] [--limit BYTES] [--webhook-url URL]...
-sanctifier diff       [PATH] --baseline <report.json>
+# Full analysis (most flags shown; all have defaults)
+sanctifier analyze  [PATH]
+    --format text|json|sarif|ndjson   # output format (default: text)
+    --limit BYTES                     # ledger entry size cap (default: 64000)
+    --timeout SECS                    # per-file timeout, 0 = none (default: 30)
+    --exit-code                       # exit 1 when findings meet threshold
+    --min-severity critical|high|medium|low  # threshold for --exit-code (default: high)
+    --profile strict|lenient|ci|audit # preset overrides --exit-code/--min-severity
+    --webhook-url URL                 # POST results here on completion (repeatable)
+    --no-cache                        # skip incremental analysis cache
+
+# Other commands
+sanctifier diff       [PATH] --baseline <report.json>   # new/resolved findings vs baseline
 sanctifier watch      [PATH]              # re-runs on file change
-sanctifier workspace  [PATH]              # cargo-workspace–aware scan
+sanctifier workspace  [PATH]              # cargo-workspace-aware scan
 sanctifier callgraph  [PATH] --output callgraph.dot
 sanctifier badge      --report report.json --svg-output sanctifier.svg
 sanctifier fix        [PATH] --rule S003  # apply patcher fixes
 sanctifier verify     [PATH]              # Z3-only invariant pass
-sanctifier deploy     ...                 # ship the runtime guard
+sanctifier deploy     [PATH] --network testnet|futurenet|mainnet
 sanctifier doctor                         # environment diagnostics
-sanctifier init                           # generate .sanctify.toml
+sanctifier init       [PATH]              # scaffold project + .sanctify.toml
 sanctifier update                         # self-update with checksum check
 ```
 
-Every subcommand respects `--format json` for machine consumption.
+Every subcommand accepts `--format json` for machine consumption. Use `--format ndjson` with `analyze` for streaming line-delimited output (one JSON object per finding, final `{"event":"done"}`).
 
 ---
 
@@ -212,13 +227,19 @@ Every subcommand respects `--format json` for machine consumption.
 
 ```jsonc
 {
-  "metadata":       { "version": "0.1.0", "format": "sanctifier-ci-v1", "timestamp": "…" },
-  "summary":        { "critical": 0, "high": 0, "medium": 2, "low": 0 },
-  "findings":       { "auth_gaps": [...], "arithmetic_issues": [...], "storage_collisions": [...] },
-  "vuln_db_matches": [{ "id": "SOL-2024-002", "severity": "CRITICAL", "matched_at": "…" }],
-  "schema_version": "1.0.0"
+  "metadata":        { "version": "0.1.0", "format": "sanctifier-ci-v1", "timestamp": "…" },
+  "summary":         { "critical": 0, "high": 1, "medium": 2, "low": 0 },
+  "error_codes":     ["S001", "S003"],
+  "auth_gaps":       [{ "location": "src/lib.rs:42", "message": "missing require_auth" }],
+  "arithmetic_issues": [{ "location": "src/lib.rs:30", "operator": "-" }],
+  "rule_violations": [{ "rule_name": "require_auth_for_args", "severity": "Error",
+                        "location": "src/lib.rs:set_admin", "message": "…" }],
+  "vuln_db_matches": [{ "id": "SOL-2024-002", "severity": "CRITICAL", "matched_at": "src/lib.rs:55" }],
+  "schema_version":  "1.0.0"
 }
 ```
+
+`--format sarif` produces a SARIF 2.1.0 document compatible with GitHub code-scanning. `--format ndjson` streams one object per finding so large scans can be processed incrementally.
 
 SARIF 2.1.0 output is canonical for GitHub code-scanning and any SAST aggregator.
 

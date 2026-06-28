@@ -1,10 +1,13 @@
 #![allow(dead_code)]
 
 use crate::commands::color as c;
+use crate::errors::SanctifierError;
 use clap::Args;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+const VALID_NETWORKS: &[&str] = &["testnet", "futurenet", "mainnet"];
 
 #[derive(Args, Debug)]
 pub struct DeployArgs {
@@ -43,26 +46,26 @@ pub struct DeploymentConfig {
 pub fn exec(args: DeployArgs) -> anyhow::Result<()> {
     let is_json = args.output_format == "json";
 
+    // Validate network name before doing any I/O.
+    if !VALID_NETWORKS.contains(&args.network.as_str()) {
+        return Err(SanctifierError::invalid_network(&args.network).into());
+    }
+
     // Validate contract path
     if !args.contract_path.exists() {
-        eprintln!(
-            "{} Error: Contract path not found: {}",
-            c::red("❌"),
-            args.contract_path.display()
-        );
-        std::process::exit(1);
+        return Err(SanctifierError::path_not_found(&args.contract_path).into());
     }
 
-    // Get secret key from argument or environment
-    let secret_key = match args.secret_key {
-        Some(key) => key,
-        None => std::env::var("SOROBAN_SECRET_KEY").unwrap_or_default(),
-    };
-
-    if secret_key.is_empty() {
-        eprintln!("   Set via --secret-key or SOROBAN_SECRET_KEY environment variable");
-        std::process::exit(1);
-    }
+    // Resolve secret key: explicit flag wins, then env var.
+    let secret_key = args
+        .secret_key
+        .filter(|k| !k.is_empty())
+        .or_else(|| {
+            std::env::var("SOROBAN_SECRET_KEY")
+                .ok()
+                .filter(|k| !k.is_empty())
+        })
+        .ok_or_else(SanctifierError::missing_credentials)?;
 
     let _ = is_json;
 
