@@ -85,6 +85,21 @@
 
 ## 🛠️ Component Documentation
 
+### sanctifier-core: Parser + Contract Discovery
+
+**[tooling/sanctifier-core/src/parser.rs](tooling/sanctifier-core/src/parser.rs)** — shared source parsing with input validation
+- `parse_source(source: &str) -> Result<ParsedSource, ParseError>` — single canonical entry point for all rules
+- Runs all guards from `input_validation` (size, null bytes) before any AST work
+- Returns `ParseError::Validation` or `ParseError::Syntax` on failure
+
+**[tooling/sanctifier-core/src/contract_discovery.rs](tooling/sanctifier-core/src/contract_discovery.rs)** — Soroban contract discovery
+- `discover_contracts(file: &syn::File) -> Vec<DiscoveredContract>` — maps `#[contract]` structs to their `#[contractimpl]` blocks
+- Collects public functions per contract and `#[contracttype]` storage types
+- `DiscoveredFunction.is_reserved` flags `__constructor` / `__check_auth` entry-points
+- `DiscoveredContract::public_functions()` iterator excludes reserved entry-points
+- Unit tests in each module; integration tests in `tests/parser_contract_discovery_test.rs`
+- Fixtures: `tests/fixtures/minimal_contract.rs`, `multi_contract.rs`, `contract_with_storage_types.rs`
+
 ### Contract ABI / Interface Reference
 **[docs/contract-interfaces.md](docs/contract-interfaces.md)** - Public ABI for all contracts in `contracts/*`
 - Function signatures and descriptions for every contract
