@@ -83,6 +83,8 @@ pub const DEPRECATED_SDK_USAGE: &str = "S028";
 pub const TIMESTAMP_RANDOMNESS: &str = "S029";
 /// require_auth used instead of require_auth_for_args in multi-arg admin operations, enabling replay/scope-confusion attacks.
 pub const REQUIRE_AUTH_FOR_ARGS: &str = "S030";
+/// Loop bound or iteration count derives from an unbounded user-controlled parameter, risking out-of-gas reverts.
+pub const GAS_EXHAUSTION_RISK: &str = "S031";
 
 /// A single finding-code entry with machine-readable code, category, and
 /// human-readable description.
@@ -403,6 +405,15 @@ pub fn all_finding_codes() -> Vec<FindingCode> {
             remediation: "Replace require_auth() with require_auth_for_args() to bind authorization to the exact call payload, preventing replay attacks across different argument combinations",
             doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules/require-auth-for-args.md",
         },
+        FindingCode {
+            code: GAS_EXHAUSTION_RISK,
+            category: "gas_limits",
+            description: "Loop bound or iteration count derives from an unbounded user-controlled parameter, which can exhaust the transaction's gas budget and cause an out-of-gas revert",
+            title: "Gas Exhaustion Risk",
+            severity: FindingSeverity::Medium,
+            remediation: "Cap the iteration count with a fixed maximum (e.g. .take(MAX_ITEMS) or an explicit length check before the loop) so the gas cost cannot scale unbounded with caller-supplied input",
+            doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules/gas-exhaustion-risk.md",
+        },
     ]
 }
 
@@ -477,5 +488,6 @@ mod tests {
         assert!(codes.iter().any(|c| c.code == DEPRECATED_SDK_USAGE));
         assert!(codes.iter().any(|c| c.code == TIMESTAMP_RANDOMNESS));
         assert!(codes.iter().any(|c| c.code == REQUIRE_AUTH_FOR_ARGS));
+        assert!(codes.iter().any(|c| c.code == GAS_EXHAUSTION_RISK));
     }
 }

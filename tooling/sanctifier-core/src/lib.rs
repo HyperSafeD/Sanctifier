@@ -50,7 +50,9 @@ use syn::{parse_str, Fields, File, Item, Meta, Type};
 use thiserror::Error;
 
 pub mod analysis_cache;
+pub mod cfg;
 pub mod complexity;
+pub mod constant_folding;
 pub mod contract_discovery;
 pub mod finding_codes;
 pub mod gas_estimator;
@@ -66,6 +68,7 @@ pub mod sep41;
 pub mod smt;
 pub mod soroban_v21;
 pub mod storage_collision;
+pub mod taint_engine;
 
 // Re-export common types for easier CLI access
 pub use complexity::{ContractMetrics, FunctionMetrics};
