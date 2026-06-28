@@ -51,10 +51,12 @@ use thiserror::Error;
 
 pub mod analysis_cache;
 pub mod complexity;
+pub mod contract_discovery;
 pub mod finding_codes;
 pub mod gas_estimator;
 pub mod gas_report;
 pub mod input_validation;
+pub mod parser;
 pub mod patcher;
 pub mod reentrancy;
 pub mod rules;
