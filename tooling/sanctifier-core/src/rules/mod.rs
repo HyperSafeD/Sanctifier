@@ -7,6 +7,8 @@
 pub mod arithmetic_overflow;
 /// Missing authorization checks.
 pub mod auth_gap;
+/// Gas exhaustion risk from unbounded user-controlled loops (S031).
+pub mod gas_exhaustion;
 /// Instance storage misuse — per-user data stored in Instance instead of Persistent.
 pub mod instance_storage_misuse;
 /// Ledger entry size analysis.
@@ -224,6 +226,7 @@ impl RuleRegistry {
         registry.register(deprecated_sdk_usage::DeprecatedSdkUsageRule::new());
         registry.register(timestamp_randomness::TimestampRandomnessRule::new());
         registry.register(require_auth_for_args::RequireAuthForArgsRule::new());
+        registry.register(gas_exhaustion::GasExhaustionRiskRule::new());
         registry
     }
 }

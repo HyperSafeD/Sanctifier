@@ -5,10 +5,18 @@
 //! `let Foo { x, y } = ...` (Pat::Struct) destructures.  Emits a finding when
 //! a tainted value reaches a sensitive sink (storage write or external call)
 //! without an intervening `require_auth` or explicit validation.
+//!
+//! The actual dataflow is delegated to [`crate::taint_engine`], which runs a
+//! fixed-point analysis over an intra-procedural CFG ([`crate::cfg`]) rather
+//! than a single top-to-bottom AST walk. That matters for control flow this
+//! rule previously missed entirely: a `for`/`while` loop body that taints a
+//! variable used by a later iteration, or a branch that only conditionally
+//! introduces taint before a sink is reached after the branches join.
 
 use super::{Rule, RuleViolation, Severity};
+use crate::taint_engine;
 use std::collections::HashSet;
-use syn::{parse_str, File, Item, Pat};
+use syn::{parse_str, File, Item};
 
 pub struct TaintPropagationRule;
 
@@ -24,24 +32,6 @@ impl Default for TaintPropagationRule {
     }
 }
 
-// ── Internal state ─────────────────────────────────────────────────────────────
-
-struct TaintState<'a> {
-    fn_name: &'a str,
-    /// Variables currently considered tainted.
-    tainted: HashSet<String>,
-    /// True once require_auth / require_auth_for_args has been seen.
-    has_auth: bool,
-    violations: Vec<TaintViolation>,
-}
-
-struct TaintViolation {
-    fn_name: String,
-    tainted_var: String,
-    sink: String,
-    line: usize,
-}
-
 // ── Rule impl ──────────────────────────────────────────────────────────────────
 
 impl Rule for TaintPropagationRule {
@@ -50,7 +40,7 @@ impl Rule for TaintPropagationRule {
     }
 
     fn description(&self) -> &str {
-        "Tracks user-controlled data through tuple/struct destructures and flags \
+        "Tracks user-controlled data through the function's control-flow graph and flags \
          when tainted values reach storage or external-call sinks without auth"
     }
 
@@ -73,21 +63,14 @@ impl Rule for TaintPropagationRule {
                         let fn_name = f.sig.ident.to_string();
 
                         // Seed taint from parameters (excluding `env: Env` and `self`)
-                        let tainted = collect_param_names(&f.sig);
-                        if tainted.is_empty() {
+                        let sources = collect_param_names(&f.sig);
+                        if sources.is_empty() {
                             continue;
                         }
 
-                        let mut state = TaintState {
-                            fn_name: &fn_name,
-                            tainted,
-                            has_auth: false,
-                            violations: Vec::new(),
-                        };
+                        let findings = taint_engine::analyze(&f.block, sources);
 
-                        scan_block(&f.block, &mut state);
-
-                        for v in state.violations {
+                        for finding in findings {
                             violations.push(
                                 RuleViolation::new(
                                     self.name(),
@@ -95,9 +78,9 @@ impl Rule for TaintPropagationRule {
                                     format!(
                                         "Function '{}': tainted variable '{}' reaches '{}' \
                                          sink without prior require_auth",
-                                        v.fn_name, v.tainted_var, v.sink
+                                        fn_name, finding.var, finding.sink
                                     ),
-                                    format!("{}:{}", v.fn_name, v.line),
+                                    format!("{}:{}", fn_name, finding.line),
                                 )
                                 .with_suggestion(
                                     "Call require_auth() on any address parameter before using \
@@ -130,210 +113,10 @@ fn collect_param_names(sig: &syn::Signature) -> HashSet<String> {
             if ty_str.contains("Env") {
                 continue;
             }
-            collect_pat_idents(&pt.pat, &mut names);
+            taint_engine::collect_pat_idents(&pt.pat, &mut names);
         }
     }
     names
-}
-
-// ── Block / expression scanner ────────────────────────────────────────────────
-
-fn scan_block(block: &syn::Block, state: &mut TaintState<'_>) {
-    for stmt in &block.stmts {
-        match stmt {
-            syn::Stmt::Local(local) => {
-                // Check if the RHS expression contains a tainted variable
-                if let Some(init) = &local.init {
-                    let rhs_tainted = expr_is_tainted(&init.expr, &state.tainted);
-                    // Also propagate auth checks from init expression
-                    check_auth_in_expr(&init.expr, state);
-                    if rhs_tainted {
-                        // Propagate taint to all variables bound in the pattern
-                        let mut new_tainted = HashSet::new();
-                        collect_pat_idents(&local.pat, &mut new_tainted);
-                        state.tainted.extend(new_tainted);
-                    }
-                }
-            }
-            syn::Stmt::Expr(e, _) => scan_expr(e, state),
-            _ => {}
-        }
-    }
-}
-
-fn scan_expr(expr: &syn::Expr, state: &mut TaintState<'_>) {
-    match expr {
-        syn::Expr::MethodCall(mc) => {
-            let method = mc.method.to_string();
-
-            // Detect auth
-            if method == "require_auth" || method == "require_auth_for_args" {
-                state.has_auth = true;
-            }
-
-            // Detect sink: storage write or external call
-            if (is_storage_write(&method, &mc.receiver) || is_external_call(&method))
-                && !state.has_auth
-            {
-                // Check if any argument uses a tainted variable
-                for arg in &mc.args {
-                    if let Some(var) = first_tainted_ident(arg, &state.tainted) {
-                        use syn::spanned::Spanned;
-                        let line = mc.span().start().line;
-                        state.violations.push(TaintViolation {
-                            fn_name: state.fn_name.to_string(),
-                            tainted_var: var,
-                            sink: method.clone(),
-                            line,
-                        });
-                    }
-                }
-            }
-
-            scan_expr(&mc.receiver, state);
-            for arg in &mc.args {
-                scan_expr(arg, state);
-            }
-        }
-        syn::Expr::Block(b) => scan_block(&b.block, state),
-        syn::Expr::If(i) => {
-            scan_expr(&i.cond, state);
-            scan_block(&i.then_branch, state);
-            if let Some((_, e)) = &i.else_branch {
-                scan_expr(e, state);
-            }
-        }
-        syn::Expr::Match(m) => {
-            scan_expr(&m.expr, state);
-            for arm in &m.arms {
-                scan_expr(&arm.body, state);
-            }
-        }
-        syn::Expr::Assign(a) => {
-            scan_expr(&a.left, state);
-            scan_expr(&a.right, state);
-        }
-        syn::Expr::Call(c) => {
-            for arg in &c.args {
-                scan_expr(arg, state);
-            }
-        }
-        _ => {}
-    }
-}
-
-fn check_auth_in_expr(expr: &syn::Expr, state: &mut TaintState<'_>) {
-    if let syn::Expr::MethodCall(mc) = expr {
-        let method = mc.method.to_string();
-        if method == "require_auth" || method == "require_auth_for_args" {
-            state.has_auth = true;
-        }
-    }
-}
-
-// ── Pattern helpers ────────────────────────────────────────────────────────────
-
-/// Recursively collect all identifier names bound by a pattern.
-/// Handles Pat::Ident, Pat::Tuple, and Pat::Struct — the key cases for #760.
-fn collect_pat_idents(pat: &Pat, out: &mut HashSet<String>) {
-    match pat {
-        Pat::Ident(pi) => {
-            out.insert(pi.ident.to_string());
-        }
-        // Pat::Tuple: let (a, b) = ...
-        Pat::Tuple(pt) => {
-            for elem in &pt.elems {
-                collect_pat_idents(elem, out);
-            }
-        }
-        // Pat::Struct: let Foo { x, y } = ...
-        Pat::Struct(ps) => {
-            for field in &ps.fields {
-                collect_pat_idents(&field.pat, out);
-            }
-        }
-        // Pat::TupleStruct: let Some(x) = ...
-        Pat::TupleStruct(pts) => {
-            for elem in &pts.elems {
-                collect_pat_idents(elem, out);
-            }
-        }
-        // Pat::Reference: let &x = ...
-        Pat::Reference(pr) => collect_pat_idents(&pr.pat, out),
-        _ => {}
-    }
-}
-
-// ── Expression taint helpers ───────────────────────────────────────────────────
-
-/// Returns true if the expression references any tainted variable.
-fn expr_is_tainted(expr: &syn::Expr, tainted: &HashSet<String>) -> bool {
-    first_tainted_ident(expr, tainted).is_some()
-}
-
-/// Returns the first tainted identifier name found in expr, or None.
-fn first_tainted_ident(expr: &syn::Expr, tainted: &HashSet<String>) -> Option<String> {
-    match expr {
-        syn::Expr::Path(p) => {
-            if let Some(seg) = p.path.segments.last() {
-                let name = seg.ident.to_string();
-                if tainted.contains(&name) {
-                    return Some(name);
-                }
-            }
-            None
-        }
-        syn::Expr::Reference(r) => first_tainted_ident(&r.expr, tainted),
-        syn::Expr::MethodCall(mc) => {
-            if let Some(v) = first_tainted_ident(&mc.receiver, tainted) {
-                return Some(v);
-            }
-            for arg in &mc.args {
-                if let Some(v) = first_tainted_ident(arg, tainted) {
-                    return Some(v);
-                }
-            }
-            None
-        }
-        syn::Expr::Call(c) => {
-            for arg in &c.args {
-                if let Some(v) = first_tainted_ident(arg, tainted) {
-                    return Some(v);
-                }
-            }
-            None
-        }
-        syn::Expr::Tuple(t) => {
-            for elem in &t.elems {
-                if let Some(v) = first_tainted_ident(elem, tainted) {
-                    return Some(v);
-                }
-            }
-            None
-        }
-        syn::Expr::Binary(b) => {
-            first_tainted_ident(&b.left, tainted).or_else(|| first_tainted_ident(&b.right, tainted))
-        }
-        _ => None,
-    }
-}
-
-fn is_storage_write(method: &str, receiver: &syn::Expr) -> bool {
-    if !matches!(method, "set" | "update" | "remove") {
-        return false;
-    }
-    let s = quote::quote!(#receiver).to_string();
-    s.contains("storage")
-        || s.contains("persistent")
-        || s.contains("temporary")
-        || s.contains("instance")
-}
-
-fn is_external_call(method: &str) -> bool {
-    matches!(
-        method,
-        "invoke_contract" | "try_invoke_contract" | "invoke_contract_check"
-    )
 }
 
 // ── Unit tests ─────────────────────────────────────────────────────────────────
@@ -433,5 +216,49 @@ mod tests {
     #[test]
     fn empty_source_no_panic() {
         assert!(rule().check("").is_empty());
+    }
+
+    #[test]
+    fn detects_taint_introduced_inside_for_loop_body() {
+        // Regression test for the bug #401 exists to fix: a pure top-to-bottom
+        // AST walk never visited for-loop bodies at all, so taint flowing
+        // from a tainted Vec parameter into the per-iteration loop variable
+        // was invisible. The CFG-backed taint engine must catch it.
+        let source = r#"
+            impl Batch {
+                pub fn process(env: Env, recipients: Vec<Symbol>) {
+                    let mut key = default_key;
+                    for r in recipients.iter() {
+                        key = r;
+                        env.storage().persistent().set(&key, &1);
+                    }
+                }
+            }
+        "#;
+        let v = rule().check(source);
+        assert!(
+            !v.is_empty(),
+            "taint introduced inside a for-loop body must be flagged"
+        );
+    }
+
+    #[test]
+    fn detects_taint_from_one_if_branch_after_join() {
+        let source = r#"
+            impl MyContract {
+                pub fn store(env: Env, user_input: Symbol) {
+                    let mut key = default_key;
+                    if some_cond {
+                        key = user_input;
+                    }
+                    env.storage().persistent().set(&key, &1);
+                }
+            }
+        "#;
+        let v = rule().check(source);
+        assert!(
+            !v.is_empty(),
+            "taint introduced in only one if-branch must still be flagged after the join"
+        );
     }
 }

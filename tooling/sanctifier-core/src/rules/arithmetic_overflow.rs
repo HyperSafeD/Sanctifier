@@ -341,7 +341,12 @@ impl<'ast> Visit<'ast> for ArithVisitor {
         if self.index_depth == 0 {
             if let Some(fn_name) = self.current_fn.clone() {
                 if let Some((op_str, suggestion)) = Self::classify_op(&node.op) {
-                    if !is_string_literal(&node.left) && !is_string_literal(&node.right) {
+                    if !is_string_literal(&node.left)
+                        && !is_string_literal(&node.right)
+                        && !crate::constant_folding::is_foldable_constant(&syn::Expr::Binary(
+                            node.clone(),
+                        ))
+                    {
                         let key = (fn_name.clone(), op_str.to_string());
                         if !self.seen.contains(&key) {
                             self.seen.insert(key);
@@ -646,6 +651,41 @@ mod tests {
             violations.len(),
             0,
             "index subscript arithmetic must be skipped"
+        );
+    }
+
+    #[test]
+    fn test_skip_constant_folded_arithmetic() {
+        let rule = ArithmeticOverflowRule::new();
+        // 1000 + 500 is a compile-time constant; rustc evaluates and bounds
+        // checks it itself, so it is not a runtime overflow risk.
+        let source = r#"
+            fn transfer() {
+                let a = 1000 + 500;
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(
+            violations.len(),
+            0,
+            "constant-folded literal arithmetic must not be flagged"
+        );
+    }
+
+    #[test]
+    fn test_still_flags_when_one_operand_is_runtime() {
+        let rule = ArithmeticOverflowRule::new();
+        // Mixed literal + variable is still a runtime risk and must be flagged.
+        let source = r#"
+            fn transfer(amount: u64) {
+                let a = amount + 500;
+            }
+        "#;
+        let violations = rule.check(source);
+        assert_eq!(
+            violations.len(),
+            1,
+            "arithmetic with a non-constant operand must still be flagged"
         );
     }
 }
