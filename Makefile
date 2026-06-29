@@ -1,8 +1,27 @@
-.PHONY: build test lint fmt audit release clean docs docs-publish contract-docs contract-docs-check
+.PHONY: build test lint fmt audit release clean docs docs-publish contract-docs contract-docs-check dev-setup
 
 ## Build all workspace crates (debug).
 build:
 	cargo build --workspace
+
+## Set up development environment with all prerequisites.
+dev-setup:
+	@echo "Setting up Sanctifier development environment..."
+	@echo "Installing Rust toolchain..."
+	rustup update stable
+	rustup default stable
+	rustup target add wasm32-unknown-unknown
+	@echo "Installing wasm-pack..."
+	cargo install wasm-pack
+	@echo "Installing soroban-cli..."
+	cargo install soroban-cli
+	@echo "Installing Node.js dependencies..."
+	npm install
+	@echo "Development environment setup complete!"
+	@echo "Next steps:"
+	@echo "  1. Install Z3: see docs/frontend-setup.md for platform-specific instructions"
+	@echo "  2. Run 'make build' to build the project"
+	@echo "  3. Run 'make test' to run tests"
 
 ## Run all workspace tests.
 test:
