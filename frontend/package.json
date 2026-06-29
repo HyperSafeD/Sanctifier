@@ -33,7 +33,7 @@
     "react-window": "^1.8.10"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.11.1",
+    "@axe-core/playwright": "^4.12.1",
     "@commitlint/cli": "^20.5.3",
     "@commitlint/config-conventional": "^20.5.3",
     "@playwright/test": "^1.61.1",
