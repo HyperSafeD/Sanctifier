@@ -215,6 +215,8 @@ jobs:
   frontend-e2e:
     name: Frontend E2E Tests (Playwright)
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.40.0-jammy
     timeout-minutes: 20
     container:
       image: mcr.microsoft.com/playwright:v1.59.1-jammy
@@ -256,6 +258,8 @@ jobs:
   frontend-schema-e2e:
     name: Frontend Schema Rendering E2E
     runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.40.0-jammy
     timeout-minutes: 20
     container:
       image: mcr.microsoft.com/playwright:v1.59.1-jammy
