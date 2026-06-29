@@ -1,0 +1,26 @@
+PackageIdentifier: HyperSafeD.Sanctifier
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: HyperSafeD
+PublisherUrl: https://github.com/HyperSafeD
+PublisherSupportUrl: https://github.com/HyperSafeD/Sanctifier/issues
+PrivacyUrl: https://github.com/HyperSafeD/Sanctifier/blob/main/vscode-extension/PRIVACY.md
+Author: Sanctifier Contributors
+PackageName: Sanctifier
+PackageUrl: https://github.com/HyperSafeD/Sanctifier
+License: MIT OR Apache-2.0
+LicenseUrl: https://github.com/HyperSafeD/Sanctifier/blob/main/LICENSE
+Copyright: Copyright (c) Sanctifier Contributors
+ShortDescription: Security copilot for Stellar Soroban smart contracts
+Description: Sanctifier is a static analysis and formal verification tool for Stellar Soroban smart contracts. It detects security vulnerabilities including auth gaps, unsafe unwraps, arithmetic overflow, and more.
+Tags:
+  - soroban
+  - stellar
+  - security
+  - static-analysis
+  - rust
+  - smart-contracts
+  - cli
+ReleaseNotesUrl: https://github.com/HyperSafeD/Sanctifier/releases/tag/v0.1.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
