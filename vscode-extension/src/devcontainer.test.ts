@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { looksLikeSorobanSource } from './analyzer';
+import { hasSanctifierFeature } from './devcontainer';
 
 const FIXTURES = path.join(__dirname, '..', 'src', 'test', 'fixtures', 'devcontainer');
 
@@ -156,5 +157,50 @@ describe('devcontainer fixture contract', () => {
     const raw = readFixture('devcontainer.json');
     const config = JSON.parse(raw) as { postCreateCommand: string };
     expect(config.postCreateCommand).not.toMatch(/[;&|`$(){}]/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sanctifier feature detection
+// ---------------------------------------------------------------------------
+
+describe('hasSanctifierFeature', () => {
+  it('returns true when sanctifier-cli feature is present', () => {
+    const config = {
+      features: {
+        'ghcr.io/devcontainers-contrib/features/wasm-pack:1': {},
+        'ghcr.io/devcontainers/features/sanctifier-cli:1': {},
+      },
+    };
+    expect(hasSanctifierFeature(config)).toBe(true);
+  });
+
+  it('returns true when sanctifier-cli is in any feature key', () => {
+    const config = {
+      features: {
+        'docker.io/someuser/sanctifier-cli:latest': {},
+      },
+    };
+    expect(hasSanctifierFeature(config)).toBe(true);
+  });
+
+  it('returns false when features object is missing', () => {
+    const config: Record<string, unknown> = { name: 'test' };
+    expect(hasSanctifierFeature(config)).toBe(false);
+  });
+
+  it('returns false when features exist but no sanctifier', () => {
+    const config = {
+      features: {
+        'ghcr.io/devcontainers/features/rust:1': {},
+        'ghcr.io/devcontainers/features/wasm-pack:1': {},
+      },
+    };
+    expect(hasSanctifierFeature(config)).toBe(false);
+  });
+
+  it('returns false when features is empty object', () => {
+    const config = { features: {} };
+    expect(hasSanctifierFeature(config)).toBe(false);
   });
 });

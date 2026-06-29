@@ -171,7 +171,14 @@ npm run dev
 | Method | Command |
 |--------|---------|
 | **crates.io** | `cargo install sanctifier-cli` |
-| **Binaries** | Direct downloads for [Linux](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64), [macOS (Intel)](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-amd64), [macOS (Apple Silicon)](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-arm64), [Windows](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-windows-amd64.exe) |
+| **Binaries** | Direct downloads for [Linux (x86_64)](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64), [Linux (musl)](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64-musl), [macOS (Intel)](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-amd64), [macOS (Apple Silicon)](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-arm64), [Windows](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-windows-amd64.exe) |
+
+**Verifying binaries:** Each release includes a `SHA256SUMS` file and per-binary `.sha256` hashes.
+
+```bash
+# Verify a downloaded binary
+sha256sum -c sanctifier-linux-amd64.sha256
+```
 | **From source** | `git clone https://github.com/HyperSafeD/Sanctifier && cd Sanctifier && make release` |
 | **Codespaces** | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/HyperSafeD/Sanctifier) |
 | **Docker** | `docker run --rm -v $PWD:/src ghcr.io/hypersafed/sanctifier analyze /src` |

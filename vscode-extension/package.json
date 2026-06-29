@@ -87,6 +87,14 @@
       {
         "command": "sanctifier.showOutput",
         "title": "Sanctifier: Show output channel"
+      },
+      {
+        "command": "sanctifier.openSarifViewer",
+        "title": "Sanctifier: Open Full Report in SARIF Viewer"
+      },
+      {
+        "command": "sanctifier.suppressFinding",
+        "title": "Sanctifier: Suppress finding"
       }
     ]
   },

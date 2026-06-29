@@ -11,7 +11,7 @@ env:
 
 jobs:
   build-and-release:
-    name: Build and Release Binary
+    name: Build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -25,7 +25,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             artifact_name: sanctifier-linux-amd64
             asset_name: sanctifier-linux-amd64
-          - os: macos-latest
+          - os: macos-13
             target: x86_64-apple-darwin
             artifact_name: sanctifier-macos-amd64
             asset_name: sanctifier-macos-amd64
@@ -37,6 +37,10 @@ jobs:
             target: x86_64-pc-windows-msvc
             artifact_name: sanctifier-windows-amd64.exe
             asset_name: sanctifier-windows-amd64.exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact_name: sanctifier-linux-amd64-musl
+            asset_name: sanctifier-linux-amd64-musl
 
     steps:
       - name: Checkout repository
@@ -56,6 +60,10 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
 
+      - name: Install musl target deps (Linux musl only)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get install -y musl-tools
+
       - name: Build sanctifier-cli (Release)
         run: cargo build --release --target ${{ matrix.target }} -p sanctifier-cli
 
@@ -67,6 +75,14 @@ jobs:
         if: runner.os == 'Windows'
         run: mv target/${{ matrix.target }}/release/sanctifier.exe ${{ matrix.artifact_name }}
 
+      - name: Generate SHA256 for binary
+        if: runner.os != 'Windows'
+        run: sha256sum ${{ matrix.artifact_name }} >> ${{ matrix.artifact_name }}.sha256
+
+      - name: Generate SHA256 for binary (Windows)
+        if: runner.os == 'Windows'
+        run: certutil -hashfile ${{ matrix.artifact_name }} SHA256 | findstr /v "hash" > ${{ matrix.artifact_name }}.sha256
+
       - name: Generate build provenance (SLSA)
         uses: actions/attest-build-provenance@v3
         with:
@@ -75,7 +91,36 @@ jobs:
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.artifact_name }}
+          files: |
+            ${{ matrix.artifact_name }}
+            ${{ matrix.artifact_name }}.sha256
           body_path: CHANGELOG.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sha256sums:
+    name: Generate SHA256SUMS
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+        continue-on-error: true
+
+      - name: Wait for release
+        run: sleep 30
+
+      - name: Generate SHA256SUMS from release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          REPO="${{ github.repository }}"
+          gh release download "$TAG" --repo "$REPO" --dir ./release
+          cd release
+          sha256sum * > SHA256SUMS
+          gh release upload "$TAG" SHA256SUMS --repo "$REPO" --clobber
