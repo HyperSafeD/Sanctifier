@@ -229,6 +229,56 @@ export function looksLikeSorobanSource(text: string): boolean {
   );
 }
 
+// ── Quick-fix helpers (pure, no vscode dependency) ────────────────────────────
+
+/**
+ * Returns the 0-based line index at which to insert `require_auth` (the line
+ * immediately after the opening brace of the function starting at pubFnLineIdx).
+ * Returns null when the brace cannot be located within a reasonable window.
+ */
+export function buildRequireAuthInsertLine(lines: string[], pubFnLineIdx: number): number | null {
+  for (let i = pubFnLineIdx; i < Math.min(pubFnLineIdx + 15, lines.length); i++) {
+    if (lines[i].includes('{')) {
+      return i + 1;
+    }
+  }
+  return null;
+}
+
+/**
+ * Returns the line with `.unwrap()` replaced by `?`, or null if the line
+ * contains no `.unwrap()` call.
+ */
+export function buildUnwrapFix(line: string): string | null {
+  if (/\.unwrap\s*\(\s*\)/.test(line.split('//')[0])) {
+    return line.replace(/\.unwrap\s*\(\s*\)/, '?');
+  }
+  return null;
+}
+
+/**
+ * Returns the line with the first unchecked `+` or `-` between identifiers
+ * replaced by the checked equivalent, or null if no such pattern is found.
+ */
+export function buildCheckedArithFix(line: string): string | null {
+  const codePart = line.split('//')[0];
+  const plusMatch = codePart.match(/\b([a-zA-Z_]\w*)\s*\+\s*([a-zA-Z_]\w*)\b/);
+  if (plusMatch) {
+    return line.replace(
+      /\b([a-zA-Z_]\w*)\s*\+\s*([a-zA-Z_]\w*)\b/,
+      `${plusMatch[1]}.checked_add(${plusMatch[2]}).unwrap_or_default()`,
+    );
+  }
+  const minusMatch = codePart.match(/\b([a-zA-Z_]\w*)\s*-\s*([a-zA-Z_]\w*)\b/);
+  if (minusMatch) {
+    return line.replace(
+      /\b([a-zA-Z_]\w*)\s*-\s*([a-zA-Z_]\w*)\b/,
+      `${minusMatch[1]}.checked_sub(${minusMatch[2]}).unwrap_or_default()`,
+    );
+  }
+  return null;
+}
+
 /**
  * @param text Full document text (current buffer — works while typing).
  */

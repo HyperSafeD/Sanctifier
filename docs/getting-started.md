@@ -1,6 +1,10 @@
 # Getting Started with Sanctifier
 
-Welcome to **Sanctifier** — the comprehensive security and formal verification suite for [Stellar Soroban](https://soroban.stellar.org/) smart contracts. This guide walks you through everything you need to go from zero to running your first security scan.
+Welcome to **Sanctifier** — the comprehensive security and formal verification suite for [Stellar Soroban](https://soroban.stellar.org/) smart contracts. This guide walks you through scanning your first Soroban contract in under 5 minutes.
+
+> **Recording:** An asciinema walkthrough of this tutorial is available at
+> [`docs/assets/getting-started.cast`](./assets/getting-started.cast). Play it with
+> `asciinema play docs/assets/getting-started.cast` to see the full terminal session.
 
 ---
 
@@ -49,12 +53,10 @@ soroban --version   # e.g. soroban 20.x.x
 
 ## 2. Installing Sanctifier
 
-Clone the Sanctifier repository and install the CLI from source:
+Install the Sanctifier CLI directly from crates.io:
 
 ```bash
-git clone https://github.com/your-org/sanctifier.git
-cd sanctifier
-cargo install --path tooling/sanctifier-cli
+cargo install sanctifier-cli
 ```
 
 > **Note:** Ensure `~/.cargo/bin` is on your `PATH`. If not, add it to your shell profile:
@@ -73,7 +75,7 @@ sanctifier --version
 Update to the latest Sanctifier binary at any time:
 
 ```bash
-sanctifier update
+cargo install sanctifier-cli --force
 ```
 
 ### Shell Completions
@@ -110,49 +112,94 @@ After installing completions, restart your shell or source the completion file.
 
 ---
 
-## 3. Running Your First Scan
+## 3. Create a Minimal Soroban Contract
 
-### Option A — Analyze an entire contract directory
-
-Point `sanctifier analyze` at the root of any Soroban contract crate (a directory containing `Cargo.toml` with a `soroban-sdk` dependency):
+Create a fresh Cargo project and add the Soroban SDK dependency:
 
 ```bash
-sanctifier analyze ./contracts/my-token
+cargo new --lib my-contract
+cd my-contract
 ```
 
-### Option B — Analyze a single source file
+Replace `Cargo.toml` with:
 
-You can also target a specific `.rs` file:
+```toml
+[package]
+name = "my-contract"
+version = "0.1.0"
+edition = "2021"
 
-```bash
-sanctifier analyze ./contracts/my-token/src/lib.rs
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { version = "21", features = ["testutils"] }
 ```
 
-### Option C — Analyze the current directory
+Replace `src/lib.rs` with this intentionally vulnerable contract — it has three findings
+for Sanctifier to catch:
 
-Running `sanctifier analyze` with no arguments defaults to `.`:
+```rust
+#![no_std]
+use soroban_sdk::{contract, contractimpl, Env, Address};
 
-```bash
-cd my-soroban-project
-sanctifier analyze
-```
+#[contract]
+pub struct Counter;
 
-### Optional flags
+#[contractimpl]
+impl Counter {
+    // S001: missing require_auth — anyone can increment the counter
+    pub fn increment(env: Env, user: Address, by: u32) -> u32 {
+        let key = "count";
+        let current: u32 = env.storage().persistent().get(&key).unwrap_or(0);
+        // S003: unchecked arithmetic — can overflow
+        let next = current + by;
+        env.storage().persistent().set(&key, &next);
+        next
+    }
 
-| Flag | Description | Default |
-|---|---|---|
-| `-f`, `--format` | Output format: `text` or `json` | `text` |
-| `-l`, `--limit` | Ledger entry size limit in bytes | `64000` |
-
-**JSON output** — useful for CI pipelines and tooling integrations:
-
-```bash
-sanctifier analyze ./contracts/my-token --format json
+    // S002: panic! aborts the contract
+    pub fn reset(env: Env) {
+        panic!("reset is not implemented yet");
+    }
+}
 ```
 
 ---
 
-## 4. Project Configuration (`.sanctify.toml`)
+## 4. Run `sanctifier analyze`
+
+From inside the `my-contract` directory (created in step 3), run:
+
+```bash
+sanctifier analyze ./my-contract
+```
+
+Sanctifier will print findings for the three issues intentionally left in the contract:
+
+```
+🛑 Found potential Authentication Gaps!
+   -> Function `increment` is modifying state without require_auth()
+
+🛑 Found explicit Panics/Unwraps!
+   -> Function `reset`: panic! aborts the contract (src/lib.rs:reset)
+
+🔢 Found unchecked Arithmetic Operations!
+   -> Function `increment`: Unchecked `+` (src/lib.rs:increment)
+```
+
+### Other ways to invoke
+
+| Target | Command |
+|--------|---------|
+| Entire contract directory | `sanctifier analyze ./my-contract` |
+| Single source file | `sanctifier analyze ./my-contract/src/lib.rs` |
+| Current directory | `cd my-contract && sanctifier analyze` |
+| JSON output (for CI) | `sanctifier analyze ./my-contract --format json` |
+
+---
+
+## 5. Project Configuration (`.sanctify.toml`)
 
 Sanctifier looks for a `.sanctify.toml` file in the target directory and its parents. Running `sanctifier init` in your project root scaffolds a default config:
 
@@ -186,7 +233,7 @@ If you want to opt in to telemetry, run `sanctifier init --telemetry on` or set 
 
 ---
 
-## 5. Interpreting the Output
+## 6. Interpreting the Output
 
 A typical run produces output similar to the following:
 
@@ -264,7 +311,84 @@ Sanctifier checks for upgrade-related patterns (e.g. `Wasm::upgrade`, missing `i
 
 ---
 
-## 6. Next Steps
+## 7. Fix a Finding
+
+Let's address the three findings one by one. Open `my-contract/src/lib.rs` and apply
+these changes:
+
+**Fix S001 — add `require_auth`:**
+
+```rust
+pub fn increment(env: Env, user: Address, by: u32) -> u32 {
+    user.require_auth();                    // <- add this line
+    let key = "count";
+    let current: u32 = env.storage().persistent().get(&key).unwrap_or(0);
+    let next = current.checked_add(by).expect("overflow"); // <- fix S003 too
+    env.storage().persistent().set(&key, &next);
+    next
+}
+```
+
+**Fix S002 — remove `panic!` and return a structured error:**
+
+```rust
+pub fn reset(_env: Env) -> Result<(), &'static str> {
+    Err("reset is not yet supported")
+}
+```
+
+After applying these changes the file should look like this:
+
+```rust
+#![no_std]
+use soroban_sdk::{contract, contractimpl, Env, Address};
+
+#[contract]
+pub struct Counter;
+
+#[contractimpl]
+impl Counter {
+    pub fn increment(env: Env, user: Address, by: u32) -> u32 {
+        user.require_auth();
+        let key = "count";
+        let current: u32 = env.storage().persistent().get(&key).unwrap_or(0);
+        let next = current.checked_add(by).expect("overflow");
+        env.storage().persistent().set(&key, &next);
+        next
+    }
+
+    pub fn reset(_env: Env) -> Result<(), &'static str> {
+        Err("reset is not yet supported")
+    }
+}
+```
+
+---
+
+## 8. Re-run and Confirm Clean
+
+Run Sanctifier again on the fixed contract:
+
+```bash
+sanctifier analyze ./my-contract
+```
+
+This time the output should show no findings:
+
+```
+✨ Sanctifier: Valid Soroban project found at "./my-contract"
+🔍 Analyzing contract at "./my-contract"...
+✅ Static analysis complete.
+
+No findings — your contract looks clean!
+```
+
+Congratulations! You have installed Sanctifier, written a Soroban contract with known
+vulnerabilities, interpreted the findings, applied fixes, and confirmed a clean report.
+
+---
+
+## 9. Next Steps
 
 - **Formal Verification** — See [`docs/kani-integration.md`](./kani-integration.md) to add model-checking with the Kani verifier.
 - **Runtime Guards** — See [`docs/runtime-guards-integration.md`](./runtime-guards-integration.md) to add runtime invariant wrappers in your existing Soroban contract.
