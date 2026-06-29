@@ -1,0 +1,43 @@
+# Timelock Controller Contract — Sanctifier Configuration
+
+# Enable all standard rules
+enabled_rules = [
+    "auth_gaps",
+    "panics",
+    "arithmetic",
+    "ledger_size",
+    "storage_keys",
+    "unsafe_patterns",
+    "events",
+    "unhandled_results",
+    "upgrades",
+]
+
+# Ledger entry size threshold (Soroban default: 64KB)
+ledger_limit = 65536
+
+# Approach warning threshold (warn when entry is 80% of limit)
+approaching_threshold = 0.8
+
+# Enable strict mode for maximum coverage
+strict_mode = true
+
+# Custom rules specific to this contract
+[[custom_rules]]
+name = "missing_delay_check"
+pattern = 'execute_unsafe'
+severity = "error"
+message = "Use execute() with delay enforcement instead of execute_unsafe() which bypasses timelock"
+
+[[custom_rules]]
+name = "hardcoded_delay"
+pattern = '(3600|7200|86400)\s*(?://|as)'
+severity = "warning"
+message = "Consider using a configurable delay via update_delay() instead of hardcoding seconds"
+
+# Ignore test files and build artifacts
+ignore_paths = [
+    "target",
+    ".git",
+    "test_snapshots",
+]
