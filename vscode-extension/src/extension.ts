@@ -4,17 +4,12 @@ import { type EditorFinding, type SanctifierExtensionApi } from './types';
 import { folderLooksLikeSorobanProject, invalidateWorkspaceCache } from './workspace';
 import { spawn } from 'child_process';
 import * as fs from 'fs';
-import { analyzeSorobanSource, looksLikeSorobanSource, type EditorFinding } from './analyzer';
+import * as os from 'os';
+import * as path from 'path';
 import { findingsToSarif, parseSarif, serialiseSarif, validateSarifShape, sarifToFindings } from './sarif';
 import { validateSarifContent, validateSarifResultCount, isPathWithinWorkspace, MAX_SARIF_BYTES } from './security';
-import { spawn } from 'child_process';
-import * as fs from 'fs';
-import * as path from 'path';
-import { analyzeSorobanSource, looksLikeSorobanSource, filterBySeverity, type Severity } from './analyzer';
-import { type EditorFinding, type SanctifierExtensionApi } from './types';
-import { folderLooksLikeSorobanProject, invalidateWorkspaceCache } from './workspace';
-import { spawn } from 'child_process';
-import { existsSync } from 'fs';
+import { checkAndSuggestDevcontainer } from './devcontainer';
+import { SanctifierHoverProvider } from './hover';
 
 const SOURCE = 'sanctifier';
 const EXTENSION_VERSION: string = (() => {
@@ -69,7 +64,6 @@ function validateSanctifierPath(exePath: string): void {
   }
 }
 
-export async function activate(context: vscode.ExtensionContext): Promise<void> {
 export async function activate(context: vscode.ExtensionContext): Promise<SanctifierExtensionApi> {
   const collection = vscode.languages.createDiagnosticCollection(SOURCE);
   const outputChannel = vscode.window.createOutputChannel('Sanctifier');
@@ -83,6 +77,13 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
   statusBar.command = 'sanctifier.toggleEnable';
   statusBar.tooltip = 'Sanctifier — click to toggle';
   context.subscriptions.push(statusBar, collection, outputChannel);
+
+  context.subscriptions.push(
+    vscode.languages.registerHoverProvider(
+      { language: 'rust' },
+      new SanctifierHoverProvider(findingsCache),
+    ),
+  );
 
   function updateStatusBar(): void {
     const enabled = getConfig().get<boolean>('enable') ?? true;
@@ -98,12 +99,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
     statusBar.text = total > 0 ? `$(shield) Sanctifier: ${total}` : '$(shield) Sanctifier';
     statusBar.show();
   }
-
-  const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-  statusBar.text = '$(shield) Sanctifier';
-  statusBar.tooltip = 'Sanctifier: Soroban security analysis active';
-  statusBar.show();
-  context.subscriptions.push(statusBar);
 
   const debouncers = new Map<string, ReturnType<typeof setTimeout>>();
 
@@ -136,27 +131,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
     const allFindings = analyzeSorobanSource(text);
     const findings = filterBySeverity(allFindings, minSeverity);
 
-    findingsCache.set(doc.uri.toString(), findings);
-    const diags = findings.map((f) => findingToDiagnostic(doc, f));
-    collection.set(doc.uri, diags);
-    const key = doc.uri.toString();
-    if (contentCache.get(key) === text) {
-      return;
-    }
-    contentCache.set(key, text);
-
-    const minSeverity = (cfg.get<string>('minSeverity') ?? 'warning') as Severity;
-    const allFindings = analyzeSorobanSource(text);
-    const findings = filterBySeverity(allFindings, minSeverity);
-
-    statusBar.text = '$(sync~spin) Sanctifier: analyzing…';
-    const findings = analyzeSorobanSource(text);
-    const diags = findings.map((f) => findingToDiagnostic(doc, f));
-    collection.set(doc.uri, diags);
-    statusBar.text =
-      diags.length > 0
-        ? `$(shield) Sanctifier (${diags.length} hint${diags.length === 1 ? '' : 's'})`
-        : '$(shield) Sanctifier';
     findingsCache.set(doc.uri.toString(), findings);
     const diags = findings.map((f) => findingToDiagnostic(doc, f));
     collection.set(doc.uri, diags);
@@ -227,7 +201,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('sanctifier')) {
-        sorobanWorkspaceCache = null;
         if (e.affectsConfiguration('sanctifier.sanctifierPath')) {
           validateSanctifierPath(getConfig().get<string>('sanctifierPath') ?? '');
         }
@@ -297,26 +270,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
         return;
       }
 
-      if (!existsSync(exe)) {
-        vscode.window.showErrorMessage(
-          `sanctifier CLI not found at "${exe}". ` +
-          'Check the sanctifier.sanctifierPath setting and ensure the binary is installed.'
-        );
-        return;
-      }
-
       outputChannel.clear();
       outputChannel.show(true);
       outputChannel.appendLine(`[sanctifier] Scanning ${folder.uri.fsPath} …`);
 
       const minSeverity = (getConfig().get<string>('minSeverity') ?? 'warning') as Severity;
 
-      const output = await new Promise<string | undefined>((resolve) => {
-        const p = spawn(
-          exe,
-          ['analyze', folder.uri.fsPath, '--format', 'json', '--min-severity', minSeverity],
-          { cwd: folder.uri.fsPath }
-        );
       // Security (#612): warn before executing binaries outside the workspace.
       const insideWorkspace = exe.startsWith(folder.uri.fsPath);
       if (!insideWorkspace) {
@@ -330,7 +289,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
         }
       }
 
-      const token = await new Promise<string | undefined>((resolve) => {
+      const output = await new Promise<string | undefined>((resolve) => {
         const p = spawn(exe, ['analyze', folder.uri.fsPath, '--format', 'json'], {
           cwd: folder.uri.fsPath,
         });
@@ -361,47 +320,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
         );
         return;
       }
-      if (!token) {
-        vscode.window.showErrorMessage('sanctifier CLI failed or produced no output. Check sanctifierPath.');
-      statusBar.text = '$(sync~spin) Sanctifier: running full scan…';
-      const { output, stderr } = await new Promise<{ output: string | undefined; stderr: string }>(
-        (resolve) => {
-          const p = spawn(exe, ['analyze', folder.uri.fsPath, '--format', 'json'], {
-            cwd: folder.uri.fsPath,
-          });
-          let out = '';
-          let err = '';
-          p.stdout.on('data', (b: Buffer) => (out += b.toString()));
-          p.stderr.on('data', (b: Buffer) => (err += b.toString()));
-          p.on('close', () => resolve({ output: out || undefined, stderr: err }));
-          p.on('error', () => resolve({ output: undefined, stderr: '' }));
-        },
-      );
-      statusBar.text = '$(shield) Sanctifier';
-      if (!output) {
-        const isWasmFailure =
-          /wasm32|wasm-unknown|target.*wasm|error\[E/i.test(stderr);
-        if (isWasmFailure) {
-          const choice = await vscode.window.showErrorMessage(
-            'Sanctifier: WASM compilation failed. ' +
-              'Ensure the wasm32 target is installed: `rustup target add wasm32-unknown-unknown`.',
-            'Show Error Output',
-          );
-          if (choice === 'Show Error Output') {
-            const errDoc = await vscode.workspace.openTextDocument({
-              content: stderr,
-              language: 'text',
-            });
-            await vscode.window.showTextDocument(errDoc, { preview: true });
-          }
-        } else {
-          vscode.window.showErrorMessage(
-            'Sanctifier CLI failed or produced no output. ' +
-              'Check sanctifier.sanctifierPath and ensure the binary is executable.',
-          );
-        }
-        return;
-      }
       const token = output;
       const doc = await vscode.workspace.openTextDocument({
         content: token,
@@ -409,7 +327,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
       });
       await vscode.window.showTextDocument(doc, { preview: true });
     }),
+  );
 
+  context.subscriptions.push(
     vscode.commands.registerCommand('sanctifier.exportSarif', async () => {
       const editor = vscode.window.activeTextEditor;
       if (!editor || editor.document.languageId !== 'rust') {
@@ -498,70 +418,67 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
       vscode.window.showInformationMessage(
         `Imported ${findings.length} finding(s) from ${path.basename(sarifPath)}.`
       );
+    }),
 
-      // Remote workspaces (SSH, Codespaces, WSL) use non-file URIs; the CLI
-      // must run on the same machine as the source files.
-      if (folder.uri.scheme !== 'file') {
+    vscode.commands.registerCommand('sanctifier.openSarifViewer', async () => {
+      const exe = getConfig().get<string>('sanctifierPath')?.trim();
+      if (!exe || !fs.existsSync(exe)) {
         vscode.window.showErrorMessage(
-          'Sanctifier workspace analysis requires a local folder. ' +
-          'Remote workspaces (SSH / Codespaces / WSL) are not yet supported — ' +
-          'install the CLI on the remote host and run it from the integrated terminal.'
+          'Set sanctifier.sanctifierPath to the sanctifier CLI binary path before opening the full SARIF report.',
         );
         return;
       }
-
-      if (!existsSync(exe)) {
-        vscode.window.showErrorMessage(
-          `sanctifier CLI not found at "${exe}". ` +
-          'Check the sanctifier.sanctifierPath setting and ensure the binary is installed.'
-        );
+      const folder = vscode.workspace.workspaceFolders?.[0];
+      if (!folder) {
+        vscode.window.showErrorMessage('Open a workspace folder first.');
         return;
       }
 
-      outputChannel.clear();
-      outputChannel.show(true);
-      outputChannel.appendLine(`[sanctifier] Scanning ${folder.uri.fsPath} …`);
-
-      const minSeverity = (getConfig().get<string>('minSeverity') ?? 'warning') as Severity;
-
-      const output = await new Promise<string | undefined>((resolve) => {
-        const p = spawn(
-          exe,
-          ['analyze', folder.uri.fsPath, '--format', 'json', '--min-severity', minSeverity],
-          { cwd: folder.uri.fsPath }
-        );
-        let out = '';
-        let err = '';
-        p.stdout.on('data', (b: Buffer) => (out += b.toString()));
-        p.stderr.on('data', (b: Buffer) => (err += b.toString()));
-        p.on('close', (code) => {
-          if (err) {
-            outputChannel.appendLine(`[sanctifier][stderr] ${err.trim()}`);
-          }
-          if (code !== 0 && !out) {
-            outputChannel.appendLine(`[sanctifier] CLI exited with code ${code}.`);
-            resolve(undefined);
-          } else {
-            resolve(out || undefined);
-          }
+      statusBar.text = '$(sync~spin) Sanctifier: generating SARIF…';
+      try {
+        const output = await new Promise<string | undefined>((resolve) => {
+          const p = spawn(exe, ['analyze', folder.uri.fsPath, '--format', 'sarif'], {
+            cwd: folder.uri.fsPath,
+          });
+          let out = '';
+          p.stdout.on('data', (b: Buffer) => (out += b.toString()));
+          p.on('close', () => resolve(out || undefined));
+          p.on('error', () => resolve(undefined));
         });
-        p.on('error', (e) => {
-          outputChannel.appendLine(`[sanctifier][error] ${e.message}`);
-          resolve(undefined);
-        });
-      });
 
-      if (!output) {
-        vscode.window.showErrorMessage(
-          'sanctifier CLI produced no output. Check sanctifierPath and the output channel.'
+        if (!output) {
+          vscode.window.showErrorMessage('Sanctifier CLI produced no SARIF output.');
+          statusBar.text = '$(shield) Sanctifier';
+          return;
+        }
+
+        const sarifPath = path.join(
+          fs.mkdtempSync(path.join(os.tmpdir(), 'sanctifier-')),
+          'results.sarif',
         );
-        return;
-      }
+        fs.writeFileSync(sarifPath, output, 'utf8');
 
-      outputChannel.appendLine(output);
-      outputChannel.appendLine('[sanctifier] Scan complete.');
-    })
+        await vscode.commands.executeCommand('sarif.openLogs', [
+          vscode.Uri.file(sarifPath),
+        ]);
+      } catch (e) {
+        vscode.window.showErrorMessage(
+          `Failed to open SARIF report: ${e instanceof Error ? e.message : String(e)}`,
+        );
+      } finally {
+        statusBar.text = '$(shield) Sanctifier';
+      }
+    }),
+
+    vscode.commands.registerCommand('sanctifier.suppressFinding', (args: { code: string; line: number }) => {
+      vscode.window.showInformationMessage(
+        `Suppress finding ${args.code} at line ${args.line} — add // sanctifier:ignore ${args.code} above the line.`,
+      );
+    }),
   );
+
+  // ── Devcontainer check ──────────────────────────────────────────────────────
+  void checkAndSuggestDevcontainer();
 
   updateStatusBar();
 
