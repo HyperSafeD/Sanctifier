@@ -322,11 +322,21 @@ Sanctifier/
 
 ---
 
+## New here? Start with the tutorial
+
+**[Scan your first Soroban contract in 5 minutes →](docs/getting-started.md)**
+
+The tutorial walks you through installing Sanctifier, writing a minimal contract,
+running your first scan, fixing every finding, and confirming a clean report — all
+in a single terminal session.
+
+---
+
 ## Documentation
 
 | If you want to… | Read |
 |-----------------|------|
-| Get going in 10 minutes | [docs/getting-started.md](docs/getting-started.md) |
+| **Get started (tutorial)** | **[docs/getting-started.md](docs/getting-started.md)** |
 | Browse the API reference | [API Documentation](https://hypersafed.github.io/Sanctifier/) |
 | Understand every finding code | [docs/error-codes.md](docs/error-codes.md) |
 | Wire the runtime guard into your contract | [docs/runtime-guards-integration.md](docs/runtime-guards-integration.md) |
