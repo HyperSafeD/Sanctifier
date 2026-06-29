@@ -10,6 +10,7 @@ import { findingsToSarif, parseSarif, serialiseSarif, validateSarifShape, sarifT
 import { validateSarifContent, validateSarifResultCount, isPathWithinWorkspace, MAX_SARIF_BYTES } from './security';
 import { checkAndSuggestDevcontainer } from './devcontainer';
 import { SanctifierHoverProvider } from './hover';
+import { recordScan, sendTelemetry, promptTelemetryOptIn } from './telemetry';
 
 const SOURCE = 'sanctifier';
 const EXTENSION_VERSION: string = (() => {
@@ -74,9 +75,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
   const contentCache = new Map<string, string>();
 
   const statusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 10);
-  statusBar.command = 'sanctifier.toggleEnable';
-  statusBar.tooltip = 'Sanctifier — click to toggle';
+  statusBar.command = 'workbench.actions.view.problems';
+  statusBar.tooltip = 'Sanctifier — click to open Problems panel';
   context.subscriptions.push(statusBar, collection, outputChannel);
+
+  let scanning = false;
 
   context.subscriptions.push(
     vscode.languages.registerHoverProvider(
@@ -89,14 +92,30 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
     const enabled = getConfig().get<boolean>('enable') ?? true;
     if (!enabled) {
       statusBar.text = '$(shield) Sanctifier: off';
+      statusBar.tooltip = 'Sanctifier is disabled — click to open Problems panel';
       statusBar.show();
       return;
     }
-    let total = 0;
-    for (const findings of findingsCache.values()) {
-      total += findings.length;
+    if (scanning) {
+      statusBar.text = '$(sync~spin) Sanctifier: scanning…';
+      statusBar.tooltip = 'Sanctifier is scanning…';
+      statusBar.show();
+      return;
     }
-    statusBar.text = total > 0 ? `$(shield) Sanctifier: ${total}` : '$(shield) Sanctifier';
+    const editor = vscode.window.activeTextEditor;
+    if (editor && editor.document.languageId === 'rust') {
+      const current = findingsCache.get(editor.document.uri.toString()) ?? [];
+      const count = current.length;
+      statusBar.text = count > 0
+        ? `$(warning) Sanctifier: ${count} finding${count !== 1 ? 's' : ''}`
+        : '$(shield) Sanctifier';
+      statusBar.tooltip = count > 0
+        ? `${count} finding${count !== 1 ? 's' : ''} — click to open Problems panel`
+        : 'Sanctifier — click to open Problems panel';
+    } else {
+      statusBar.text = '$(shield) Sanctifier';
+      statusBar.tooltip = 'Sanctifier — click to open Problems panel';
+    }
     statusBar.show();
   }
 
@@ -127,13 +146,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
     }
     contentCache.set(key, text);
 
+    scanning = true;
+    updateStatusBar();
+
     const minSeverity = (cfg.get<string>('minSeverity') ?? 'warning') as Severity;
     const allFindings = analyzeSorobanSource(text);
     const findings = filterBySeverity(allFindings, minSeverity);
 
+    const byRule: Record<string, number> = {};
+    for (const f of findings) {
+      byRule[f.code] = (byRule[f.code] ?? 0) + 1;
+    }
+    recordScan(byRule);
+
     findingsCache.set(doc.uri.toString(), findings);
     const diags = findings.map((f) => findingToDiagnostic(doc, f));
     collection.set(doc.uri, diags);
+
+    scanning = false;
     updateStatusBar();
   };
 
@@ -211,6 +241,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
           schedule(doc);
         }
       }
+    }),
+    vscode.window.onDidChangeActiveTextEditor(() => {
+      updateStatusBar();
     })
   );
 
@@ -218,7 +251,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
     schedule(doc);
   }
 
-  // ── Commands ────────────────────────────────────────────────────────────────
+  // ── Telemetry opt-in prompt ──────────────────────────────────────────────────
 
   context.subscriptions.push(
     vscode.commands.registerCommand('sanctifier.toggleEnable', async () => {
@@ -273,8 +306,6 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
       outputChannel.clear();
       outputChannel.show(true);
       outputChannel.appendLine(`[sanctifier] Scanning ${folder.uri.fsPath} …`);
-
-      const minSeverity = (getConfig().get<string>('minSeverity') ?? 'warning') as Severity;
 
       // Security (#612): warn before executing binaries outside the workspace.
       const insideWorkspace = exe.startsWith(folder.uri.fsPath);
@@ -434,7 +465,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
         return;
       }
 
-      statusBar.text = '$(sync~spin) Sanctifier: generating SARIF…';
+      scanning = true;
+      updateStatusBar();
       try {
         const output = await new Promise<string | undefined>((resolve) => {
           const p = spawn(exe, ['analyze', folder.uri.fsPath, '--format', 'sarif'], {
@@ -448,7 +480,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
 
         if (!output) {
           vscode.window.showErrorMessage('Sanctifier CLI produced no SARIF output.');
-          statusBar.text = '$(shield) Sanctifier';
+          scanning = false;
+          updateStatusBar();
           return;
         }
 
@@ -466,7 +499,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
           `Failed to open SARIF report: ${e instanceof Error ? e.message : String(e)}`,
         );
       } finally {
-        statusBar.text = '$(shield) Sanctifier';
+        scanning = false;
+        updateStatusBar();
       }
     }),
 
@@ -479,6 +513,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
 
   // ── Devcontainer check ──────────────────────────────────────────────────────
   void checkAndSuggestDevcontainer();
+
+  // ── Telemetry ────────────────────────────────────────────────────────────────
+  void promptTelemetryOptIn(context);
 
   updateStatusBar();
 
@@ -495,4 +532,5 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
 
 export function deactivate(): void {
   invalidateWorkspaceCache();
+  void sendTelemetry();
 }

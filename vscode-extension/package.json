@@ -64,6 +64,12 @@
           ],
           "default": "warning",
           "description": "Minimum severity level to surface in the editor. Findings below this threshold are silently suppressed."
+        },
+        "sanctifier.telemetry.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send anonymous usage telemetry (scan count, finding count by rule, extension version, VS Code version). No source code or file paths are ever sent.",
+          "markdownDescription": "When enabled, Sanctifier sends anonymous usage data to help prioritize improvements. **No source code, file paths, or personal data is ever collected.** See the [privacy policy](https://github.com/HyperSafeD/Sanctifier/blob/main/vscode-extension/PRIVACY.md) for details."
         }
       }
     },
