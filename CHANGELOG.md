@@ -5,9 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Format Guidelines
+
+- Each version section starts with `## [X.Y.Z] - YYYY-MM-DD`
+- Sub-sections: `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security`
+- Bullet points start with `-` and describe user-facing changes
+- Reference issue/PR numbers where applicable
+
 ## [Unreleased]
 
 ### Added
+
+- Docker image published to ghcr.io/hypersafed/sanctifier on each release
+- npm wrapper @hypersafed/sanctifier-cli for npx usage without Rust toolchain
+- Homebrew formula for macOS and Linux (brew install HyperSafeD/sanctifier/sanctifier)
+- `scripts/release.sh` to automate version bumps across all manifests
+- `action.yml` now supports `use-docker` input for containerized analysis
 
 - **S012 (SEP-41) Hardening**: Comprehensive improvements to SEP-41 token interface checks
   - Enhanced module-level documentation in `tooling/sanctifier-core/src/sep41.rs` with usage examples, safety considerations, and contribution guidelines
