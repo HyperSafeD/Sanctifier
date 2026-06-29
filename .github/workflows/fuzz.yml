@@ -1,0 +1,22 @@
+name: Fuzz testing
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Run weekly on Sunday at midnight
+  workflow_dispatch:
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+      
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+        
+      - name: Run fuzzing for 10 minutes
+        working-directory: tooling/sanctifier-core
+        run: cargo +nightly fuzz run fuzz_parser -- -max_total_time=600
