@@ -225,6 +225,8 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.59.1-jammy
     timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v1.59.1-jammy
 
     steps:
       - name: Checkout repository
@@ -269,6 +271,8 @@ jobs:
     container:
       image: mcr.microsoft.com/playwright:v1.59.1-jammy
     timeout-minutes: 20
+    container:
+      image: mcr.microsoft.com/playwright:v1.59.1-jammy
 
     steps:
       - name: Checkout repository
