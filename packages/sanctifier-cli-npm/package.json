@@ -1,0 +1,38 @@
+{
+  "name": "@hypersafed/sanctifier-cli",
+  "version": "0.1.0",
+  "description": "CLI wrapper for Sanctifier — Stellar Soroban Security Suite. Downloads the pre-built binary on first run.",
+  "license": "MIT OR Apache-2.0",
+  "homepage": "https://github.com/HyperSafeD/Sanctifier",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HyperSafeD/Sanctifier.git",
+    "directory": "packages/sanctifier-cli-npm"
+  },
+  "bin": {
+    "sanctifier": "bin/sanctifier.js"
+  },
+  "files": [
+    "bin/sanctifier.js",
+    "package.json"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "os": [
+    "darwin",
+    "linux"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "keywords": [
+    "soroban",
+    "stellar",
+    "security",
+    "static-analysis",
+    "smart-contracts",
+    "sanctifier"
+  ]
+}

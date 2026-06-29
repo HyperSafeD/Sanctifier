@@ -88,6 +88,13 @@ jobs:
         with:
           subject-path: ${{ matrix.artifact_name }}
 
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+          retention-days: 7
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
@@ -124,3 +131,162 @@ jobs:
           cd release
           sha256sum * > SHA256SUMS
           gh release upload "$TAG" SHA256SUMS --repo "$REPO" --clobber
+
+  docker:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download musl binary artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: sanctifier-linux-amd64-musl
+          path: .
+
+      - name: Set image name
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=ghcr.io/${OWNER}/sanctifier" >> $GITHUB_ENV
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.ci
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+
+  npm-publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish @hypersafed/sanctifier-cli
+        working-directory: packages/sanctifier-cli-npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  homebrew-update:
+    name: Update Homebrew formula
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download macOS binaries from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p binaries
+          gh release download "$TAG" --repo "$REPO" --pattern 'sanctifier-macos-amd64' --dir binaries
+          gh release download "$TAG" --repo "$REPO" --pattern 'sanctifier-macos-arm64' --dir binaries
+
+      - name: Calculate SHA256 checksums
+        id: shas
+        run: |
+          echo "amd64=$(sha256sum binaries/sanctifier-macos-amd64 | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "arm64=$(sha256sum binaries/sanctifier-macos-arm64 | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      - name: Generate updated formula
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          AMD64_SHA="${{ steps.shas.outputs.amd64 }}"
+          ARM64_SHA="${{ steps.shas.outputs.arm64 }}"
+
+          python3 -c "
+          import re
+
+          with open('homebrew/sanctifier.rb', 'r') as f:
+              content = f.read()
+
+          content = re.sub(r'version \"[^\"]*\"', f'version \"{VERSION}\"', content)
+          content = re.sub(
+              r'url \"https://github\.com/HyperSafeD/Sanctifier/releases/download/v[^\"]*/sanctifier-macos-arm64\"',
+              f'url \"https://github.com/HyperSafeD/Sanctifier/releases/download/v{VERSION}/sanctifier-macos-arm64\"',
+              content
+          )
+          content = re.sub(
+              r'url \"https://github\.com/HyperSafeD/Sanctifier/releases/download/v[^\"]*/sanctifier-macos-amd64\"',
+              f'url \"https://github.com/HyperSafeD/Sanctifier/releases/download/v{VERSION}/sanctifier-macos-amd64\"',
+              content
+          )
+          content = re.sub(
+              r'url \"https://github\.com/HyperSafeD/Sanctifier/releases/download/v[^\"]*/sanctifier-linux-amd64-musl\"',
+              f'url \"https://github.com/HyperSafeD/Sanctifier/releases/download/v{VERSION}/sanctifier-linux-amd64-musl\"',
+              content
+          )
+          content = re.sub(r'sha256 \"[a-f0-9]{64}\"', f'sha256 \"{ARM64_SHA}\"', content, count=1)
+          content = re.sub(r'sha256 \"[a-f0-9]{64}\"', f'sha256 \"{AMD64_SHA}\"', content, count=1)
+
+          with open('homebrew/sanctifier.rb', 'w') as f:
+              f.write(content)
+          "
+
+          echo "Generated homebrew/sanctifier.rb:"
+          cat homebrew/sanctifier.rb
+
+      - name: Checkout Homebrew tap repo and push formula
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not set; skipping Homebrew tap push."
+            echo "Set up this secret to auto-update Homebrew formula on release."
+            exit 0
+          fi
+
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/HyperSafeD/homebrew-sanctifier.git" /tmp/homebrew-tap
+
+          cp homebrew/sanctifier.rb /tmp/homebrew-tap/
+
+          cd /tmp/homebrew-tap
+
+          if git diff --quiet sanctifier.rb; then
+            echo "Formula already up to date; nothing to push."
+          else
+            git add sanctifier.rb
+            git commit -m "Update sanctifier to ${TAG}"
+            git push origin main
+            echo "Pushed updated formula to HyperSafeD/homebrew-sanctifier"
+          fi
