@@ -61,7 +61,8 @@ pub enum DataKey {
     Proposer(Address),
     Executor(Address),
     Canceller(Address),
-    Proposal(BytesN<32>), // Hash -> ReadyTimestamp
+    Proposal(BytesN<32>),       // Hash -> ReadyTimestamp
+    ProposalUnsafe(BytesN<32>), // Hash -> ScheduledTimestamp (for unsafe version)
 }
 
 #[contract]
@@ -233,6 +234,85 @@ impl TimelockController {
 
         // Call the target contract
         env.invoke_contract(&target, &fn_name, args)
+    }
+
+    /// ⚠️ VULNERABLE VERSION: Executes without enforcing the time delay.
+    ///
+    /// This function demonstrates a common vulnerability where a call can be executed
+    /// immediately without waiting for the scheduled delay to elapse. An attacker
+    /// can bypass the timelock mechanism entirely.
+    ///
+    /// **DO NOT USE IN PRODUCTION** — this is for teaching and vulnerability detection.
+    /// See [`execute()`] for the safe version that enforces the delay.
+    pub fn execute_unsafe(
+        env: Env,
+        executor: Address,
+        target: Address,
+        fn_name: Symbol,
+        args: Vec<Val>,
+        salt: BytesN<32>,
+    ) -> Val {
+        executor.require_auth();
+        if !Self::is_executor(env.clone(), executor) {
+            panic_with_error!(&env, TimelockError::Unauthorized);
+        }
+
+        let hash = compute_hash(&env, &target, &fn_name, &args, &salt);
+
+        // VULNERABILITY: No delay check! The proposal can be executed immediately.
+        let _ready_timestamp: u64 = env
+            .storage()
+            .instance()
+            .get(&DataKey::ProposalUnsafe(hash.clone()))
+            .unwrap_or_else(|| panic_with_error!(&env, TimelockError::ProposalNotFound));
+
+        // Mark as executed (remove from storage)
+        env.storage()
+            .instance()
+            .remove(&DataKey::ProposalUnsafe(hash.clone()));
+
+        env.events().publish(
+            (Symbol::new(&env, "executed_unsafe"), hash),
+            (target.clone(), fn_name.clone()),
+        );
+
+        // Call the target contract WITHOUT enforcing any delay
+        env.invoke_contract(&target, &fn_name, args)
+    }
+
+    pub fn schedule_unsafe(
+        env: Env,
+        proposer: Address,
+        target: Address,
+        fn_name: Symbol,
+        args: Vec<Val>,
+        salt: BytesN<32>,
+    ) -> BytesN<32> {
+        proposer.require_auth();
+        if !Self::is_proposer(env.clone(), proposer) {
+            panic_with_error!(&env, TimelockError::Unauthorized);
+        }
+
+        let hash = compute_hash(&env, &target, &fn_name, &args, &salt);
+        if env
+            .storage()
+            .instance()
+            .has(&DataKey::ProposalUnsafe(hash.clone()))
+        {
+            panic_with_error!(&env, TimelockError::AlreadyInitialized);
+        }
+
+        let scheduled_timestamp = env.ledger().timestamp();
+        env.storage()
+            .instance()
+            .set(&DataKey::ProposalUnsafe(hash.clone()), &scheduled_timestamp);
+
+        env.events().publish(
+            (Symbol::new(&env, "scheduled_unsafe"), hash.clone()),
+            (target, fn_name, scheduled_timestamp),
+        );
+
+        hash
     }
 
     pub fn cancel(env: Env, canceller: Address, hash: BytesN<32>) {
