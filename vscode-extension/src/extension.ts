@@ -10,6 +10,7 @@ import { findingsToSarif, parseSarif, serialiseSarif, validateSarifShape, sarifT
 import { validateSarifContent, validateSarifResultCount, isPathWithinWorkspace, MAX_SARIF_BYTES } from './security';
 import { checkAndSuggestDevcontainer } from './devcontainer';
 import { SanctifierHoverProvider } from './hover';
+import { SanctifierCodeActionProvider } from './code-actions';
 import { recordScan, sendTelemetry, promptTelemetryOptIn } from './telemetry';
 
 const SOURCE = 'sanctifier';
@@ -85,6 +86,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
     vscode.languages.registerHoverProvider(
       { language: 'rust' },
       new SanctifierHoverProvider(findingsCache),
+    ),
+  );
+
+  context.subscriptions.push(
+    vscode.languages.registerCodeActionsProvider(
+      { language: 'rust' },
+      new SanctifierCodeActionProvider(),
+      { providedCodeActionKinds: SanctifierCodeActionProvider.providedCodeActionKinds },
     ),
   );
 
