@@ -1,0 +1,17 @@
+PackageIdentifier: HyperSafeD.Sanctifier
+PackageVersion: 0.1.0
+InstallerLocale: en-US
+InstallerType: portable
+Commands:
+  - sanctifier
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/HyperSafeD/Sanctifier/releases/download/v0.1.0/sanctifier-windows-amd64.exe
+    InstallerSha256: PLACEHOLDER_SHA256
+    UpgradeBehavior: uninstallPrevious
+  - Architecture: arm64
+    InstallerUrl: https://github.com/HyperSafeD/Sanctifier/releases/download/v0.1.0/sanctifier-windows-arm64.exe
+    InstallerSha256: PLACEHOLDER_SHA256
+    UpgradeBehavior: uninstallPrevious
+ManifestType: installer
+ManifestVersion: 1.6.0

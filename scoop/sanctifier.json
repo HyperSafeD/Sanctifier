@@ -1,0 +1,41 @@
+{
+  "version": "0.1.0",
+  "description": "Security copilot for Stellar Soroban smart contracts",
+  "homepage": "https://github.com/HyperSafeD/Sanctifier",
+  "license": "MIT OR Apache-2.0",
+  "architecture": {
+    "64bit": {
+      "url": "https://github.com/HyperSafeD/Sanctifier/releases/download/v0.1.0/sanctifier-windows-amd64.exe",
+      "hash": "PLACEHOLDER_SHA256"
+    },
+    "arm64": {
+      "url": "https://github.com/HyperSafeD/Sanctifier/releases/download/v0.1.0/sanctifier-windows-arm64.exe",
+      "hash": "PLACEHOLDER_SHA256"
+    }
+  },
+  "bin": [
+    [
+      "sanctifier-windows-amd64.exe",
+      "sanctifier"
+    ]
+  ],
+  "checkver": {
+    "github": "https://github.com/HyperSafeD/Sanctifier"
+  },
+  "autoupdate": {
+    "architecture": {
+      "64bit": {
+        "url": "https://github.com/HyperSafeD/Sanctifier/releases/download/v$version/sanctifier-windows-amd64.exe",
+        "hash": {
+          "url": "$baseurl/SHA256SUMS"
+        }
+      },
+      "arm64": {
+        "url": "https://github.com/HyperSafeD/Sanctifier/releases/download/v$version/sanctifier-windows-arm64.exe",
+        "hash": {
+          "url": "$baseurl/SHA256SUMS"
+        }
+      }
+    }
+  }
+}
