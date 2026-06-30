@@ -37,18 +37,18 @@ Every finding has a stable code — `S001..S012` — so you can filter, suppress
 
 | Code | What it catches | Why it bites |
 |------|-----------------|--------------|
-| `S001` | Missing `require_auth` on state-changing calls | Anyone can drain your contract |
-| `S002` | `panic!` / `unwrap` / `expect` in contract paths | Locked state, no recovery |
-| `S003` | Unchecked arithmetic — overflow, underflow, truncation | Silent loss-of-funds rounding |
-| `S004` | Ledger entries pushing the size threshold | Refusal at write time, mid-tx |
-| `S005` | Storage-key collisions between data paths | Cross-feature data corruption |
-| `S006` | Unsafe patterns — including timestamp-as-randomness | Predictable winners, exploit replay |
-| `S007` | Your custom YAML rules | Your house style, enforced |
-| `S008` | Inconsistent or missing event emissions | Wallets and indexers go blind |
-| `S009` | Unhandled `Result` return values | Silent failures masquerading as success |
-| `S010` | Upgrade / admin / governance risk | Single-key takeover paths |
-| `S011` | Z3-disproved invariants | Mathematical guarantees you don't have |
-| `S012` | SEP-41 token interface deviations | Wallets reject your token |
+| [`S001`](docs/rules/S001.md) | Missing `require_auth` on state-changing calls | Anyone can drain your contract |
+| [`S002`](docs/rules/S002.md) | `panic!` / `unwrap` / `expect` in contract paths | Locked state, no recovery |
+| [`S003`](docs/rules/S003.md) | Unchecked arithmetic — overflow, underflow, truncation | Silent loss-of-funds rounding |
+| [`S004`](docs/rules/S004.md) | Ledger entries pushing the size threshold | Refusal at write time, mid-tx |
+| [`S005`](docs/rules/S005.md) | Storage-key collisions between data paths | Cross-feature data corruption |
+| [`S006`](docs/rules/S006.md) | Unsafe patterns — including timestamp-as-randomness | Predictable winners, exploit replay |
+| [`S007`](docs/rules/S007.md) | Your custom YAML rules | Your house style, enforced |
+| [`S008`](docs/rules/S008.md) | Inconsistent or missing event emissions | Wallets and indexers go blind |
+| [`S009`](docs/rules/S009.md) | Unhandled `Result` return values | Silent failures masquerading as success |
+| [`S010`](docs/rules/S010.md) | Upgrade / admin / governance risk | Single-key takeover paths |
+| [`S011`](docs/rules/S011.md) | Z3-disproved invariants | Mathematical guarantees you don't have |
+| [`S012`](docs/rules/S012.md) | SEP-41 token interface deviations | Wallets reject your token |
 
 Plus the community **vulnerability database** matches known CVE-style patterns (`SOL-2024-*`) against your AST — so a published exploit anywhere becomes a finding everywhere.
 
