@@ -864,11 +864,11 @@ impl Analyzer {
                                 issues.push(EventIssue {
                                     event_name: event_name.clone(),
                                     issue_type: "inconsistent_schema".to_string(),
+                                    location: location.clone(),
                                     message: format!(
                                         "Event '{}' has inconsistent topic count. Previous: {}, Current: {}",
                                         event_name, prev_count, topic_count
                                     ),
-                                    location: location.clone(),
                                 });
                             }
                         }
@@ -889,8 +889,8 @@ impl Analyzer {
                             issues.push(EventIssue {
                                 event_name,
                                 issue_type: "optimizable_topic".to_string(),
-                                message: "Consider using symbol_short! for short topic names to save gas.".to_string(),
                                 location: format!("line {}", line_num + 1),
+                                message: "Consider using symbol_short! for short topic names to save gas.".to_string(),
                             });
                         }
                     }
