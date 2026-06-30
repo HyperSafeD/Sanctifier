@@ -410,33 +410,6 @@ impl std::fmt::Display for CustomRuleValidationError {
     }
 }
 
-/// Project-level configuration loaded from `.sanctify.toml`.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SanctifyConfig {
-    /// Paths to skip during directory walking.
-    #[serde(default = "default_ignore_paths")]
-    pub ignore_paths: Vec<String>,
-    /// Names of enabled built-in rules.
-    #[serde(default = "default_enabled_rules")]
-    pub enabled_rules: Vec<String>,
-    /// Ledger-entry size limit in bytes.
-    #[serde(default = "default_ledger_limit")]
-    pub ledger_limit: usize,
-    /// Fraction of `ledger_limit` at which an *approaching* warning fires.
-    #[serde(default = "default_approaching_threshold")]
-    pub approaching_threshold: f64,
-    /// When `true`, use a tighter threshold for size warnings.
-    #[serde(default)]
-    pub strict_mode: bool,
-    /// User-defined regex rules.
-    #[serde(default)]
-    pub custom_rules: Vec<CustomRule>,
-}
-
-fn default_ignore_paths() -> Vec<String> {
-    vec!["target".to_string(), ".git".to_string()]
-}
-
 #[derive(Debug, Serialize, Clone)]
 pub struct GasEstimation {
     pub function_name: String,
@@ -517,6 +490,7 @@ impl Analyzer {
                         rule_name: rule.name.clone(),
                         line: line_no + 1,
                         snippet: line.trim().to_string(),
+                        severity: rule.severity,
                     });
                 }
             }
@@ -723,11 +697,6 @@ impl Analyzer {
         visitor.collisions
     }
 
-    pub fn scan_events(&self, _source: &str) -> Vec<EventIssue> {
-        // Event scanning is not implemented in the current core engine.
-        Vec::new()
-    }
-
     pub fn scan_unhandled_results(&self, source: &str) -> Vec<UnhandledResultIssue> {
         with_panic_guard(|| {
             self.run_rule(source, "unhandled_result")
@@ -893,14 +862,13 @@ impl Analyzer {
                             if !issue_locations.contains(&issue_key) {
                                 issue_locations.insert(issue_key);
                                 issues.push(EventIssue {
-                                    function_name: "unknown".to_string(), // scan_events_impl is regex-based, function context is limited
                                     event_name: event_name.clone(),
-                                    issue_type: EventIssueType::InconsistentSchema,
+                                    issue_type: "inconsistent_schema".to_string(),
+                                    location: location.clone(),
                                     message: format!(
                                         "Event '{}' has inconsistent topic count. Previous: {}, Current: {}",
                                         event_name, prev_count, topic_count
                                     ),
-                                    location: location.clone(),
                                 });
                             }
                         }
@@ -919,11 +887,10 @@ impl Analyzer {
                         if !issue_locations.contains(&issue_key) {
                             issue_locations.insert(issue_key);
                             issues.push(EventIssue {
-                                function_name: "unknown".to_string(),
                                 event_name,
-                                issue_type: EventIssueType::OptimizableTopic,
-                                message: "Consider using symbol_short! for short topic names to save gas.".to_string(),
+                                issue_type: "optimizable_topic".to_string(),
                                 location: format!("line {}", line_num + 1),
+                                message: "Consider using symbol_short! for short topic names to save gas.".to_string(),
                             });
                         }
                     }
@@ -1002,73 +969,6 @@ impl Analyzer {
             suggestions: Vec::new(),
         };
 
-    /// Validate custom rules before executing them (S007 UX improvement).
-    ///
-    /// Returns a list of [`CustomRuleValidationError`] for every rule whose
-    /// regex pattern fails to compile or whose name is empty.  An empty return
-    /// value means all rules are ready to run.  Call this once at startup so
-    /// broken configuration is surfaced to the user with a clear message rather
-    /// than silently dropped during analysis.
-    ///
-    /// # Example
-    /// ```rust,ignore
-    /// let errors = analyzer.validate_custom_rules(&config.custom_rules);
-    /// if !errors.is_empty() {
-    ///     for e in &errors { eprintln!("Config error: {e}"); }
-    ///     std::process::exit(1);
-    /// }
-    /// ```
-    pub fn validate_custom_rules(
-        &self,
-        rules: &[CustomRule],
-    ) -> Vec<CustomRuleValidationError> {
-        use regex::Regex;
-        let mut errors = Vec::new();
-        for rule in rules {
-            if rule.name.trim().is_empty() {
-                errors.push(CustomRuleValidationError {
-                    rule_name: "<unnamed>".to_string(),
-                    message: "rule name must not be empty".to_string(),
-                });
-            }
-            if rule.pattern.is_empty() {
-                errors.push(CustomRuleValidationError {
-                    rule_name: rule.name.clone(),
-                    message: "pattern must not be empty — use a non-empty regex string".to_string(),
-                });
-            } else if let Err(e) = Regex::new(&rule.pattern) {
-                errors.push(CustomRuleValidationError {
-                    rule_name: rule.name.clone(),
-                    message: format!("invalid regex pattern '{}': {}", rule.pattern, e),
-                });
-            }
-        }
-        errors
-    }
-
-    /// Run regex-based custom rules from config. Returns matches with line and snippet.
-    ///
-    /// Rules with invalid regex patterns are skipped silently. For upfront
-    /// validation that surfaces configuration errors, call
-    /// [`Analyzer::validate_custom_rules`] first.
-    pub fn analyze_custom_rules(&self, source: &str, rules: &[CustomRule]) -> Vec<CustomRuleMatch> {
-        use regex::Regex;
-
-        let mut matches = Vec::new();
-        for rule in rules {
-            let re = match Regex::new(&rule.pattern) {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
-            for (line_no, line) in source.lines().enumerate() {
-                let line_num = line_no + 1;
-                if re.find(line).is_some() {
-                    matches.push(CustomRuleMatch {
-                        rule_name: rule.name.clone(),
-                        line: line_num,
-                        snippet: line.trim().to_string(),
-                        severity: rule.severity,
-                    });
         // Collect #[contracttype] storage types
         for item in &file.items {
             if let Item::Struct(s) = item {
@@ -1173,6 +1073,50 @@ impl Analyzer {
         }
 
         report
+    }
+
+    /// Validate custom rules before executing them (S007 UX improvement).
+    ///
+    /// Returns a list of [`CustomRuleValidationError`] for every rule whose
+    /// regex pattern fails to compile or whose name is empty.  An empty return
+    /// value means all rules are ready to run.  Call this once at startup so
+    /// broken configuration is surfaced to the user with a clear message rather
+    /// than silently dropped during analysis.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let errors = analyzer.validate_custom_rules(&config.custom_rules);
+    /// if !errors.is_empty() {
+    ///     for e in &errors { eprintln!("Config error: {e}"); }
+    ///     std::process::exit(1);
+    /// }
+    /// ```
+    pub fn validate_custom_rules(
+        &self,
+        rules: &[CustomRule],
+    ) -> Vec<CustomRuleValidationError> {
+        use regex::Regex;
+        let mut errors = Vec::new();
+        for rule in rules {
+            if rule.name.trim().is_empty() {
+                errors.push(CustomRuleValidationError {
+                    rule_name: "<unnamed>".to_string(),
+                    message: "rule name must not be empty".to_string(),
+                });
+            }
+            if rule.pattern.is_empty() {
+                errors.push(CustomRuleValidationError {
+                    rule_name: rule.name.clone(),
+                    message: "pattern must not be empty — use a non-empty regex string".to_string(),
+                });
+            } else if let Err(e) = Regex::new(&rule.pattern) {
+                errors.push(CustomRuleValidationError {
+                    rule_name: rule.name.clone(),
+                    message: format!("invalid regex pattern '{}': {}", rule.pattern, e),
+                });
+            }
+        }
+        errors
     }
 
     fn fn_has_auth(&self, block: &syn::Block) -> bool {

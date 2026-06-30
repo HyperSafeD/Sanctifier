@@ -37,6 +37,7 @@ chrono = { version = "0.4", features = ["serde"] }
 criterion = "0.5.1"
 insta = { version = "1.40", features = ["json", "redactions"] }
 serde_json = "1.0"
+proptest = "1.4"
 
 [[bench]]
 name = "benchmark"
