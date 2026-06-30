@@ -21,6 +21,7 @@ members = [
     "contracts/vesting",
     "contracts/benchmark",
     "contracts/deposit-withdraw",
+    "contracts/sep41-compliance",
 
 ]
 resolver = "2"
