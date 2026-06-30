@@ -1,0 +1,18 @@
+[package]
+name = "sep41-compliance"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Standardized SEP-41 token-interface compliance suite run against every Sanctifier token contract."
+
+# This crate carries no runtime library of its own — it exists purely to host
+# the `cargo test -p sep41-compliance` conformance suite. The reusable harness
+# lives in `sanctifier-test-support::sep41_compliance`.
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+sanctifier-test-support = { workspace = true }
+
+[dev-dependencies]
+sanctifier-test-support = { workspace = true }

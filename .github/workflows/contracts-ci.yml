@@ -53,6 +53,37 @@ jobs:
         run: cargo check --workspace --locked
 
   # -------------------------------------------------------------------------
+  # SEP-41 compliance: one standardized conformance suite that every SEP-41
+  # token contract must pass. Its dependency tree is `syn`-only (no Z3), so
+  # this job stays fast and self-contained.
+  # -------------------------------------------------------------------------
+  sep41-compliance:
+    name: SEP-41 compliance suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-sep41-compliance-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-sep41-compliance-
+
+      - name: Run SEP-41 compliance suite
+        run: cargo test -p sep41-compliance
+
+  # -------------------------------------------------------------------------
   # Job 1: check + clippy + test for every contract in the workspace.
   # Uses fail-fast: false so a single failure surfaces all broken contracts.
   # -------------------------------------------------------------------------
