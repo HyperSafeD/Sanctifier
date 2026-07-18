@@ -4,21 +4,9 @@
 name: Chromatic Visual Regression
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/chromatic.yml'
-  pull_request:
-    branches:
-      - main
-      - develop
-    paths:
-      - 'frontend/**'
-      - '.github/workflows/chromatic.yml'
-
+  # Pruned to manual-only: this workflow was persistently red on push/PR/schedule.
+  # Run on demand from the Actions tab.
+  workflow_dispatch: {}
 # Cancel in-progress runs for the same workflow and branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}

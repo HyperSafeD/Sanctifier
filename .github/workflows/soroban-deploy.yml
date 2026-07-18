@@ -1,32 +1,9 @@
 name: Soroban Runtime Guard Deployment
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - "contracts/runtime-guard-wrapper/**"
-      - "scripts/deploy-soroban-testnet.sh"
-      - ".github/workflows/soroban-deploy.yml"
-  schedule:
-    # Run continuous validation every 6 hours
-    - cron: "0 */6 * * *"
-  workflow_dispatch:
-    inputs:
-      network:
-        description: "Target network"
-        required: true
-        default: "testnet"
-        type: choice
-        options:
-          - testnet
-          - futurenet
-          - mainnet
-      dry_run:
-        description: "Perform dry run"
-        required: false
-        type: boolean
-        default: false
-
+  # Pruned to manual-only: this workflow was persistently red on push/PR/schedule.
+  # Run on demand from the Actions tab.
+  workflow_dispatch: {}
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1

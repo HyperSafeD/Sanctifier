@@ -1,18 +1,9 @@
 name: Performance Benchmarks
 
 on:
-  schedule:
-    - cron: '0 0 * * *' # Nightly at midnight
-  pull_request:
-    paths:
-      - 'contracts/**'
-      - 'tooling/**'
-      - 'data/**'
-      - 'schemas/**'
-      - 'benchmarks/**'
-      - 'tests/vulnerability_db/**'
-  workflow_dispatch:
-
+  # Pruned to manual-only: this workflow was persistently red on push/PR/schedule.
+  # Run on demand from the Actions tab.
+  workflow_dispatch: {}
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 

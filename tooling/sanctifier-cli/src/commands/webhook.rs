@@ -15,9 +15,9 @@
 //   T5 – Secret leakage in logs.
 //        Mitigation: secret is never logged; only the HMAC hex digest is transmitted.
 
-use sha2::Sha256;
 use hmac::{Hmac, Mac};
 use serde::Serialize;
+use sha2::Sha256;
 use tracing::{info, warn};
 
 type HmacSha256 = Hmac<Sha256>;
@@ -70,8 +70,8 @@ pub fn validate_webhook_url(url: &str) -> Result<(), String> {
 /// Compute an HMAC-SHA256 signature over `body` using `secret`.
 /// Returns the hex-encoded digest prefixed with `sha256=`.
 fn hmac_signature(secret: &str, body: &[u8]) -> String {
-    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
-        .expect("HMAC accepts any key length");
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
     mac.update(body);
     let result = mac.finalize();
     let bytes = result.into_bytes();

@@ -370,7 +370,11 @@ fn load_config_for(path: &Path) -> SanctifyConfig {
                 match toml::from_str(&content) {
                     Ok(config) => return config,
                     Err(e) => {
-                        eprintln!("Error: Invalid configuration file at {}\n{}", config_path.display(), e);
+                        eprintln!(
+                            "Error: Invalid configuration file at {}\n{}",
+                            config_path.display(),
+                            e
+                        );
                         std::process::exit(1);
                     }
                 }

@@ -83,7 +83,10 @@ pub fn exec(args: VerifyDeploymentArgs) -> anyhow::Result<()> {
         };
         println!("{}", serde_json::to_string_pretty(&report)?);
         if !matched {
-            bail!("deployment verification failed for contract {}", args.contract_id);
+            bail!(
+                "deployment verification failed for contract {}",
+                args.contract_id
+            );
         }
         return Ok(());
     }
@@ -165,7 +168,10 @@ fn find_wasm(source: &std::path::Path) -> anyhow::Result<PathBuf> {
             return Ok(best.path());
         }
     }
-    bail!("no .wasm artifact found under {}/target/*/release/", source.display());
+    bail!(
+        "no .wasm artifact found under {}/target/*/release/",
+        source.display()
+    );
 }
 
 /// Fetch the WASM for `contract_id` from the network and return its SHA-256 hash.
@@ -242,11 +248,13 @@ fn sha256_hex(data: &[u8]) -> String {
     for chunk in msg.chunks(64) {
         let mut w = [W(0u32); 64];
         for i in 0..16 {
-            w[i] = W(u32::from_be_bytes(chunk[i * 4..i * 4 + 4].try_into().unwrap()));
+            w[i] = W(u32::from_be_bytes(
+                chunk[i * 4..i * 4 + 4].try_into().unwrap(),
+            ));
         }
         for i in 16..64 {
-
-            let s0 = w[i - 15].0.rotate_right(7) ^ w[i - 15].0.rotate_right(18) ^ (w[i - 15].0 >> 3);
+            let s0 =
+                w[i - 15].0.rotate_right(7) ^ w[i - 15].0.rotate_right(18) ^ (w[i - 15].0 >> 3);
             let s1 = w[i - 2].0.rotate_right(17) ^ w[i - 2].0.rotate_right(19) ^ (w[i - 2].0 >> 10);
             w[i] = w[i - 16] + W(s0) + w[i - 7] + W(s1);
         }

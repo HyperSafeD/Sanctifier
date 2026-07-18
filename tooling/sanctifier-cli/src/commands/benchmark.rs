@@ -167,7 +167,10 @@ pub fn exec(args: BenchmarkArgs) -> anyhow::Result<()> {
     if let Some(budget) = args.budget_ms {
         let exceeded: Vec<_> = timings.iter().filter(|t| t.p95_ms > budget).collect();
         if !exceeded.is_empty() {
-            eprintln!("\nError: The following rules exceeded the p95 budget of {:.2}ms:", budget);
+            eprintln!(
+                "\nError: The following rules exceeded the p95 budget of {:.2}ms:",
+                budget
+            );
             for t in exceeded {
                 eprintln!("  - {}: {:.2}ms", t.rule, t.p95_ms);
             }

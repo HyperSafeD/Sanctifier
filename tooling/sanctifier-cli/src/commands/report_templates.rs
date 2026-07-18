@@ -112,9 +112,7 @@ pub fn write_report_atomic(dest: &Path, content: &str) -> Result<(), SanctifierE
         f.flush()?;
         Ok(())
     })()
-    .map_err(|e| {
-        SanctifierError::report_write_failed(&tmp_path, &e.to_string())
-    })?;
+    .map_err(|e| SanctifierError::report_write_failed(&tmp_path, &e.to_string()))?;
 
     // Atomic rename
     fs::rename(&tmp_path, dest).map_err(|e| {
@@ -254,11 +252,20 @@ mod tests {
     fn validate_output_path_returns_correct_format() {
         let dir = tempdir().unwrap();
         let html_path = dir.path().join("r.html");
-        assert_eq!(validate_output_path(&html_path).unwrap(), ReportFormat::Html);
+        assert_eq!(
+            validate_output_path(&html_path).unwrap(),
+            ReportFormat::Html
+        );
         let md_path = dir.path().join("r.md");
-        assert_eq!(validate_output_path(&md_path).unwrap(), ReportFormat::Markdown);
+        assert_eq!(
+            validate_output_path(&md_path).unwrap(),
+            ReportFormat::Markdown
+        );
         let json_path = dir.path().join("r.json");
-        assert_eq!(validate_output_path(&json_path).unwrap(), ReportFormat::Json);
+        assert_eq!(
+            validate_output_path(&json_path).unwrap(),
+            ReportFormat::Json
+        );
     }
 
     // ── write_report_atomic ───────────────────────────────────────────────────
@@ -286,6 +293,9 @@ mod tests {
         let dest = dir.path().join("r.md");
         write_report_atomic(&dest, "data").unwrap();
         let tmp = dir.path().join(".r.md.tmp");
-        assert!(!tmp.exists(), "temp file should be removed after atomic rename");
+        assert!(
+            !tmp.exists(),
+            "temp file should be removed after atomic rename"
+        );
     }
 }
