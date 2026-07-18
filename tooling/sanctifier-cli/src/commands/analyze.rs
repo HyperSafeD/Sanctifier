@@ -206,7 +206,14 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
             Err(_) => continue,
         };
         let file_str = file_path.display().to_string();
-        eprintln!("Analyzing {}", file_str);
+        // In JSON/SARIF log modes stderr must stay structured, so route the
+        // progress line through the tracing subscriber. In text mode print it
+        // directly so it is always visible regardless of the log level.
+        if args.format == "json" || args.format == "sarif" {
+            tracing::info!(target: "sanctifier", "Analyzing {}", file_str);
+        } else {
+            eprintln!("Analyzing {}", file_str);
+        }
         tracing::debug!(target: "sanctifier", "Scanning Rust source file: {}", file_str);
         for v in registry.run_all(&content) {
             all_violations.push((file_str.clone(), v));
@@ -655,7 +662,11 @@ pub(crate) fn load_config(path: &Path) -> SanctifyConfig {
                 match toml::from_str(&content) {
                     Ok(config) => return config,
                     Err(e) => {
-                        eprintln!("Error: Invalid configuration file at {}\n{}", config_path.display(), e);
+                        eprintln!(
+                            "Error: Invalid configuration file at {}\n{}",
+                            config_path.display(),
+                            e
+                        );
                         std::process::exit(1);
                     }
                 }
@@ -715,7 +726,10 @@ pub(crate) fn normalize_cli_path(p: PathBuf) -> PathBuf {
     };
 
     // Prevent directory traversal escapes (security default)
-    if sanitized.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+    if sanitized
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
         eprintln!("Warning: Path traversal detected. Falling back to current directory.");
         return PathBuf::from(".");
     }
@@ -725,7 +739,9 @@ pub(crate) fn normalize_cli_path(p: PathBuf) -> PathBuf {
 #[cfg(windows)]
 pub(crate) fn normalize_cli_path(p: PathBuf) -> PathBuf {
     // Prevent directory traversal escapes (security default)
-    if p.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+    if p.components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
         eprintln!("Warning: Path traversal detected. Falling back to current directory.");
         return PathBuf::from(".");
     }

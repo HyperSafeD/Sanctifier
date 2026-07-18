@@ -104,10 +104,12 @@ impl OutputFormatter {
 pub fn exec(args: InitArgs, path: Option<PathBuf>) -> anyhow::Result<()> {
     use std::env;
 
-    // Get target directory
+    // Get target directory. Prefer an explicit override, then the positional
+    // `path` argument (which defaults to "."), falling back to the current dir.
     let target_dir = match path {
         Some(p) => p,
-        None => env::current_dir()?,
+        None if args.path.as_os_str().is_empty() => env::current_dir()?,
+        None => args.path.clone(),
     };
 
     // Ensure directory exists

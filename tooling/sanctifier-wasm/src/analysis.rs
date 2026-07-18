@@ -199,6 +199,6 @@ mod tests {
         let source_code = "fn buggy_func() { panic!(\"error\"); }";
         let result = run_analysis_default(source_code);
         // We assert that the findings include some location info that could be mapped via source-maps
-        assert!(result.summary.total >= 0); // Just a sanity check for the fixture
+        let _ = result.summary.total; // Just a sanity check for the fixture
     }
 }
