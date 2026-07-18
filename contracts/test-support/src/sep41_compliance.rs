@@ -201,7 +201,11 @@ impl ComplianceReport {
     pub fn render(&self, contract_name: &str) -> String {
         let mut out = format!(
             "SEP-41 compliance report for `{contract_name}`: {} ({} / {} functions verified)\n",
-            if self.compliant { "COMPLIANT" } else { "NON-COMPLIANT" },
+            if self.compliant {
+                "COMPLIANT"
+            } else {
+                "NON-COMPLIANT"
+            },
             self.verified.len(),
             REQUIRED_FUNCTION_COUNT,
         );
@@ -273,7 +277,10 @@ pub fn check(source: &str) -> ComplianceReport {
 
     for expected in &SEP41_FUNCTIONS {
         let expected_sig = render_expected(expected);
-        match methods.iter().find(|(name, _)| name.as_str() == expected.name) {
+        match methods
+            .iter()
+            .find(|(name, _)| name.as_str() == expected.name)
+        {
             None => issues.push(ComplianceIssue {
                 function: expected.name.to_string(),
                 kind: IssueKind::MissingFunction,

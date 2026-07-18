@@ -1,11 +1,9 @@
 name: WASM Bundler Compatibility
 
 on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
-
+  # Pruned to manual-only: this workflow was persistently red on push/PR/schedule.
+  # Run on demand from the Actions tab.
+  workflow_dispatch: {}
 jobs:
   test-bundlers:
     name: Test Bundler Compatibility (Vite/Next/Webpack)

@@ -152,7 +152,10 @@ mod tests {
             }
         "#;
         let parsed = parse_source(src).unwrap();
-        assert!(parsed.file.items.len() >= 3, "expected ≥3 items (use, struct, impl)");
+        assert!(
+            parsed.file.items.len() >= 3,
+            "expected ≥3 items (use, struct, impl)"
+        );
     }
 
     #[test]

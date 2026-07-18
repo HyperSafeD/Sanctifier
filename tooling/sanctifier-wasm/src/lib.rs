@@ -189,7 +189,6 @@ mod tests {
     use super::*;
     use crate::constants::{MAX_SOURCE_SIZE, MEMORY_BUDGET_BYTES, MEMORY_OVERHEAD_FACTOR};
     use crate::validation::{check_memory_budget, validate_source};
-    use serde_json;
 
     // ── validate_source ───────────────────────────────────────────────────────
 
@@ -386,7 +385,10 @@ mod tests {
             "repeated analysis must produce the same finding count"
         );
         for (a, b) in first.findings.iter().zip(second.findings.iter()) {
-            assert_eq!(a.code, b.code, "finding codes must be identical across runs");
+            assert_eq!(
+                a.code, b.code,
+                "finding codes must be identical across runs"
+            );
             assert_eq!(
                 a.message, b.message,
                 "finding messages must be identical across runs"
@@ -398,7 +400,10 @@ mod tests {
     fn default_config_json_is_valid_json() {
         // default_config_json() is defined in lib.rs and is accessible via super::*.
         let json_str = default_config_json();
-        assert!(!json_str.is_empty(), "default config JSON must not be empty");
+        assert!(
+            !json_str.is_empty(),
+            "default config JSON must not be empty"
+        );
         let parsed: serde_json::Result<serde_json::Value> = serde_json::from_str(&json_str);
         assert!(
             parsed.is_ok(),
@@ -411,8 +416,7 @@ mod tests {
         let result_plain = analysis::run_analysis_default(CLEAN_CONTRACT);
         let result_progressive = analysis::run_analysis_with_progress(CLEAN_CONTRACT);
         assert_eq!(
-            result_plain.summary.total,
-            result_progressive.result.summary.total,
+            result_plain.summary.total, result_progressive.result.summary.total,
             "progress-aware and plain analysis must agree on total findings"
         );
     }
@@ -423,7 +427,10 @@ mod tests {
         let percents: Vec<u8> = progressive.events.iter().map(|e| e.percent).collect();
         let mut sorted = percents.clone();
         sorted.sort_unstable();
-        assert_eq!(percents, sorted, "progress events must be in ascending percent order");
+        assert_eq!(
+            percents, sorted,
+            "progress events must be in ascending percent order"
+        );
     }
 
     #[test]

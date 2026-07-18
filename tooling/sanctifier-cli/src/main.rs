@@ -18,8 +18,9 @@ struct Cli {
     #[arg(long, global = true)]
     pub no_color: bool,
 
-    /// Opt-in to anonymous telemetry reporting for this invocation
-    #[arg(long, global = true)]
+    /// Opt-in to anonymous telemetry reporting for this invocation.
+    /// Not global: the `init` subcommand has its own `--telemetry <mode>` option.
+    #[arg(long)]
     pub telemetry: bool,
 
     #[command(subcommand)]
@@ -49,7 +50,11 @@ pub enum Commands {
     /// Explain a finding code (e.g. S001, S003) with details and remediation
     Explain(commands::explain::ExplainArgs),
     /// Check for and download the latest Sanctifier binary
-    Update,
+    Update {
+        /// Report what would be updated without invoking `cargo install`
+        #[arg(long)]
+        dry_run: bool,
+    },
     /// Self-update with checksum verification via GitHub Releases
     Upgrade(commands::upgrade::UpgradeArgs),
     /// Detect reentrancy vulnerabilities (state mutation before external call)
@@ -122,7 +127,7 @@ fn run() -> anyhow::Result<()> {
         Commands::Complexity(args) => commands::complexity::exec(args),
         Commands::Fix(args) => commands::fix::exec(args),
         Commands::Explain(args) => commands::explain::exec(args),
-        Commands::Update => commands::update::exec(),
+        Commands::Update { dry_run } => commands::update::exec(dry_run),
         Commands::Upgrade(args) => commands::upgrade::exec(args),
         Commands::Reentrancy(args) => commands::reentrancy::exec(args),
         Commands::Verify(args) => commands::verify::exec(args),

@@ -184,16 +184,18 @@ pub fn discover_contracts(file: &File) -> Vec<DiscoveredContract> {
             continue;
         }
 
-        let struct_name = type_to_name(&impl_block.self_ty)
-            .unwrap_or_else(|| "<unknown>".to_string());
+        let struct_name =
+            type_to_name(&impl_block.self_ty).unwrap_or_else(|| "<unknown>".to_string());
 
-        let entry = by_name.entry(struct_name.clone()).or_insert_with(|| DiscoveredContract {
-            struct_name: struct_name.clone(),
-            has_contract_attr: contract_struct_names.contains(&struct_name),
-            has_contractimpl: false,
-            fns: vec![],
-            storage_types: storage_types.clone(),
-        });
+        let entry = by_name
+            .entry(struct_name.clone())
+            .or_insert_with(|| DiscoveredContract {
+                struct_name: struct_name.clone(),
+                has_contract_attr: contract_struct_names.contains(&struct_name),
+                has_contractimpl: false,
+                fns: vec![],
+                storage_types: storage_types.clone(),
+            });
         entry.has_contractimpl = true;
 
         for impl_item in &impl_block.items {
@@ -387,7 +389,10 @@ mod tests {
         "#,
         );
         let contracts = discover_contracts(&file);
-        let names: Vec<&str> = contracts[0].public_functions().map(|f| f.name.as_str()).collect();
+        let names: Vec<&str> = contracts[0]
+            .public_functions()
+            .map(|f| f.name.as_str())
+            .collect();
         assert_eq!(names, vec!["do_work"]);
     }
 
@@ -439,7 +444,11 @@ mod tests {
         );
         let contracts = discover_contracts(&file);
         assert_eq!(contracts[0].storage_types.len(), 2);
-        let names: Vec<&str> = contracts[0].storage_types.iter().map(|t| t.name.as_str()).collect();
+        let names: Vec<&str> = contracts[0]
+            .storage_types
+            .iter()
+            .map(|t| t.name.as_str())
+            .collect();
         assert!(names.contains(&"DataKey"));
         assert!(names.contains(&"Config"));
     }
@@ -463,7 +472,12 @@ mod tests {
         let contracts = discover_contracts(&file);
         assert_eq!(contracts.len(), 2);
         for c in &contracts {
-            assert_eq!(c.storage_types.len(), 1, "contract {} missing storage type", c.struct_name);
+            assert_eq!(
+                c.storage_types.len(),
+                1,
+                "contract {} missing storage type",
+                c.struct_name
+            );
         }
     }
 

@@ -85,8 +85,14 @@ fn minimal_contract_fixture_discovers_one_contract() {
     assert_eq!(contracts.len(), 1);
     let c = &contracts[0];
     assert_eq!(c.struct_name, "MinimalContract");
-    assert!(c.has_contract_attr, "MinimalContract must carry #[contract]");
-    assert!(c.has_contractimpl, "MinimalContract must have a #[contractimpl] block");
+    assert!(
+        c.has_contract_attr,
+        "MinimalContract must carry #[contract]"
+    );
+    assert!(
+        c.has_contractimpl,
+        "MinimalContract must have a #[contractimpl] block"
+    );
 }
 
 #[test]
@@ -96,7 +102,11 @@ fn minimal_contract_exposes_exactly_one_public_function() {
     let contracts = contract_discovery::discover_contracts(&file);
 
     let fns: Vec<_> = contracts[0].public_functions().collect();
-    assert_eq!(fns.len(), 1, "expected exactly one non-reserved public function");
+    assert_eq!(
+        fns.len(),
+        1,
+        "expected exactly one non-reserved public function"
+    );
     assert_eq!(fns[0].name, "ping");
     assert!(!fns[0].is_reserved);
 }
@@ -165,7 +175,10 @@ fn multi_contract_token_a_has_three_public_functions() {
     let file = parser::parse_source(&source).unwrap().file;
     let contracts = contract_discovery::discover_contracts(&file);
 
-    let token_a = contracts.iter().find(|c| c.struct_name == "TokenA").unwrap();
+    let token_a = contracts
+        .iter()
+        .find(|c| c.struct_name == "TokenA")
+        .unwrap();
     let fns: Vec<_> = token_a.public_functions().collect();
     assert_eq!(fns.len(), 3, "expected initialize, balance, transfer");
 }
@@ -176,7 +189,10 @@ fn multi_contract_vault_b_has_two_public_functions() {
     let file = parser::parse_source(&source).unwrap().file;
     let contracts = contract_discovery::discover_contracts(&file);
 
-    let vault = contracts.iter().find(|c| c.struct_name == "VaultB").unwrap();
+    let vault = contracts
+        .iter()
+        .find(|c| c.struct_name == "VaultB")
+        .unwrap();
     let fns: Vec<_> = vault.public_functions().collect();
     assert_eq!(fns.len(), 2, "expected deposit and total");
 }
@@ -200,10 +216,19 @@ fn storage_types_fixture_collects_both_contracttype_items() {
     let contracts = contract_discovery::discover_contracts(&file);
 
     assert_eq!(contracts[0].storage_types.len(), 2);
-    let type_names: Vec<&str> =
-        contracts[0].storage_types.iter().map(|t| t.name.as_str()).collect();
-    assert!(type_names.contains(&"DataKey"), "DataKey missing from {type_names:?}");
-    assert!(type_names.contains(&"Config"), "Config missing from {type_names:?}");
+    let type_names: Vec<&str> = contracts[0]
+        .storage_types
+        .iter()
+        .map(|t| t.name.as_str())
+        .collect();
+    assert!(
+        type_names.contains(&"DataKey"),
+        "DataKey missing from {type_names:?}"
+    );
+    assert!(
+        type_names.contains(&"Config"),
+        "Config missing from {type_names:?}"
+    );
 }
 
 #[test]

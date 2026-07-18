@@ -170,31 +170,36 @@ fn prove_fixed_point_z3(
                     "missing model for SAT result",
                 ))?;
 
-            let multiplicand_value = model
-                .eval(&multiplicand, true)
-                .ok_or(FixedPointProofError::SolverFailure(
-                    "missing multiplicand witness",
-                ))?;
-            let multiplier_value = model
-                .eval(&multiplier, true)
-                .ok_or(FixedPointProofError::SolverFailure(
-                    "missing multiplier witness",
-                ))?;
-            let divisor_value = model
-                .eval(&divisor, true)
-                .ok_or(FixedPointProofError::SolverFailure(
-                    "missing divisor witness",
-                ))?;
-            let product_value = model
-                .eval(&product, true)
-                .ok_or(FixedPointProofError::SolverFailure(
-                    "missing product witness",
-                ))?;
-            let quotient_value = model
-                .eval(&quotient, true)
-                .ok_or(FixedPointProofError::SolverFailure(
-                    "missing quotient witness",
-                ))?;
+            let multiplicand_value =
+                model
+                    .eval(&multiplicand, true)
+                    .ok_or(FixedPointProofError::SolverFailure(
+                        "missing multiplicand witness",
+                    ))?;
+            let multiplier_value =
+                model
+                    .eval(&multiplier, true)
+                    .ok_or(FixedPointProofError::SolverFailure(
+                        "missing multiplier witness",
+                    ))?;
+            let divisor_value =
+                model
+                    .eval(&divisor, true)
+                    .ok_or(FixedPointProofError::SolverFailure(
+                        "missing divisor witness",
+                    ))?;
+            let product_value =
+                model
+                    .eval(&product, true)
+                    .ok_or(FixedPointProofError::SolverFailure(
+                        "missing product witness",
+                    ))?;
+            let quotient_value =
+                model
+                    .eval(&quotient, true)
+                    .ok_or(FixedPointProofError::SolverFailure(
+                        "missing quotient witness",
+                    ))?;
 
             Ok(FixedPointProofReport {
                 function_name: spec.function_name.clone(),

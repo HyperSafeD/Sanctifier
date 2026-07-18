@@ -171,7 +171,10 @@ fn arb_fn() -> impl Strategy<Value = String> {
                 .collect();
             let ret = ret.map(|t| format!(" -> {t}")).unwrap_or_default();
             let body = body.join("\n        ");
-            format!("    pub fn {name}({}){ret} {{\n        {body}\n    }}", params.join(", "))
+            format!(
+                "    pub fn {name}({}){ret} {{\n        {body}\n    }}",
+                params.join(", ")
+            )
         })
 }
 
@@ -307,5 +310,8 @@ fn contract_arms_are_reachable() {
         assert_no_panic("pub fn f(env: Env) -> i128 { 0 }"),
         Ok("ok(findings)")
     );
-    assert_eq!(assert_no_panic("this is not rust {{{"), Ok("err(parse_error)"));
+    assert_eq!(
+        assert_no_panic("this is not rust {{{"),
+        Ok("err(parse_error)")
+    );
 }

@@ -13,9 +13,7 @@ use std::time::Instant;
 use z3::ast::Int;
 use z3::{Config, Context, SatResult, Solver};
 
-use super::types::{
-    SmtLatencyBenchmarkReport, SmtProofStrategy, SmtStrategyLatency,
-};
+use super::types::{SmtLatencyBenchmarkReport, SmtProofStrategy, SmtStrategyLatency};
 
 // ── Public API ────────────────────────────────────────────────────────────────
 

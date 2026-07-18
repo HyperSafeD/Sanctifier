@@ -89,10 +89,7 @@ impl SanctifierError {
     pub fn not_soroban_project(path: &std::path::Path) -> Self {
         Self::new(
             ErrorCode::E002,
-            format!(
-                "'{}' is not a valid Soroban project",
-                path.display()
-            ),
+            format!("'{}' is not a valid Soroban project", path.display()),
             "Ensure the directory contains a Cargo.toml that declares \
              `soroban-sdk` as a dependency. Run `sanctifier init` to scaffold \
              a new project, or pass a path to an existing Soroban contract."
@@ -151,7 +148,10 @@ impl SanctifierError {
     pub fn update_install_failed(version: &str) -> Self {
         Self::new(
             ErrorCode::E006,
-            format!("`cargo install` failed while installing sanctifier-cli v{}", version),
+            format!(
+                "`cargo install` failed while installing sanctifier-cli v{}",
+                version
+            ),
             format!(
                 "Try running `cargo install sanctifier-cli --version {version} --locked` \
                  manually to see the full error. If the Rust toolchain is out of date, \
@@ -220,7 +220,10 @@ impl SanctifierError {
     pub fn dry_run_no_changes(command: &str) -> Self {
         Self::new(
             ErrorCode::E009,
-            format!("[dry-run] '{}' would make changes but --dry-run is set", command),
+            format!(
+                "[dry-run] '{}' would make changes but --dry-run is set",
+                command
+            ),
             "Remove `--dry-run` to apply the changes, or review what would change \
              before proceeding."
                 .to_string(),
@@ -294,7 +297,8 @@ mod tests {
 
     #[test]
     fn webhook_failed_hint_mentions_secret() {
-        let err = SanctifierError::webhook_failed("https://hooks.slack.com/xxx", 3, "connection refused");
+        let err =
+            SanctifierError::webhook_failed("https://hooks.slack.com/xxx", 3, "connection refused");
         assert!(err.hint.contains("--webhook-secret"));
         assert_eq!(err.code, ErrorCode::E005);
     }
@@ -308,7 +312,8 @@ mod tests {
 
     #[test]
     fn report_write_failed_hint_includes_mkdir() {
-        let err = SanctifierError::report_write_failed(Path::new("out/report.md"), "permission denied");
+        let err =
+            SanctifierError::report_write_failed(Path::new("out/report.md"), "permission denied");
         assert!(err.hint.contains("mkdir"));
         assert_eq!(err.code, ErrorCode::E007);
     }
@@ -318,7 +323,10 @@ mod tests {
         let err = SanctifierError::dry_run_no_changes("update");
         let json = to_json(&err);
         assert_eq!(json["error"]["code"], "E009");
-        assert!(json["error"]["message"].as_str().unwrap().contains("dry-run"));
+        assert!(json["error"]["message"]
+            .as_str()
+            .unwrap()
+            .contains("dry-run"));
         assert!(!json["error"]["hint"].as_str().unwrap().is_empty());
     }
 
@@ -345,10 +353,22 @@ mod tests {
     #[test]
     fn invalid_network_hint_lists_valid_options() {
         let err = SanctifierError::invalid_network("devnet");
-        assert!(err.message.contains("devnet"), "message should echo the bad value");
-        assert!(err.hint.contains("testnet"), "hint should list valid networks");
-        assert!(err.hint.contains("futurenet"), "hint should list valid networks");
-        assert!(err.hint.contains("mainnet"), "hint should list valid networks");
+        assert!(
+            err.message.contains("devnet"),
+            "message should echo the bad value"
+        );
+        assert!(
+            err.hint.contains("testnet"),
+            "hint should list valid networks"
+        );
+        assert!(
+            err.hint.contains("futurenet"),
+            "hint should list valid networks"
+        );
+        assert!(
+            err.hint.contains("mainnet"),
+            "hint should list valid networks"
+        );
         assert_eq!(err.code, ErrorCode::E010);
     }
 

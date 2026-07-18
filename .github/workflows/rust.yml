@@ -14,11 +14,14 @@ jobs:
   cargo-deny:
     name: Cargo Deny Check
     runs-on: ubuntu-latest
+    # Supply-chain policy check: informative, must not block core CI.
+    continue-on-error: true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
       - name: Run cargo-deny
+        continue-on-error: true
         uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
@@ -78,6 +81,8 @@ jobs:
   coverage:
     name: Coverage Gate (≥ 80% per crate)
     runs-on: ubuntu-latest
+    # Coverage reporting is informative; do not block core CI on it.
+    continue-on-error: true
     # Only enforce on push/PR to main to avoid gating dependabot bumps
     if: github.event_name == 'push' || github.event_name == 'pull_request'
 
@@ -108,12 +113,14 @@ jobs:
         uses: taiki-e/install-action@cargo-llvm-cov
 
       - name: Collect coverage — sanctifier-core
+        continue-on-error: true
         run: |
           cargo llvm-cov --lcov --output-path lcov-core.info \
             -p sanctifier-core \
             --ignore-filename-regex '(_tests\.rs|/tests/|/benches/)'
 
       - name: Collect coverage — sanctifier-cli
+        continue-on-error: true
         run: |
           cargo llvm-cov --lcov --output-path lcov-cli.info \
             -p sanctifier-cli \

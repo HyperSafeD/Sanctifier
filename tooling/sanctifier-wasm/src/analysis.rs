@@ -244,8 +244,9 @@ mod tests {
         // Mock fixture test for source-map diagnostics support (Issue #547)
         let source_code = "fn buggy_func() { panic!(\"error\"); }";
         let result = run_analysis_default(source_code);
-        // We assert that the findings include some location info that could be mapped via source-maps
-        assert!(result.summary.total >= 0); // Just a sanity check for the fixture
+        // We assert that the findings include some location info that could be mapped via source-maps.
+        // `total` is an unsigned count; sanity-check it stays within a reasonable bound for the fixture.
+        assert!(result.summary.total < 10_000);
     }
 
     // ── Determinism tests (Issue #544) ────────────────────────────────────────
@@ -306,8 +307,7 @@ mod tests {
         let progressive = run_analysis_with_progress(source);
         let plain = run_analysis_default(source);
         assert_eq!(
-            progressive.result.summary.total,
-            plain.summary.total,
+            progressive.result.summary.total, plain.summary.total,
             "progressive result must match plain result"
         );
         assert_eq!(

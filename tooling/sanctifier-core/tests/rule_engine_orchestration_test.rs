@@ -351,7 +351,10 @@ fn custom_regex_rule_fires_on_matching_pattern() {
         pub fn danger() { unsafe { let _x = 1; } }
     "#;
     let matches = a.analyze_custom_rules(source);
-    assert!(!matches.is_empty(), "custom regex rule must fire for `unsafe {{}}` blocks");
+    assert!(
+        !matches.is_empty(),
+        "custom regex rule must fire for `unsafe {{}}` blocks"
+    );
     assert!(matches.iter().all(|m| m.rule_name == "no_unsafe_test"));
 }
 

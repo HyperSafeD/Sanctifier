@@ -21,7 +21,11 @@ fn write_contract(dir: &tempfile::TempDir, name: &str, src: &str) -> std::path::
 #[test]
 fn callgraph_empty_contract_has_no_edges() {
     let dir = tempdir().unwrap();
-    let src = write_contract(&dir, "empty.rs", "pub struct MyContract;\nimpl MyContract {}");
+    let src = write_contract(
+        &dir,
+        "empty.rs",
+        "pub struct MyContract;\nimpl MyContract {}",
+    );
     let dot = dir.path().join("out.dot");
 
     Command::cargo_bin("sanctifier")
@@ -35,7 +39,10 @@ fn callgraph_empty_contract_has_no_edges() {
         .stdout(predicate::str::contains("0 edge(s)"));
 
     let content = fs::read_to_string(&dot).unwrap();
-    assert!(content.contains("digraph ContractCallGraph"), "must have digraph header");
+    assert!(
+        content.contains("digraph ContractCallGraph"),
+        "must have digraph header"
+    );
     assert!(
         !content.contains(" -> "),
         "empty contract must not produce edges"
@@ -206,7 +213,10 @@ impl Router {
         content.trim_end().ends_with('}'),
         "DOT file must end with closing brace"
     );
-    assert!(content.contains("[label="), "edges must carry label attributes");
+    assert!(
+        content.contains("[label="),
+        "edges must carry label attributes"
+    );
 }
 
 /// Two separate impl blocks (two contracts) in one file each produce edges
@@ -254,6 +264,12 @@ impl Beta {
         .stdout(predicate::str::contains("2 edge(s)"));
 
     let content = fs::read_to_string(&dot).unwrap();
-    assert!(content.contains("\"Alpha\" -> \"target\""), "Alpha edge missing");
-    assert!(content.contains("\"Beta\" -> \"target\""), "Beta edge missing");
+    assert!(
+        content.contains("\"Alpha\" -> \"target\""),
+        "Alpha edge missing"
+    );
+    assert!(
+        content.contains("\"Beta\" -> \"target\""),
+        "Beta edge missing"
+    );
 }

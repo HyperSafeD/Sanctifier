@@ -1091,10 +1091,7 @@ impl Analyzer {
     ///     std::process::exit(1);
     /// }
     /// ```
-    pub fn validate_custom_rules(
-        &self,
-        rules: &[CustomRule],
-    ) -> Vec<CustomRuleValidationError> {
+    pub fn validate_custom_rules(&self, rules: &[CustomRule]) -> Vec<CustomRuleValidationError> {
         use regex::Regex;
         let mut errors = Vec::new();
         for rule in rules {

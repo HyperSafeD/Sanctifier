@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BatchSize, Criterion};
-use sanctifier_core::{Analyzer, SanctifyConfig, SizeWarningLevel};
+use sanctifier_core::{Analyzer, SanctifyConfig};
 
 const COMPLEX_CONTRACT_PAYLOAD: &str = r#"
 #![no_std]

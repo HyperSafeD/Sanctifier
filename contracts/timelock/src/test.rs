@@ -87,7 +87,10 @@ fn test_execute_unsafe_bypasses_delay() {
 
     let result: Val = timelock.execute_unsafe(&executor, &mock_id, &fn_name, &args, &salt);
     let result_u32: u32 = result.into_val(&env);
-    assert_eq!(result_u32, 21u32, "Unsafe execution succeeded before delay elapsed");
+    assert_eq!(
+        result_u32, 21u32,
+        "Unsafe execution succeeded before delay elapsed"
+    );
 }
 
 #[test]
@@ -129,7 +132,10 @@ fn test_safe_execute_enforces_delay() {
     // Now execute succeeds
     let result: Val = timelock.execute(&executor, &mock_id, &fn_name, &args, &salt);
     let result_u32: u32 = result.into_val(&env);
-    assert_eq!(result_u32, 31u32, "Safe execution succeeded after delay elapsed");
+    assert_eq!(
+        result_u32, 31u32,
+        "Safe execution succeeded after delay elapsed"
+    );
 }
 
 #[test]

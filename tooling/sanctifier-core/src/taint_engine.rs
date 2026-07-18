@@ -83,7 +83,10 @@ pub fn analyze(body: &syn::Block, sources: HashSet<String>) -> Vec<TaintFinding>
 
 /// Applies one basic block's statements to an incoming fact set, returning
 /// the outgoing fact set and any sink findings observed along the way.
-fn transfer(block: &BasicBlock, in_facts: &HashSet<String>) -> (HashSet<String>, Vec<TaintFinding>) {
+fn transfer(
+    block: &BasicBlock,
+    in_facts: &HashSet<String>,
+) -> (HashSet<String>, Vec<TaintFinding>) {
     let mut facts = in_facts.clone();
     let mut findings = Vec::new();
 
@@ -118,7 +121,11 @@ fn transfer(block: &BasicBlock, in_facts: &HashSet<String>) -> (HashSet<String>,
     (facts, findings)
 }
 
-fn process_top_level_expr(expr: &Expr, facts: &mut HashSet<String>, findings: &mut Vec<TaintFinding>) {
+fn process_top_level_expr(
+    expr: &Expr,
+    facts: &mut HashSet<String>,
+    findings: &mut Vec<TaintFinding>,
+) {
     if let Expr::Assign(a) = expr {
         scan_expr(&a.right, facts, findings);
         let tainted = expr_is_tainted(&a.right, facts);
@@ -320,7 +327,10 @@ fn is_storage_write(method: &str, receiver: &Expr) -> bool {
         return false;
     }
     let s = quote::quote!(#receiver).to_string();
-    s.contains("storage") || s.contains("persistent") || s.contains("temporary") || s.contains("instance")
+    s.contains("storage")
+        || s.contains("persistent")
+        || s.contains("temporary")
+        || s.contains("instance")
 }
 
 fn is_external_call(method: &str) -> bool {
@@ -425,10 +435,7 @@ mod tests {
 
     #[test]
     fn external_call_sink_is_detected() {
-        let findings = analyze_src(
-            "env.invoke_contract(&target, &fn_name, args);",
-            &["args"],
-        );
+        let findings = analyze_src("env.invoke_contract(&target, &fn_name, args);", &["args"]);
         assert!(!findings.is_empty());
         assert_eq!(findings[0].sink, "invoke_contract");
     }

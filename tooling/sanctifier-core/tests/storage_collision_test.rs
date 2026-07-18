@@ -140,7 +140,10 @@ fn collision_finding_message_is_non_empty() {
     "#;
     let collisions = analyzer.scan_storage_collisions(source);
     for c in &collisions {
-        assert!(!c.message.is_empty(), "every collision finding must carry a message");
+        assert!(
+            !c.message.is_empty(),
+            "every collision finding must carry a message"
+        );
     }
 }
 

@@ -280,11 +280,7 @@ fn expr_contains_clamp(expr: &syn::Expr) -> bool {
         }
         syn::Expr::Reference(r) => expr_contains_clamp(&r.expr),
         syn::Expr::Paren(p) => expr_contains_clamp(&p.expr),
-        syn::Expr::Range(r) => r
-            .end
-            .as_deref()
-            .map(expr_contains_clamp)
-            .unwrap_or(false),
+        syn::Expr::Range(r) => r.end.as_deref().map(expr_contains_clamp).unwrap_or(false),
         _ => false,
     }
 }

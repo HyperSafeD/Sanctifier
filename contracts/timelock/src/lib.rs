@@ -61,7 +61,7 @@ pub enum DataKey {
     Proposer(Address),
     Executor(Address),
     Canceller(Address),
-    Proposal(BytesN<32>), // Hash -> ReadyTimestamp
+    Proposal(BytesN<32>),       // Hash -> ReadyTimestamp
     ProposalUnsafe(BytesN<32>), // Hash -> ScheduledTimestamp (for unsafe version)
 }
 
@@ -237,9 +237,9 @@ impl TimelockController {
     }
 
     /// ⚠️ VULNERABLE VERSION: Executes without enforcing the time delay.
-    /// 
+    ///
     /// This function demonstrates a common vulnerability where a call can be executed
-    /// immediately without waiting for the scheduled delay to elapse. An attacker 
+    /// immediately without waiting for the scheduled delay to elapse. An attacker
     /// can bypass the timelock mechanism entirely.
     ///
     /// **DO NOT USE IN PRODUCTION** — this is for teaching and vulnerability detection.
@@ -258,7 +258,7 @@ impl TimelockController {
         }
 
         let hash = compute_hash(&env, &target, &fn_name, &args, &salt);
-        
+
         // VULNERABILITY: No delay check! The proposal can be executed immediately.
         let _ready_timestamp: u64 = env
             .storage()

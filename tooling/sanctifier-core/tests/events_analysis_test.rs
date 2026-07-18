@@ -7,7 +7,7 @@
 //! * Empty / non-event source produces no findings.
 //! * Multiple distinct events with matching schemas are not flagged.
 
-use sanctifier_core::{Analyzer, EventIssueType, SanctifyConfig};
+use sanctifier_core::{Analyzer, SanctifyConfig};
 use std::fs;
 use std::path::PathBuf;
 
@@ -28,7 +28,7 @@ fn inconsistent_event_fixture_emits_schema_issue() {
 
     let schema_issues: Vec<_> = issues
         .iter()
-        .filter(|i| i.issue_type == EventIssueType::InconsistentSchema)
+        .filter(|i| i.issue_type == "inconsistent_schema")
         .collect();
     assert!(
         !schema_issues.is_empty(),
@@ -44,7 +44,7 @@ fn string_topic_fixture_emits_gas_optimization_hint() {
 
     let gas_issues: Vec<_> = issues
         .iter()
-        .filter(|i| i.issue_type == EventIssueType::OptimizableTopic)
+        .filter(|i| i.issue_type == "optimizable_topic")
         .collect();
     assert!(
         !gas_issues.is_empty(),
@@ -119,7 +119,7 @@ fn inconsistent_topic_count_detected_inline() {
     let issues = analyzer.scan_events(source);
     let schema_issues: Vec<_> = issues
         .iter()
-        .filter(|i| i.issue_type == EventIssueType::InconsistentSchema)
+        .filter(|i| i.issue_type == "inconsistent_schema")
         .collect();
     assert!(
         !schema_issues.is_empty(),
@@ -138,7 +138,7 @@ fn gas_optimization_issue_carries_event_name() {
     let issues = analyzer.scan_events(source);
     let gas_issues: Vec<_> = issues
         .iter()
-        .filter(|i| i.issue_type == EventIssueType::OptimizableTopic)
+        .filter(|i| i.issue_type == "optimizable_topic")
         .collect();
     assert!(
         !gas_issues.is_empty(),
@@ -161,6 +161,9 @@ fn findings_carry_non_empty_message() {
     "#;
     let issues = analyzer.scan_events(source);
     for issue in &issues {
-        assert!(!issue.message.is_empty(), "every finding must have a message");
+        assert!(
+            !issue.message.is_empty(),
+            "every finding must have a message"
+        );
     }
 }

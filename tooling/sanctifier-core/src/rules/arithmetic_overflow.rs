@@ -269,7 +269,7 @@ impl ArithVisitor {
 
 impl<'ast> Visit<'ast> for ArithVisitor {
     // ── Module-level: skip #[cfg(test)] modules entirely ─────────────────────
-    
+
     /// Visit item module - tracks entry/exit from `#[cfg(test)]` modules.
     ///
     /// When inside a test module, `test_mod_depth > 0` and all arithmetic
@@ -312,7 +312,7 @@ impl<'ast> Visit<'ast> for ArithVisitor {
     }
 
     // ── Index expressions: don't flag arithmetic in subscripts ────────────────
-    
+
     /// Visit index expression - suppresses arithmetic detection inside array subscripts.
     ///
     /// Pattern like `buf[i + 1]` is idiomatic Rust and should not be flagged.
@@ -343,9 +343,9 @@ impl<'ast> Visit<'ast> for ArithVisitor {
                 if let Some((op_str, suggestion)) = Self::classify_op(&node.op) {
                     if !is_string_literal(&node.left)
                         && !is_string_literal(&node.right)
-                        && !crate::constant_folding::is_foldable_constant(
-                            &syn::Expr::Binary(node.clone()),
-                        )
+                        && !crate::constant_folding::is_foldable_constant(&syn::Expr::Binary(
+                            node.clone(),
+                        ))
                     {
                         let key = (fn_name.clone(), op_str.to_string());
                         if !self.seen.contains(&key) {

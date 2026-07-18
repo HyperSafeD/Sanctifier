@@ -117,7 +117,10 @@ fn text_mode_debug_logs_go_to_stderr() {
     let stdout = String::from_utf8(out.stdout).unwrap();
 
     // The progress line "Analyzing" goes to stderr in text mode.
-    assert!(stderr.contains("Analyzing"), "debug logs should arrive on stderr");
+    assert!(
+        stderr.contains("Analyzing"),
+        "debug logs should arrive on stderr"
+    );
     // Stdout should not contain raw log lines.
     assert!(
         !stdout.contains("DEBUG"),

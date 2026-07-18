@@ -361,7 +361,11 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let report_path = tmp.path().join("report.json");
         let svg_path = tmp.path().join("badge.svg");
-        fs::write(&report_path, r#"{"summary":{"total_findings":0,"has_critical":false,"has_high":false}}"#).unwrap();
+        fs::write(
+            &report_path,
+            r#"{"summary":{"total_findings":0,"has_critical":false,"has_high":false}}"#,
+        )
+        .unwrap();
 
         exec(BadgeArgs {
             report: report_path,
@@ -382,7 +386,11 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let report_path = tmp.path().join("report.json");
         let svg_path = tmp.path().join("badge.svg");
-        fs::write(&report_path, r#"{"summary":{"total_findings":3,"has_critical":true,"has_high":true}}"#).unwrap();
+        fs::write(
+            &report_path,
+            r#"{"summary":{"total_findings":3,"has_critical":true,"has_high":true}}"#,
+        )
+        .unwrap();
 
         // exec writes to stdout; we test the output struct shape instead
         let report_content = fs::read_to_string(&report_path).unwrap();
@@ -405,10 +413,16 @@ mod tests {
     #[test]
     fn build_shields_url_contains_status_text() {
         let url = build_shields_url(SecurityStatus::Secure);
-        assert!(url.contains("Secure"), "shields URL must contain status text");
+        assert!(
+            url.contains("Secure"),
+            "shields URL must contain status text"
+        );
         assert!(url.contains("shields.io"), "must point to shields.io");
         // Color must not include '#'
-        assert!(!url.contains('#'), "shields URL must not contain '#' in color");
+        assert!(
+            !url.contains('#'),
+            "shields URL must not contain '#' in color"
+        );
     }
 
     #[test]
@@ -426,7 +440,11 @@ mod tests {
         let tmp = TempDir::new().expect("temp dir");
         let report_path = tmp.path().join("report.json");
         let svg_path = tmp.path().join("badge.svg");
-        fs::write(&report_path, r#"{"summary":{"total_findings":0,"has_critical":false,"has_high":false}}"#).unwrap();
+        fs::write(
+            &report_path,
+            r#"{"summary":{"total_findings":0,"has_critical":false,"has_high":false}}"#,
+        )
+        .unwrap();
 
         exec(BadgeArgs {
             report: report_path,

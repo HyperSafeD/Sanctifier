@@ -5,9 +5,15 @@ use serde_json::Value;
 use std::path::PathBuf;
 
 fn fixture_path(name: &str) -> PathBuf {
+    // Canonicalize so the path has no `..` components: the analyzer treats a
+    // path containing `..` as untrusted and falls back to scanning the current
+    // directory, which would make a single-file fixture assertion scan the whole
+    // tree. A real absolute path keeps each test scoped to its one fixture.
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../tests/fixtures")
         .join(name)
+        .canonicalize()
+        .unwrap_or_else(|e| panic!("fixture {name} should exist: {e}"))
 }
 
 #[test]

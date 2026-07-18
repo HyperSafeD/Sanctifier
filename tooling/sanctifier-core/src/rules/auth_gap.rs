@@ -409,7 +409,11 @@ mod tests {
         let rule = AuthGapRule::new();
         let source = "fn foo() { \0 }";
         let violations = rule.check(source);
-        assert_eq!(violations.len(), 1, "null-byte input must emit exactly one violation");
+        assert_eq!(
+            violations.len(),
+            1,
+            "null-byte input must emit exactly one violation"
+        );
         assert_eq!(violations[0].severity, super::Severity::Error);
         assert!(
             violations[0].message.contains("null bytes"),
@@ -425,10 +429,15 @@ mod tests {
         let rule = AuthGapRule::new();
         let over = "x".repeat(MAX_SOURCE_BYTES + 1);
         let violations = rule.check(&over);
-        assert_eq!(violations.len(), 1, "oversized input must emit exactly one violation");
+        assert_eq!(
+            violations.len(),
+            1,
+            "oversized input must emit exactly one violation"
+        );
         assert_eq!(violations[0].severity, super::Severity::Error);
         assert!(
-            violations[0].message.contains("too large") || violations[0].message.contains("maximum"),
+            violations[0].message.contains("too large")
+                || violations[0].message.contains("maximum"),
             "message must mention size limit; got: {}",
             violations[0].message
         );

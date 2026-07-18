@@ -10,16 +10,29 @@
 //! * Default `RuleSeverity` is honoured.
 //! * Regex special characters in patterns work correctly.
 
-use sanctifier_core::{Analyzer, CustomRule, CustomRuleValidationError, RuleSeverity, SanctifyConfig};
+use sanctifier_core::{
+    Analyzer, CustomRule, CustomRuleValidationError, RuleSeverity, SanctifyConfig,
+};
 
 fn analyzer() -> Analyzer {
     Analyzer::new(SanctifyConfig::default())
+}
+
+/// Build an analyzer whose config carries the given custom rules, since
+/// `analyze_custom_rules` now reads rules from the analyzer's config.
+fn analyzer_with_rules(rules: Vec<CustomRule>) -> Analyzer {
+    let config = SanctifyConfig {
+        rules,
+        ..SanctifyConfig::default()
+    };
+    Analyzer::new(config)
 }
 
 fn rule(name: &str, pattern: &str) -> CustomRule {
     CustomRule {
         name: name.to_string(),
         pattern: pattern.to_string(),
+        description: String::new(),
         severity: RuleSeverity::Low,
     }
 }
@@ -28,6 +41,7 @@ fn rule_with_severity(name: &str, pattern: &str, severity: RuleSeverity) -> Cust
     CustomRule {
         name: name.to_string(),
         pattern: pattern.to_string(),
+        description: String::new(),
         severity,
     }
 }
@@ -42,7 +56,10 @@ fn valid_rules_pass_validation() {
         rule("todo_marker", r"TODO"),
     ];
     let errors = analyzer().validate_custom_rules(&rules);
-    assert!(errors.is_empty(), "valid rules should produce no errors; got: {errors:?}");
+    assert!(
+        errors.is_empty(),
+        "valid rules should produce no errors; got: {errors:?}"
+    );
 }
 
 #[test]
@@ -103,8 +120,14 @@ fn validation_error_display_includes_rule_name_and_message() {
         message: "invalid regex pattern '[bad': ...".to_string(),
     };
     let display = format!("{err}");
-    assert!(display.contains("my_rule"), "display should include rule name");
-    assert!(display.contains("invalid regex"), "display should include message");
+    assert!(
+        display.contains("my_rule"),
+        "display should include rule name"
+    );
+    assert!(
+        display.contains("invalid regex"),
+        "display should include message"
+    );
 }
 
 // ── analyze_custom_rules ─────────────────────────────────────────────────────
@@ -113,7 +136,7 @@ fn validation_error_display_includes_rule_name_and_message() {
 fn rule_matches_at_correct_line_number() {
     let rules = vec![rule("find_todo", r"TODO")];
     let source = "fn a() {}\n// TODO: fix this\nfn b() {}";
-    let matches = analyzer().analyze_custom_rules(source, &rules);
+    let matches = analyzer_with_rules(rules).analyze_custom_rules(source);
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].line, 2, "TODO is on line 2");
     assert_eq!(matches[0].rule_name, "find_todo");
@@ -123,7 +146,7 @@ fn rule_matches_at_correct_line_number() {
 fn multiple_matches_for_one_rule_all_returned() {
     let rules = vec![rule("find_unwrap", r"\.unwrap\(\)")];
     let source = "let x = foo().unwrap();\nlet y = bar().unwrap();\nlet z = baz();";
-    let matches = analyzer().analyze_custom_rules(source, &rules);
+    let matches = analyzer_with_rules(rules).analyze_custom_rules(source);
     assert_eq!(matches.len(), 2, "both unwrap lines should match");
 }
 
@@ -134,7 +157,7 @@ fn overlapping_rules_report_independently() {
         rule("unsafe_fn", r"unsafe fn"),
     ];
     let source = "pub unsafe fn danger() {}";
-    let matches = analyzer().analyze_custom_rules(source, &rules);
+    let matches = analyzer_with_rules(rules).analyze_custom_rules(source);
     // Both rules match; they are independent findings.
     assert_eq!(matches.len(), 2);
     let names: Vec<&str> = matches.iter().map(|m| m.rule_name.as_str()).collect();
@@ -146,15 +169,19 @@ fn overlapping_rules_report_independently() {
 fn no_match_returns_empty_vec() {
     let rules = vec![rule("find_never", r"THIS_NEVER_APPEARS_XYZ_123")];
     let source = "fn clean() { let x = 1; }";
-    let matches = analyzer().analyze_custom_rules(source, &rules);
+    let matches = analyzer_with_rules(rules).analyze_custom_rules(source);
     assert!(matches.is_empty());
 }
 
 #[test]
 fn severity_is_propagated_to_match() {
-    let rules = vec![rule_with_severity("critical_rule", r"panic!", RuleSeverity::Critical)];
+    let rules = vec![rule_with_severity(
+        "critical_rule",
+        r"panic!",
+        RuleSeverity::Critical,
+    )];
     let source = "panic!(\"oh no\");";
-    let matches = analyzer().analyze_custom_rules(source, &rules);
+    let matches = analyzer_with_rules(rules).analyze_custom_rules(source);
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].severity, RuleSeverity::Critical);
 }
@@ -163,7 +190,7 @@ fn severity_is_propagated_to_match() {
 fn snippet_is_trimmed_in_match() {
     let rules = vec![rule("find_set", r"\.set\(")];
     let source = "    env.storage().instance().set(&key, &val);";
-    let matches = analyzer().analyze_custom_rules(source, &rules);
+    let matches = analyzer_with_rules(rules).analyze_custom_rules(source);
     assert_eq!(matches.len(), 1);
     // snippet should not start/end with whitespace
     assert_eq!(
@@ -175,13 +202,10 @@ fn snippet_is_trimmed_in_match() {
 
 #[test]
 fn invalid_regex_in_rule_does_not_panic_or_affect_valid_rules() {
-    let rules = vec![
-        rule("bad", r"[unclosed"),
-        rule("good", r"fn "),
-    ];
+    let rules = vec![rule("bad", r"[unclosed"), rule("good", r"fn ")];
     let source = "fn hello() {}";
     // Should not panic; valid rule still matches.
-    let matches = analyzer().analyze_custom_rules(source, &rules);
+    let matches = analyzer_with_rules(rules).analyze_custom_rules(source);
     assert_eq!(matches.len(), 1);
     assert_eq!(matches[0].rule_name, "good");
 }
@@ -189,13 +213,13 @@ fn invalid_regex_in_rule_does_not_panic_or_affect_valid_rules() {
 #[test]
 fn empty_source_produces_no_matches() {
     let rules = vec![rule("any", r".+")];
-    let matches = analyzer().analyze_custom_rules("", &rules);
+    let matches = analyzer_with_rules(rules).analyze_custom_rules("");
     assert!(matches.is_empty());
 }
 
 #[test]
 fn empty_rules_slice_produces_no_matches() {
     let source = "fn hello() { panic!(\"test\"); }";
-    let matches = analyzer().analyze_custom_rules(source, &[]);
+    let matches = analyzer_with_rules(vec![]).analyze_custom_rules(source);
     assert!(matches.is_empty());
 }

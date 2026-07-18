@@ -48,21 +48,34 @@ fn test_fully_compliant_sep41_token() {
     "#;
 
     let report = sep41::verify(source);
-    
+
     assert!(report.candidate, "Should be recognized as token candidate");
     assert!(report.compliant, "Should be fully compliant");
     assert_eq!(report.issues.len(), 0, "Should have zero issues");
-    assert_eq!(report.verified_functions.len(), 10, "Should verify all 10 functions");
-    
+    assert_eq!(
+        report.verified_functions.len(),
+        10,
+        "Should verify all 10 functions"
+    );
+
     // Verify all functions are in the list
     let expected_functions = [
-        "allowance", "approve", "balance", "burn", "burn_from",
-        "decimals", "name", "symbol", "transfer", "transfer_from"
+        "allowance",
+        "approve",
+        "balance",
+        "burn",
+        "burn_from",
+        "decimals",
+        "name",
+        "symbol",
+        "transfer",
+        "transfer_from",
     ];
     for func in expected_functions {
         assert!(
             report.verified_functions.contains(&func.to_string()),
-            "Missing verified function: {}", func
+            "Missing verified function: {}",
+            func
         );
     }
 }
@@ -88,26 +101,47 @@ fn test_missing_multiple_functions() {
     "#;
 
     let report = sep41::verify(source);
-    
+
     assert!(report.candidate, "Should be recognized as token candidate");
     assert!(!report.compliant, "Should not be compliant");
-    
-    let missing_issues: Vec<_> = report.issues.iter()
+
+    let missing_issues: Vec<_> = report
+        .issues
+        .iter()
         .filter(|i| i.kind == Sep41IssueKind::MissingFunction)
         .collect();
-    
-    assert!(missing_issues.len() >= 5, "Should report multiple missing functions");
-    
+
+    assert!(
+        missing_issues.len() >= 5,
+        "Should report multiple missing functions"
+    );
+
     // Verify specific missing functions
-    let missing_names: Vec<&str> = missing_issues.iter()
+    let missing_names: Vec<&str> = missing_issues
+        .iter()
         .map(|i| i.function_name.as_str())
         .collect();
-    
-    assert!(missing_names.contains(&"allowance"), "Should report missing allowance");
-    assert!(missing_names.contains(&"approve"), "Should report missing approve");
-    assert!(missing_names.contains(&"transfer_from"), "Should report missing transfer_from");
-    assert!(missing_names.contains(&"burn"), "Should report missing burn");
-    assert!(missing_names.contains(&"burn_from"), "Should report missing burn_from");
+
+    assert!(
+        missing_names.contains(&"allowance"),
+        "Should report missing allowance"
+    );
+    assert!(
+        missing_names.contains(&"approve"),
+        "Should report missing approve"
+    );
+    assert!(
+        missing_names.contains(&"transfer_from"),
+        "Should report missing transfer_from"
+    );
+    assert!(
+        missing_names.contains(&"burn"),
+        "Should report missing burn"
+    );
+    assert!(
+        missing_names.contains(&"burn_from"),
+        "Should report missing burn_from"
+    );
 }
 
 // ============================================================================
@@ -148,17 +182,28 @@ fn test_wrong_parameter_types() {
     "#;
 
     let report = sep41::verify(source);
-    
+
     assert!(report.candidate);
     assert!(!report.compliant);
-    
-    let sig_issues: Vec<_> = report.issues.iter()
+
+    let sig_issues: Vec<_> = report
+        .issues
+        .iter()
         .filter(|i| i.kind == Sep41IssueKind::SignatureMismatch && i.function_name == "transfer")
         .collect();
-    
-    assert_eq!(sig_issues.len(), 1, "Should report transfer signature mismatch");
-    assert!(sig_issues[0].message.contains("does not match the exact SEP-41 signature"));
-    assert!(sig_issues[0].actual_signature.is_some(), "Should include actual signature");
+
+    assert_eq!(
+        sig_issues.len(),
+        1,
+        "Should report transfer signature mismatch"
+    );
+    assert!(sig_issues[0]
+        .message
+        .contains("does not match the exact SEP-41 signature"));
+    assert!(
+        sig_issues[0].actual_signature.is_some(),
+        "Should include actual signature"
+    );
 }
 
 #[test]
@@ -195,14 +240,20 @@ fn test_wrong_return_type() {
     "#;
 
     let report = sep41::verify(source);
-    
+
     assert!(!report.compliant);
-    
-    let balance_issues: Vec<_> = report.issues.iter()
+
+    let balance_issues: Vec<_> = report
+        .issues
+        .iter()
         .filter(|i| i.function_name == "balance" && i.kind == Sep41IssueKind::SignatureMismatch)
         .collect();
-    
-    assert_eq!(balance_issues.len(), 1, "Should report balance return type mismatch");
+
+    assert_eq!(
+        balance_issues.len(),
+        1,
+        "Should report balance return type mismatch"
+    );
 }
 
 #[test]
@@ -239,14 +290,20 @@ fn test_missing_parameter() {
     "#;
 
     let report = sep41::verify(source);
-    
+
     assert!(!report.compliant);
-    
-    let approve_issues: Vec<_> = report.issues.iter()
+
+    let approve_issues: Vec<_> = report
+        .issues
+        .iter()
         .filter(|i| i.function_name == "approve" && i.kind == Sep41IssueKind::SignatureMismatch)
         .collect();
-    
-    assert_eq!(approve_issues.len(), 1, "Should report approve signature mismatch");
+
+    assert_eq!(
+        approve_issues.len(),
+        1,
+        "Should report approve signature mismatch"
+    );
 }
 
 // ============================================================================
@@ -287,14 +344,20 @@ fn test_missing_authorization() {
     "#;
 
     let report = sep41::verify(source);
-    
+
     assert!(!report.compliant);
-    
-    let auth_issues: Vec<_> = report.issues.iter()
+
+    let auth_issues: Vec<_> = report
+        .issues
+        .iter()
         .filter(|i| i.kind == Sep41IssueKind::AuthorizationMismatch && i.function_name == "approve")
         .collect();
-    
-    assert_eq!(auth_issues.len(), 1, "Should report missing authorization in approve");
+
+    assert_eq!(
+        auth_issues.len(),
+        1,
+        "Should report missing authorization in approve"
+    );
     assert!(auth_issues[0].message.contains("should authorize 'from'"));
 }
 
@@ -332,15 +395,25 @@ fn test_wrong_parameter_authorized() {
     "#;
 
     let report = sep41::verify(source);
-    
+
     assert!(!report.compliant);
-    
-    let transfer_from_issues: Vec<_> = report.issues.iter()
-        .filter(|i| i.kind == Sep41IssueKind::AuthorizationMismatch && i.function_name == "transfer_from")
+
+    let transfer_from_issues: Vec<_> = report
+        .issues
+        .iter()
+        .filter(|i| {
+            i.kind == Sep41IssueKind::AuthorizationMismatch && i.function_name == "transfer_from"
+        })
         .collect();
-    
-    assert_eq!(transfer_from_issues.len(), 1, "Should report wrong authorization in transfer_from");
-    assert!(transfer_from_issues[0].message.contains("should authorize 'spender'"));
+
+    assert_eq!(
+        transfer_from_issues.len(),
+        1,
+        "Should report wrong authorization in transfer_from"
+    );
+    assert!(transfer_from_issues[0]
+        .message
+        .contains("should authorize 'spender'"));
 }
 
 #[test]
@@ -377,19 +450,26 @@ fn test_multiple_authorization_issues() {
     "#;
 
     let report = sep41::verify(source);
-    
+
     assert!(!report.compliant);
-    
-    let auth_issues: Vec<_> = report.issues.iter()
+
+    let auth_issues: Vec<_> = report
+        .issues
+        .iter()
         .filter(|i| i.kind == Sep41IssueKind::AuthorizationMismatch)
         .collect();
-    
-    assert_eq!(auth_issues.len(), 3, "Should report all 3 missing authorizations");
-    
-    let function_names: Vec<&str> = auth_issues.iter()
+
+    assert_eq!(
+        auth_issues.len(),
+        3,
+        "Should report all 3 missing authorizations"
+    );
+
+    let function_names: Vec<&str> = auth_issues
+        .iter()
         .map(|i| i.function_name.as_str())
         .collect();
-    
+
     assert!(function_names.contains(&"approve"));
     assert!(function_names.contains(&"transfer"));
     assert!(function_names.contains(&"burn"));
@@ -432,24 +512,39 @@ fn test_all_three_issue_types_together() {
     "#;
 
     let report = sep41::verify(source);
-    
+
     assert!(report.candidate);
     assert!(!report.compliant);
-    
+
     // Count each issue type
-    let missing_count = report.issues.iter()
+    let missing_count = report
+        .issues
+        .iter()
         .filter(|i| i.kind == Sep41IssueKind::MissingFunction)
         .count();
-    let signature_count = report.issues.iter()
+    let signature_count = report
+        .issues
+        .iter()
         .filter(|i| i.kind == Sep41IssueKind::SignatureMismatch)
         .count();
-    let auth_count = report.issues.iter()
+    let auth_count = report
+        .issues
+        .iter()
         .filter(|i| i.kind == Sep41IssueKind::AuthorizationMismatch)
         .count();
-    
-    assert!(missing_count >= 3, "Should have at least 3 missing functions (allowance, burn, burn_from)");
-    assert_eq!(signature_count, 1, "Should have 1 signature mismatch (transfer)");
-    assert_eq!(auth_count, 1, "Should have 1 authorization mismatch (approve)");
+
+    assert!(
+        missing_count >= 3,
+        "Should have at least 3 missing functions (allowance, burn, burn_from)"
+    );
+    assert_eq!(
+        signature_count, 1,
+        "Should have 1 signature mismatch (transfer)"
+    );
+    assert_eq!(
+        auth_count, 1,
+        "Should have 1 authorization mismatch (approve)"
+    );
 }
 
 // ============================================================================
@@ -470,10 +565,17 @@ fn test_non_token_contract_not_candidate() {
     "#;
 
     let report = sep41::verify(source);
-    
-    assert!(!report.candidate, "Non-token contract should not be candidate");
+
+    assert!(
+        !report.candidate,
+        "Non-token contract should not be candidate"
+    );
     assert!(!report.compliant);
-    assert_eq!(report.issues.len(), 0, "Non-candidates should have no issues");
+    assert_eq!(
+        report.issues.len(),
+        0,
+        "Non-candidates should have no issues"
+    );
 }
 
 #[test]
@@ -489,8 +591,11 @@ fn test_minimal_token_candidate_two_core_functions() {
     "#;
 
     let report = sep41::verify(source);
-    
-    assert!(report.candidate, "Should be candidate with 2 core functions");
+
+    assert!(
+        report.candidate,
+        "Should be candidate with 2 core functions"
+    );
     assert!(!report.compliant, "Should not be compliant");
     assert!(!report.issues.is_empty(), "Should report missing functions");
 }
@@ -509,8 +614,11 @@ fn test_minimal_token_candidate_one_core_two_metadata() {
     "#;
 
     let report = sep41::verify(source);
-    
-    assert!(report.candidate, "Should be candidate with 1 core + 2 metadata");
+
+    assert!(
+        report.candidate,
+        "Should be candidate with 1 core + 2 metadata"
+    );
     assert!(!report.compliant);
 }
 
@@ -526,8 +634,11 @@ fn test_not_candidate_only_one_function() {
     "#;
 
     let report = sep41::verify(source);
-    
-    assert!(!report.candidate, "Single function should not make candidate");
+
+    assert!(
+        !report.candidate,
+        "Single function should not make candidate"
+    );
 }
 
 // ============================================================================
@@ -541,8 +652,11 @@ fn test_parse_error_returns_non_candidate() {
     "#;
 
     let report = sep41::verify(source);
-    
-    assert!(!report.candidate, "Parse errors should return non-candidate");
+
+    assert!(
+        !report.candidate,
+        "Parse errors should return non-candidate"
+    );
     assert!(!report.compliant);
     assert_eq!(report.issues.len(), 0);
 }
@@ -550,7 +664,7 @@ fn test_parse_error_returns_non_candidate() {
 #[test]
 fn test_empty_source() {
     let report = sep41::verify("");
-    
+
     assert!(!report.candidate);
     assert!(!report.compliant);
     assert_eq!(report.issues.len(), 0);
@@ -591,8 +705,11 @@ fn test_private_functions_ignored() {
     "#;
 
     let report = sep41::verify(source);
-    
-    assert!(report.compliant, "Private functions should not affect compliance");
+
+    assert!(
+        report.compliant,
+        "Private functions should not affect compliance"
+    );
 }
 
 #[test]
@@ -615,7 +732,7 @@ fn test_deterministic_output_order() {
     let report1 = sep41::verify(source);
     let report2 = sep41::verify(source);
     let report3 = sep41::verify(source);
-    
+
     // All runs should produce identical results
     assert_eq!(report1.candidate, report2.candidate);
     assert_eq!(report1.compliant, report2.compliant);
@@ -662,8 +779,11 @@ fn test_require_auth_for_args_detected() {
     "#;
 
     let report = sep41::verify(source);
-    
-    assert!(report.compliant, "require_auth_for_args should be recognized as valid authorization");
+
+    assert!(
+        report.compliant,
+        "require_auth_for_args should be recognized as valid authorization"
+    );
 }
 
 #[test]
@@ -701,7 +821,7 @@ fn test_authorization_in_nested_scope() {
     "#;
 
     let report = sep41::verify(source);
-    
+
     // Current implementation detects require_auth in nested scopes
     assert!(report.compliant, "Nested authorization should be detected");
 }
