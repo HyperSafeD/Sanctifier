@@ -96,7 +96,7 @@ jobs:
           MANIFESTEOF
 
       - name: Create Winget PR to microsoft/winget-pkgs
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@v8
         with:
           token: ${{ secrets.WINGET_PR_TOKEN }}
           commit-message: "Update Sanctifier to v${{ steps.version.outputs.version }}"
