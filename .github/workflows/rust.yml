@@ -127,14 +127,14 @@ jobs:
             --ignore-filename-regex '(_tests\.rs|/tests/|/benches/)'
 
       - name: Upload coverage to Codecov (sanctifier-core)
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7.0.0
         with:
           files: lcov-core.info
           flags: sanctifier-core
           fail_ci_if_error: false
 
       - name: Upload coverage to Codecov (sanctifier-cli)
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7.0.0
         with:
           files: lcov-cli.info
           flags: sanctifier-cli
