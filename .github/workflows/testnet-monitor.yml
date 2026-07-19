@@ -26,7 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Install Stellar CLI
-        uses: stellar/stellar-cli@v23.0.1
+        uses: stellar/stellar-cli@v27.0.0
 
       - name: Create funded testnet monitor identity
         run: |
