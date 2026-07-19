@@ -84,7 +84,7 @@ jobs:
         run: certutil -hashfile ${{ matrix.artifact_name }} SHA256 | findstr /v "hash" > ${{ matrix.artifact_name }}.sha256
 
       - name: Generate build provenance (SLSA)
-        uses: actions/attest-build-provenance@v3
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: ${{ matrix.artifact_name }}
 
