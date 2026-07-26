@@ -296,6 +296,111 @@ cargo clippy -p sanctifier-core -- -D warnings
 
 Follow the PR process outlined below.
 
+## Contributing Z-Rules (ZK Analysis)
+
+> **Required reading before proposing a Z-rule:** the ZK threat model (#1193)
+> and the namespace/severity ADR (#1192). These two documents define the
+> contracts that every Z-rule must honour.
+
+Z-rules are Sanctifier's family of security-analysis rules targeting
+zero-knowledge (ZK) circuit and verifier patterns used in Soroban smart
+contracts. They live in the same rules layer as S-rules but occupy their own
+finding-code namespace and carry ZK-specific severity guidance.
+
+### Z-Rule Numbering Convention
+
+All ZK findings use the `Z0xx` namespace — parallel to the `S0xx` namespace
+used by standard static rules:
+
+| Range | Reserved for |
+|-------|-------------|
+| `Z001`–`Z049` | Circuit constraint violations (under-constrained outputs, missing range checks) |
+| `Z050`–`Z099` | Verifier integration issues (missing nullifier checks, replay attacks) |
+| `Z100`–`Z149` | Proof-system misuse (wrong curve, insecure hash-to-field) |
+| `Z150`+       | Reserved for future ZK vulnerability classes |
+
+Choose the next available ID in the appropriate range. If your rule spans
+multiple classes, place it in the class that represents the highest-impact
+consequence.
+
+### Severity Guidance for ZK Rules
+
+ZK vulnerabilities can have a higher blast radius than typical Soroban bugs
+because a single under-constrained wire may compromise every proof ever
+generated. Apply the following guidance in addition to the general severity
+taxonomy (`schemas/severity-taxonomy.schema.json`):
+
+| ZK vulnerability class | Minimum severity |
+|------------------------|-----------------|
+| Under-constrained output wire | **Critical** |
+| Missing nullifier uniqueness check | **Critical** |
+| Replay / double-spend vector | **High** |
+| Missing range check on private input | **High** |
+| Insecure hash-to-field (non-injective) | **High** |
+| Proof system parameter mismatch | **Medium** |
+| Missing public-input binding | **Medium** |
+
+### Step-by-Step: Add a New Z-Rule
+
+Follow the same seven steps as for S-rules (see [How to Add a New Rule](#how-to-add-a-new-rule) above), with these ZK-specific additions:
+
+#### Naming and ID
+
+```rust
+fn id(&self) -> &'static str {
+    "Z042"  // next free ID in the relevant range
+}
+```
+
+Place the implementation file in `tooling/sanctifier-core/src/rules/` and
+prefix it `z` to group it with other Z-rules:
+`tooling/sanctifier-core/src/rules/z042_missing_nullifier_check.rs`
+
+#### Required Fixture Pairs
+
+Every Z-rule **must** ship two fixture files in
+`tooling/sanctifier-core/tests/fixtures/z-rules/`:
+
+- `z042_VULNERABLE.rs` — a minimal Soroban contract that **triggers** the rule.
+- `z042_SAFE.rs` — the same contract with the vulnerability fixed; the rule must **not** fire.
+
+Without both fixtures the PR will not be accepted.
+
+#### SARIF Severity Wiring
+
+After assigning your ID, add a corresponding entry to
+`data/sarif/severity-map.yaml` following the pattern for existing rules.
+Omitting this entry causes the SARIF report to emit `none` for your finding,
+which breaks the CI severity gate.
+
+#### Documentation
+
+Add a rule reference page at `docs/rules/Z042.md` (copy the template from
+any existing `docs/rules/S0xx.md`). Include:
+
+- Finding code and name
+- Affected ZK pattern (circuit constraint, verifier call, etc.)
+- Example vulnerable contract snippet
+- Example fixed contract snippet
+- Links to the threat model section that motivates the rule (#1193)
+
+#### Checklist for Z-Rule PRs
+
+- [ ] ID chosen from the correct `Z0xx` range
+- [ ] Implementation file prefixed `z` and placed in `rules/`
+- [ ] Both `z<ID>_VULNERABLE.rs` and `z<ID>_SAFE.rs` fixtures present
+- [ ] `data/sarif/severity-map.yaml` entry added
+- [ ] `docs/rules/Z<ID>.md` rule reference page added
+- [ ] Severity set per the guidance table above (never lower than the minimum)
+- [ ] Threat model reference included in doc and code comments
+
+### Where to Start
+
+- **Threat model** (#1193) — lists the prioritised ZK vulnerability classes
+- **Namespace/severity ADR** (#1192) — the authoritative spec for `Z0xx` conventions
+- **`docs/rule-authoring-guide.md`** — general YAML/Rust rule authoring tutorial
+- **`docs/rules/`** — existing S-rule reference pages as structural templates
+
 ## PR Checklist
 
 Before submitting a pull request, ensure the following:
