@@ -3,7 +3,8 @@ import type { EditorFinding } from './types';
 
 const RULE_DOCS_BASE = 'https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules';
 
-const CODE_TO_MARKDOWN: Record<string, { title: string; description: string; fix: string }> = {
+const CODE_TO_MARKDOWN: Record<string, { title: string; description: string; fix: string; isZk?: boolean }> = {
+  // ── S-rules (Soroban / standard) ────────────────────────────────────────────
   S001: {
     title: 'Authentication Gap',
     description: 'A public function performs a privileged operation (storage mutation or cross-contract call) without `require_auth`. Anyone can invoke it.',
@@ -24,28 +25,75 @@ const CODE_TO_MARKDOWN: Record<string, { title: string; description: string; fix
     description: '`.unwrap()` or `.expect()` can abort the contract if the precondition fails. Use explicit error handling instead.',
     fix: '// Instead of val.unwrap()\nmatch val {\n    Some(v) => v,\n    None => return Err(Error::NotFound),\n}',
   },
+  // ── Z-rules (ZK circuit) ────────────────────────────────────────────────────
+  Z001: {
+    isZk: true,
+    title: 'Under-constrained Signal',
+    description: 'A circuit signal is used in an output or assertion but lacks sufficient constraints to be uniquely determined. An under-constrained signal allows a malicious prover to choose arbitrary values, defeating the soundness guarantee of the proof.',
+    fix: '// Add explicit range or equality constraints for each signal:\n// component eq = IsEqual();\n// eq.in[0] <== signal;\n// eq.in[1] <== expected;',
+  },
+  Z002: {
+    isZk: true,
+    title: 'Missing Nullifier Check',
+    description: 'A spend or claim path does not verify a nullifier, allowing the same witness to produce valid proofs multiple times (double-spend). Every private input that represents a unique spend must commit to an on-chain nullifier.',
+    fix: '// Compute nullifier commitment and verify uniqueness:\n// signal nullifier <== Poseidon(2)([secret, nonce]);\n// nullifiers[nullifier] === 0; // check not spent\n// nullifiers[nullifier] <== 1; // mark spent',
+  },
+  Z003: {
+    isZk: true,
+    title: 'Unconstrained Public Input',
+    description: 'A public input to the circuit is not tied to any constraint, so any value passes verification. This breaks the binding property: the verifier cannot trust what the prover claims the public input represents.',
+    fix: '// Bind public inputs to internal signals via constraints:\n// signal input pub_value;\n// internal_signal === pub_value; // enforce binding',
+  },
+  Z007: {
+    isZk: true,
+    title: 'Missing Range Check',
+    description: 'A numeric signal is not bounded to an expected range of values. Without a range check, a prover may supply out-of-range values (e.g., negative balances encoded as large field elements) that pass all other constraints.',
+    fix: '// Use a range check component:\n// component range = Num2Bits(64);\n// range.in <== value;\n// // This constrains value to [0, 2^64)',
+  },
+  Z008: {
+    isZk: true,
+    title: 'Arithmetic Soundness (ZK)',
+    description: 'An arithmetic operation inside the circuit is not sound: either it can overflow the field prime, produce an ambiguous result, or relies on native integer arithmetic assumptions that do not hold inside a finite field.',
+    fix: '// Perform arithmetic in the field explicitly:\n// // Avoid: a * b where result may exceed field prime\n// // Prefer: split into constrained sub-operations\n// component mul = Multiplier();\n// mul.a <== a;\n// mul.b <== b;',
+  },
+  Z010: {
+    isZk: true,
+    title: 'Missing Auth Constraint (ZK)',
+    description: 'A circuit that gates access to a privileged action does not verify the authority signal (e.g., a hash of a secret key). Anyone who can construct a valid witness can bypass the intended authorization.',
+    fix: '// Verify authority in the circuit:\n// signal input secret;\n// signal pubKeyHash <== Poseidon(1)([secret]);\n// pubKeyHash === knownPubKeyHash; // constrain auth',
+  },
 };
+
+/** Returns true when the rule code belongs to the ZK family (Z-rules, issue #1239). */
+export function isZkRule(code: string): boolean {
+  return /^Z\d+$/.test(code);
+}
 
 function getMarkdownContent(finding: EditorFinding): vscode.MarkdownString {
   const meta = CODE_TO_MARKDOWN[finding.code] ?? {
     title: finding.code,
     description: finding.message,
     fix: 'See rule documentation for suggested fix.',
+    isZk: isZkRule(finding.code),
   };
 
   const severityIcon = finding.severity === 'error' ? '$(error)' : finding.severity === 'warning' ? '$(warning)' : '$(info)';
   const severityLabel = finding.severity.charAt(0).toUpperCase() + finding.severity.slice(1);
+  const zkBadge = meta.isZk ? ' 🔒 **ZK**' : '';
 
   const markdown = new vscode.MarkdownString();
   markdown.isTrusted = true;
   markdown.supportHtml = true;
 
-  markdown.appendMarkdown(`### ${severityIcon} ${meta.title} (\`${finding.code}\`)\n\n`);
+  markdown.appendMarkdown(`### ${severityIcon} ${meta.title} (\`${finding.code}\`)${zkBadge}\n\n`);
+  if (meta.isZk) {
+    markdown.appendMarkdown(`> *ZK circuit finding — this rule applies to zero-knowledge constraint systems, not Soroban contract code.*\n\n`);
+  }
   markdown.appendMarkdown(`**Severity:** ${severityLabel}\n\n`);
   markdown.appendMarkdown(`${meta.description}\n\n`);
   markdown.appendMarkdown(`---\n\n`);
   markdown.appendMarkdown(`**Suggested fix:**\n\n`);
-  markdown.appendCodeblock(meta.fix, 'rust');
+  markdown.appendCodeblock(meta.fix, meta.isZk ? 'circom' : 'rust');
   markdown.appendMarkdown(`\n\n`);
   markdown.appendMarkdown(
     `[Learn more](${RULE_DOCS_BASE}/${finding.code.toLowerCase()}.md) &nbsp;|&nbsp; ` +
