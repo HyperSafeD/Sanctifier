@@ -16,3 +16,137 @@ rules:
     tags:
       - auth
       - access-control
+
+  # ── ZK / Zero-Knowledge rules (Z001-Z014) ────────────────────────────────
+
+  - id: Z001
+    name: Unconstrained Signal Input
+    shortDescription: Detects circuit inputs that are never constrained, allowing arbitrary witness assignment
+    helpUri: https://docs.sanctifier.dev/rules/Z001
+    defaultSeverity: critical
+    tags:
+      - zk
+      - soundness
+      - circom
+
+  - id: Z002
+    name: Missing Public Input Binding
+    shortDescription: Detects public inputs not bound to any constraint, enabling proof forgery
+    helpUri: https://docs.sanctifier.dev/rules/Z002
+    defaultSeverity: critical
+    tags:
+      - zk
+      - soundness
+
+  - id: Z003
+    name: Trusted Setup Parameter Exposure
+    shortDescription: Detects use of toxic waste or hard-coded toxic parameters from a trusted setup
+    helpUri: https://docs.sanctifier.dev/rules/Z003
+    defaultSeverity: critical
+    tags:
+      - zk
+      - trusted-setup
+
+  - id: Z004
+    name: Soundness Violation via Under-constrained Output
+    shortDescription: Detects circuit outputs reachable by multiple distinct witnesses, breaking soundness
+    helpUri: https://docs.sanctifier.dev/rules/Z004
+    defaultSeverity: critical
+    tags:
+      - zk
+      - soundness
+
+  - id: Z005
+    name: Witness Arithmetic Overflow
+    shortDescription: Detects arithmetic operations in witness generation that can overflow the field modulus
+    helpUri: https://docs.sanctifier.dev/rules/Z005
+    defaultSeverity: high
+    tags:
+      - zk
+      - arithmetic
+      - overflow
+
+  - id: Z006
+    name: Under-constrained Circuit Component
+    shortDescription: Detects reusable sub-circuits or templates missing necessary constraints
+    helpUri: https://docs.sanctifier.dev/rules/Z006
+    defaultSeverity: high
+    tags:
+      - zk
+      - soundness
+      - circom
+
+  - id: Z007
+    name: Proof Malleability
+    shortDescription: Detects proof systems or verifiers that accept mutated proofs as valid
+    helpUri: https://docs.sanctifier.dev/rules/Z007
+    defaultSeverity: high
+    tags:
+      - zk
+      - malleability
+
+  - id: Z008
+    name: Verifying Key Mismatch
+    shortDescription: Detects verifiers loading a VK that does not match the proving key in use
+    helpUri: https://docs.sanctifier.dev/rules/Z008
+    defaultSeverity: high
+    tags:
+      - zk
+      - verifying-key
+
+  - id: Z009
+    name: Unbounded Proof Verification Loop
+    shortDescription: Detects proof-verification loops over caller-supplied unbounded collections, enabling DoS
+    helpUri: https://docs.sanctifier.dev/rules/Z009
+    defaultSeverity: high
+    tags:
+      - zk
+      - dos
+      - resource-exhaustion
+
+  - id: Z010
+    name: Verifying Key Rotation Without Access Control
+    shortDescription: Detects VK-rotation functions callable by any account, allowing an attacker to swap the verifying key
+    helpUri: https://docs.sanctifier.dev/rules/Z010
+    defaultSeverity: critical
+    tags:
+      - zk
+      - access-control
+      - verifying-key
+
+  - id: Z011
+    name: Non-deterministic Witness Generation
+    shortDescription: Detects witness-generation paths that depend on external mutable state, producing different proofs for the same input
+    helpUri: https://docs.sanctifier.dev/rules/Z011
+    defaultSeverity: medium
+    tags:
+      - zk
+      - determinism
+
+  - id: Z012
+    name: Missing Nullifier Uniqueness Check
+    shortDescription: Detects proof-based claim flows that do not enforce nullifier uniqueness, enabling double-spend
+    helpUri: https://docs.sanctifier.dev/rules/Z012
+    defaultSeverity: critical
+    tags:
+      - zk
+      - nullifier
+      - double-spend
+
+  - id: Z013
+    name: Proof Replay Attack
+    shortDescription: Detects verifiers that accept previously-used proofs without a domain-separating context binding
+    helpUri: https://docs.sanctifier.dev/rules/Z013
+    defaultSeverity: high
+    tags:
+      - zk
+      - replay
+
+  - id: Z014
+    name: Insecure Randomness in Circuit
+    shortDescription: Detects use of on-chain pseudo-randomness (block hash, timestamp) as a circuit random input
+    helpUri: https://docs.sanctifier.dev/rules/Z014
+    defaultSeverity: high
+    tags:
+      - zk
+      - randomness
