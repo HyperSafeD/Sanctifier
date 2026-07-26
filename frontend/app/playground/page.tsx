@@ -356,6 +356,13 @@ function PlaygroundPageInner() {
             <p className="text-zinc-500 max-w-xl">
               Write, compile, and test Soroban smart contracts in real-time without local setup.
             </p>
+            <a
+              href="/playground/zk"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 dark:text-violet-400 hover:underline mt-1"
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5" y="1" width="6" height="5" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><path d="M3 7h10v8H3z" stroke="currentColor" strokeWidth="1.5" fill="none"/><circle cx="8" cy="11" r="1.25" fill="currentColor"/></svg>
+              Switch to ZK Playground →
+            </a>
           </div>
 
           <div className="flex items-center gap-3">

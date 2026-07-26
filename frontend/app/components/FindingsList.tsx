@@ -9,6 +9,41 @@ import { Sparkles, FileCode } from "lucide-react";
 import { AiFixPanel } from "./AiFixPanel";
 import { filterFindings } from "../lib/finding-filters";
 
+/** Returns true when the finding code belongs to the ZK rule family (Z-rules). */
+function isZkFinding(code: string): boolean {
+  return /^Z\d+$/.test(code);
+}
+
+/**
+ * Visual badge for ZK-circuit findings (issue #1240).
+ * A small lock/circuit glyph lets users distinguish Z-rule findings from
+ * standard S-rule findings at a glance.
+ */
+function ZkBadge() {
+  return (
+    <span
+      aria-label="ZK circuit finding"
+      title="ZK circuit finding — applies to zero-knowledge constraint systems"
+      className="inline-flex items-center gap-1 rounded-full border border-violet-400/50 bg-violet-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-violet-600 dark:border-violet-400/40 dark:bg-violet-500/15 dark:text-violet-300 theme-high-contrast:border-white theme-high-contrast:text-white"
+    >
+      <svg
+        width="10"
+        height="10"
+        viewBox="0 0 16 16"
+        fill="none"
+        aria-hidden="true"
+        className="shrink-0"
+      >
+        <rect x="5" y="1" width="6" height="5" rx="1.5" stroke="currentColor" strokeWidth="1.5" />
+        <path d="M3 7h10v8H3z" stroke="currentColor" strokeWidth="1.5" fill="none" />
+        <circle cx="8" cy="11" r="1.25" fill="currentColor" />
+        <path d="M8 12v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+      ZK
+    </span>
+  );
+}
+
 interface FindingsListProps {
   findings: Finding[];
   severityFilter: Severity | "all";
@@ -89,6 +124,7 @@ function FindingCard({ finding, onSelectAiFix, onViewSource }: FindingCardProps)
           <span className="font-mono text-xs rounded border border-zinc-300/70 dark:border-zinc-600 px-2 py-1 text-zinc-700 dark:text-zinc-300 theme-high-contrast:border-white theme-high-contrast:text-white" aria-label={`Error code: ${finding.code}`}>
             {finding.code}
           </span>
+          {isZkFinding(finding.code) && <ZkBadge />}
         </div>
       </div>
       {finding.snippet && (

@@ -218,4 +218,51 @@ describe('SanctifierCodeActionProvider', () => {
     const actions = provider.provideCodeActions(doc, emptyRange, emptyContext(diags));
     expect(actions).toHaveLength(3);
   });
+
+  // ── Z-rule quick-fix tests (issue #1239) ────────────────────────────────────
+
+  it('returns auth-constraint scaffold for Z010', () => {
+    const doc = makeDocument([
+      '  template AuthGate() {',
+      '    signal input secret;',
+      '  }',
+    ]);
+    const diag = makeDiag('Z010', 1);
+    const actions = provider.provideCodeActions(doc, emptyRange, emptyContext([diag]));
+    expect(actions).toHaveLength(1);
+    expect(actions[0].title).toContain('Z010');
+    const edit = actions[0].edit as unknown as WorkspaceEdit;
+    expect(edit._inserts).toHaveLength(1);
+    // Inserted after the flagged line
+    expect(edit._inserts[0].position).toEqual(new Position(2, 0));
+    expect(edit._inserts[0].text).toContain('pubKeyHash');
+  });
+
+  it('returns nullifier-check scaffold for Z002', () => {
+    const doc = makeDocument([
+      '  template Spend() {',
+      '    signal input nonce;',
+      '  }',
+    ]);
+    const diag = makeDiag('Z002', 1);
+    const actions = provider.provideCodeActions(doc, emptyRange, emptyContext([diag]));
+    expect(actions).toHaveLength(1);
+    expect(actions[0].title).toContain('Z002');
+    const edit = actions[0].edit as unknown as WorkspaceEdit;
+    expect(edit._inserts[0].text).toContain('nullifier');
+  });
+
+  it('returns no quick-fix for Z-rules without a mechanical fix (e.g. Z007)', () => {
+    const doc = makeDocument(['    signal range_value;']);
+    const diag = makeDiag('Z007', 0);
+    const actions = provider.provideCodeActions(doc, emptyRange, emptyContext([diag]));
+    expect(actions).toHaveLength(0);
+  });
+
+  it('returns no quick-fix for unknown Z-rule codes', () => {
+    const doc = makeDocument(['    signal x;']);
+    const diag = makeDiag('Z999', 0);
+    const actions = provider.provideCodeActions(doc, emptyRange, emptyContext([diag]));
+    expect(actions).toHaveLength(0);
+  });
 });
