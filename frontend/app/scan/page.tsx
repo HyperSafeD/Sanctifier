@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { AnalysisTerminal } from "../components/AnalysisTerminal";
 import { SanctityScore } from "../components/SanctityScore";
 import { FindingsList } from "../components/FindingsList";
+import { ZkFindingsPanel } from "../components/ZkFindingsPanel";
 import { SeverityFilter } from "../components/SeverityFilter";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { nextScanProgressPhase } from "../lib/scan-progress";
@@ -229,6 +230,7 @@ export default function ScanPage() {
                 <SeverityFilter selected={severityFilter} onChange={setSeverityFilter} />
               </div>
               <ErrorBoundary>
+                <ZkFindingsPanel findings={findings} />
                 <FindingsList findings={findings} severityFilter={severityFilter} />
               </ErrorBoundary>
             </div>

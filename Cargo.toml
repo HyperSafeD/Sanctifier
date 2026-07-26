@@ -22,6 +22,7 @@ members = [
     "contracts/benchmark",
     "contracts/deposit-withdraw",
     "contracts/sep41-compliance",
+    "contracts/zk-verifier",
 
 ]
 resolver = "2"
