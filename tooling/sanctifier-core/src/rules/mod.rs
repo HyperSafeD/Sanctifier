@@ -3,6 +3,8 @@
 //! Implement the [`Rule`] trait to create a custom check, then register it
 //! with [`RuleRegistry::register`].
 
+/// Arkworks ConstraintSynthesizer circuit detection with Z007-adapted range-check analysis.
+pub mod arkworks_circuit;
 /// Unchecked arithmetic detection.
 pub mod arithmetic_overflow;
 /// Missing authorization checks.
