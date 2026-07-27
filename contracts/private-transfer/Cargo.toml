@@ -1,0 +1,20 @@
+[package]
+name = "private-transfer"
+version = "0.1.0"
+edition = "2021"
+description = "Shielded-balance private transfer demo contract using ZK proofs (Groth16)"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+security-disclaimers = { path = "../security-disclaimers" }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0

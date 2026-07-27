@@ -57,6 +57,7 @@ pub mod contract_discovery;
 pub mod finding_codes;
 pub mod gas_estimator;
 pub mod gas_report;
+pub mod circom_parser;
 pub mod input_validation;
 pub mod noir_parser;
 pub mod parser;
