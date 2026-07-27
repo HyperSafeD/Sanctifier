@@ -38,6 +38,27 @@ This directory contains fixture source files used as deterministic scan inputs f
 | `S027`       | `s027_static_reentrancy.rs`     |
 | `S030`       | `s030_require_auth_for_args.rs` |
 
+## ZK fixture index
+
+Z-rule fixtures follow the same `z0NN_description.rs` naming convention as the
+`S***` fixtures above. Each fixture is annotated inline with which
+function(s) trigger the rule (❌) and which demonstrate the clean, non-triggering
+case (✅). Some fixtures hold both cases in one file; others (e.g. `Z001`) hold
+only the triggering case today, with the clean counterpart tracked for a
+future fixture.
+
+| Finding code | Fixture file                                | Case                    |
+| ------------ | -------------------------------------------- | ----------------------- |
+| `Z001`       | `z001_missing_nullifier.rs`                  | Triggering only         |
+| `Z002`       | `z002_insecure_randomness.rs`                | Triggering + clean      |
+| `Z009`       | `z009_unbounded_verify_loop.rs`               | Triggering + clean      |
+| `Z010`       | `z010_missing_vk_rotation_access_control.rs`  | Triggering + clean      |
+
+Rule definitions live under [`docs/rules/`](../../../docs/rules/); see
+`Z001.md`–`Z014.md` for the full Z-rule catalog. This table is updated
+incrementally as each Z-rule fixture lands (see #1197–#1210, #1217, #1218,
+#1222, #1223).
+
 ## Usage
 
 From repository root:
