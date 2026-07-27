@@ -52,6 +52,12 @@ Every finding has a stable code — `S001..S012` — so you can filter, suppress
 
 Plus the community **vulnerability database** matches known CVE-style patterns (`SOL-2024-*`) against your AST — so a published exploit anywhere becomes a finding everywhere.
 
+### Zero-knowledge contracts — the `Z001..Z014` series
+
+If your contract verifies ZK proofs on-chain, Sanctifier checks the ways those integrations keep breaking: nullifiers that are never recorded, public inputs that don't commit to the transaction, verifying keys with no ceremony provenance or trusted straight out of storage.
+
+**→ [docs/zk-roadmap.md](docs/zk-roadmap.md)** is the scope summary: which Z-rules have detectors today, which are documented but not yet wired, and what is deliberately deferred. Start there before reading the 62 individual issues. The full catalogue lives in [docs/rules/](docs/rules/), with the vulnerability classes and secure patterns explained in the [ZK Security Guide](docs/zk-security-guide.md).
+
 ---
 
 ## Live on Soroban testnet — right now
@@ -289,6 +295,7 @@ Sanctifier is shipping in waves. What's done, what's next, what's wishlist:
 - Streaming `--ndjson` output for incremental piping
 - GitHub PR comment formatter with delta vs base
 - 20+ new engine rules (allowance race, TTL bumps, cross-contract `try_call`, taint through destructures, …)
+- ZK integration — `Z001..Z014` rule catalogue, circom/Noir parsing, shielded-contract fixtures, dashboard ZK panel. Scope and status: **[docs/zk-roadmap.md](docs/zk-roadmap.md)**
 
 **Wishlist**
 - Hosted REST API, Stellar Laboratory plugin, cargo-sanctify subcommand shim, anomaly-detection rules engine for recorded runtime calls
@@ -339,6 +346,7 @@ in a single terminal session.
 | **Get started (tutorial)** | **[docs/getting-started.md](docs/getting-started.md)** |
 | Browse the API reference | [API Documentation](https://hypersafed.github.io/Sanctifier/) |
 | Understand every finding code | [docs/error-codes.md](docs/error-codes.md) |
+| **Analyse a ZK contract** | **[docs/zk-roadmap.md](docs/zk-roadmap.md)** (scope) · [ZK Security Guide](docs/zk-security-guide.md) · [ZK Integration Guide](docs/ZK-INTEGRATION-GUIDE.md) |
 | Wire the runtime guard into your contract | [docs/runtime-guards-integration.md](docs/runtime-guards-integration.md) |
 | Set up CI | [docs/ci-cd-setup.md](docs/ci-cd-setup.md) |
 | Deploy to testnet | [docs/soroban-deployment.md](docs/soroban-deployment.md) |

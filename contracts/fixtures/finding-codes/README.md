@@ -51,13 +51,22 @@ future fixture.
 | ------------ | -------------------------------------------- | ----------------------- |
 | `Z001`       | `z001_missing_nullifier.rs`                  | Triggering only         |
 | `Z002`       | `z002_insecure_randomness.rs`                | Triggering + clean      |
+| `Z003`       | `z003_missing_public_input_binding.rs`        | Triggering + clean      |
+| `Z004`       | `z004_unverified_trusted_setup.rs`            | Triggering + clean      |
+| `Z005`       | `z005_missing_vk_integrity_check.rs`          | Triggering + clean      |
 | `Z009`       | `z009_unbounded_verify_loop.rs`               | Triggering + clean      |
 | `Z010`       | `z010_missing_vk_rotation_access_control.rs`  | Triggering + clean      |
 
+The `Z003`–`Z005` fixtures are exercised directly by the snapshot suite
+(`tooling/sanctifier-core/tests/sarif_snapshots.rs`), which asserts the exact set
+of functions or constants each rule flags — so a fixture and its rule cannot drift
+apart silently.
+
 Rule definitions live under [`docs/rules/`](../../../docs/rules/); see
-`Z001.md`–`Z014.md` for the full Z-rule catalog. This table is updated
-incrementally as each Z-rule fixture lands (see #1197–#1210, #1217, #1218,
-#1222, #1223).
+`Z001.md`–`Z014.md` for the full Z-rule catalog, and
+[`docs/zk-roadmap.md`](../../../docs/zk-roadmap.md) for what ships in this wave.
+This table is updated incrementally as each Z-rule fixture lands (see #1197–#1210,
+#1217, #1218, #1222, #1223).
 
 ## Usage
 

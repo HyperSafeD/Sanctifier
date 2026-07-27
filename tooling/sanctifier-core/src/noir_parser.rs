@@ -122,7 +122,9 @@ pub fn parse_noir(source: &str) -> Result<NoirModule, NoirParseError> {
         return Err(NoirParseError::EmptySource);
     }
     if source.len() > MAX_SOURCE_BYTES {
-        return Err(NoirParseError::SourceTooLarge { bytes: source.len() });
+        return Err(NoirParseError::SourceTooLarge {
+            bytes: source.len(),
+        });
     }
 
     let mut module = NoirModule::default();
@@ -159,15 +161,15 @@ pub fn parse_noir(source: &str) -> Result<NoirModule, NoirParseError> {
 fn parse_function(lines: &[&str], start: usize) -> Result<(NoirFunction, usize), String> {
     let header = lines[start].trim();
 
-    let name = extract_fn_name(header)
-        .ok_or_else(|| format!("cannot extract name from: {header:?}"))?;
+    let name =
+        extract_fn_name(header).ok_or_else(|| format!("cannot extract name from: {header:?}"))?;
 
     let (params, return_type, return_visibility) = parse_signature(header);
 
     // Collect body lines between the opening `{` and the matching `}`.
     let mut body_lines: Vec<&str> = Vec::new();
     let mut depth = 0usize;
-    let mut consumed = 1;
+    let mut consumed: usize = 1;
 
     for line in &lines[start..] {
         for ch in line.chars() {
@@ -190,11 +192,22 @@ fn parse_function(lines: &[&str], start: usize) -> Result<(NoirFunction, usize),
         }
     }
 
-    let body = body_lines.iter().map(|l| parse_statement(l.trim())).collect();
+    let body = body_lines
+        .iter()
+        .map(|l| parse_statement(l.trim()))
+        .collect();
 
     Ok((
         NoirFunction { name, params, return_type, return_visibility, body },
         (consumed as usize).saturating_sub(1),
+        NoirFunction {
+            name,
+            params,
+            return_type,
+            return_visibility,
+            body,
+        },
+        consumed.saturating_sub(1),
     ))
 }
 
@@ -202,7 +215,11 @@ fn extract_fn_name(header: &str) -> Option<String> {
     // Match `fn name(` or `pub fn name(`
     let after_fn = header.split("fn ").nth(1)?;
     let name = after_fn.split('(').next()?.trim().to_string();
-    if name.is_empty() { None } else { Some(name) }
+    if name.is_empty() {
+        None
+    } else {
+        Some(name)
+    }
 }
 
 fn parse_signature(header: &str) -> (Vec<NoirParam>, Option<String>, Visibility) {
@@ -219,15 +236,20 @@ fn parse_signature(header: &str) -> (Vec<NoirParam>, Option<String>, Visibility)
             if p.is_empty() {
                 return None;
             }
-            let (visibility, rest) = if p.starts_with("pub ") {
-                (Visibility::Public, p.trim_start_matches("pub "))
-            } else {
-                (Visibility::Private, p)
-            };
-            let mut parts = rest.splitn(2, ':');
+            // Noir marks visibility on the *type*, not the binding:
+            // `fn claim(nullifier: pub Field, amount: u64)`.
+            let mut parts = p.splitn(2, ':');
             let name = parts.next()?.trim().to_string();
-            let ty = parts.next().unwrap_or("Field").trim().to_string();
-            Some(NoirParam { name, ty, visibility })
+            let ty = parts.next().unwrap_or("Field").trim();
+            let (visibility, ty) = match ty.strip_prefix("pub ") {
+                Some(stripped) => (Visibility::Public, stripped.trim()),
+                None => (Visibility::Private, ty),
+            };
+            Some(NoirParam {
+                name,
+                ty: ty.to_string(),
+                visibility,
+            })
         })
         .collect();
 
@@ -235,7 +257,10 @@ fn parse_signature(header: &str) -> (Vec<NoirParam>, Option<String>, Visibility)
     let (return_type, return_visibility) = if let Some(after_arrow) = header.split("->").nth(1) {
         let after_arrow = after_arrow.trim().trim_end_matches('{').trim();
         if after_arrow.starts_with("pub ") {
-            (Some(after_arrow.trim_start_matches("pub ").trim().to_string()), Visibility::Public)
+            (
+                Some(after_arrow.trim_start_matches("pub ").trim().to_string()),
+                Visibility::Public,
+            )
         } else {
             (Some(after_arrow.to_string()), Visibility::Private)
         }
@@ -270,7 +295,11 @@ fn parse_statement(line: &str) -> NoirStatement {
 
     if line.contains("hash") && line.contains('(') {
         let callee = line.split('(').next().unwrap_or("").trim().to_string();
-        let args_str = line.split('(').nth(1).and_then(|s| s.split(')').next()).unwrap_or("");
+        let args_str = line
+            .split('(')
+            .nth(1)
+            .and_then(|s| s.split(')').next())
+            .unwrap_or("");
         let args = args_str.split(',').map(|a| a.trim().to_string()).collect();
         return NoirStatement::HashCall { callee, args };
     }
@@ -282,12 +311,19 @@ fn parse_statement(line: &str) -> NoirStatement {
         }
         if line.contains(".write(") || line.contains(".insert(") {
             let field = extract_storage_field(line);
-            let value = line.split('(').nth(1).and_then(|s| s.split(')').next()).unwrap_or("").to_string();
+            let value = line
+                .split('(')
+                .nth(1)
+                .and_then(|s| s.split(')').next())
+                .unwrap_or("")
+                .to_string();
             return NoirStatement::StorageWrite { field, value };
         }
     }
 
-    NoirStatement::Other { raw: line.to_string() }
+    NoirStatement::Other {
+        raw: line.to_string(),
+    }
 }
 
 fn extract_storage_field(line: &str) -> String {
@@ -312,7 +348,10 @@ mod tests {
     #[test]
     fn oversized_source_returns_error() {
         let big = "x".repeat(MAX_SOURCE_BYTES + 1);
-        assert!(matches!(parse_noir(&big), Err(NoirParseError::SourceTooLarge { .. })));
+        assert!(matches!(
+            parse_noir(&big),
+            Err(NoirParseError::SourceTooLarge { .. })
+        ));
     }
 
     #[test]
@@ -350,7 +389,10 @@ fn check(x: pub Field) {
 "#;
         let module = parse_noir(src).unwrap();
         let func = &module.functions["check"];
-        let has_assert = func.body.iter().any(|s| matches!(s, NoirStatement::Assert { .. }));
+        let has_assert = func
+            .body
+            .iter()
+            .any(|s| matches!(s, NoirStatement::Assert { .. }));
         assert!(has_assert);
     }
 
@@ -363,7 +405,10 @@ fn commit(secret: Field, blinding: Field) -> Field {
 "#;
         let module = parse_noir(src).unwrap();
         let func = &module.functions["commit"];
-        let has_hash = func.body.iter().any(|s| matches!(s, NoirStatement::HashCall { .. }));
+        let has_hash = func
+            .body
+            .iter()
+            .any(|s| matches!(s, NoirStatement::HashCall { .. }));
         assert!(has_hash);
     }
 
@@ -376,7 +421,10 @@ fn get_root(storage: Storage) -> Field {
 "#;
         let module = parse_noir(src).unwrap();
         let func = &module.functions["get_root"];
-        let has_read = func.body.iter().any(|s| matches!(s, NoirStatement::StorageRead { .. }));
+        let has_read = func
+            .body
+            .iter()
+            .any(|s| matches!(s, NoirStatement::StorageRead { .. }));
         assert!(has_read);
     }
 }

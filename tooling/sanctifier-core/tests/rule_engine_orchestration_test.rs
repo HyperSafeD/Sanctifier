@@ -226,8 +226,14 @@ fn every_violation_has_a_valid_severity() {
     let reg = registry();
     let violations = reg.run_all(MULTI_ISSUE_CONTRACT);
     // The point here is that no violation has an unrecognised/panicking severity.
-    // Asserting all three variants are representable.
-    let valid = [Severity::Error, Severity::Warning, Severity::Info];
+    // Asserting all variants are representable.
+    let valid = [
+        Severity::Critical,
+        Severity::Error,
+        Severity::High,
+        Severity::Warning,
+        Severity::Info,
+    ];
     for v in &violations {
         assert!(
             valid.contains(&v.severity),

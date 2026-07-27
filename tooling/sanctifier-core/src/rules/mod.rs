@@ -3,10 +3,10 @@
 //! Implement the [`Rule`] trait to create a custom check, then register it
 //! with [`RuleRegistry::register`].
 
-/// Arkworks ConstraintSynthesizer circuit detection with Z007-adapted range-check analysis.
-pub mod arkworks_circuit;
 /// Unchecked arithmetic detection.
 pub mod arithmetic_overflow;
+/// Arkworks ConstraintSynthesizer circuit detection with Z007-adapted range-check analysis.
+pub mod arkworks_circuit;
 /// Missing authorization checks.
 pub mod auth_gap;
 /// Gas exhaustion risk from unbounded user-controlled loops (S031).
@@ -60,14 +60,20 @@ pub mod transfer_from_no_allowance;
 pub mod variable_shadowing;
 
 // ── Z-series: ZK / circom integration rules ──────────────────────────────────
-/// Z001 — ZK function with no constraint assertions (proof never checked).
-pub mod zk_missing_constraint;
-/// Z004 — Groth16/SNARK verifier call inside a skippable if/else branch.
-pub mod zk_verifier_skippable;
 /// Z005 — No nullifier-set check before processing a proof (double-spend risk).
 pub mod zk_double_spend_risk;
+/// Z004 — hardcoded trusted-setup material without ceremony provenance.
+pub mod zk_hardcoded_trusted_setup;
+/// Z001 — ZK function with no constraint assertions (proof never checked).
+pub mod zk_missing_constraint;
+/// Z003 — verifier public inputs omit a security-relevant value (proof malleability).
+pub mod zk_missing_public_input_binding;
+/// Z005 — storage-loaded verifying key used without an integrity check.
+pub mod zk_missing_vk_integrity_check;
 /// Z013 — ZK proof verification result discarded (ignored return value).
 pub mod zk_verification_result_ignored;
+/// Z004 — Groth16/SNARK verifier call inside a skippable if/else branch.
+pub mod zk_verifier_skippable;
 
 use serde::Serialize;
 use std::any::Any;
@@ -131,8 +137,12 @@ pub struct RuleViolation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum Severity {
+    /// Immediate, exploitable security risk — blocks CI.
+    Critical,
     /// Hard error — blocks CI.
     Error,
+    /// Significant security concern that should be fixed before mainnet.
+    High,
     /// Warning — should be addressed.
     Warning,
     /// Informational.
@@ -245,6 +255,10 @@ impl RuleRegistry {
         registry.register(zk_verifier_skippable::ZkVerifierSkippableRule::new());
         registry.register(zk_double_spend_risk::ZkDoubleSpendRiskRule::new());
         registry.register(zk_verification_result_ignored::ZkVerificationResultIgnoredRule::new());
+        // ── Z003 / Z004 / Z005 (#1199, #1200, #1201) ─────────────────────────
+        registry.register(zk_missing_public_input_binding::ZkMissingPublicInputBindingRule::new());
+        registry.register(zk_hardcoded_trusted_setup::ZkHardcodedTrustedSetupRule::new());
+        registry.register(zk_missing_vk_integrity_check::ZkMissingVkIntegrityCheckRule::new());
         registry
     }
 }

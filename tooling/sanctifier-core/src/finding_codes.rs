@@ -87,35 +87,39 @@ pub const REQUIRE_AUTH_FOR_ARGS: &str = "S030";
 pub const GAS_EXHAUSTION_RISK: &str = "S031";
 
 // ── Z-series: ZK / circom integration rules ──────────────────────────────────
+//
+// The canonical Z-rule catalogue is `docs/rules/Z001.md` – `docs/rules/Z014.md`,
+// mirrored by `data/vulnerability-db.json` and `docs/zk-security-guide.md`.
+// Keep these constants in lock-step with those documents.
 
-/// ZK circuit function has no constraint assertions — proof may be unsound.
-pub const ZK_MISSING_CONSTRAINT: &str = "Z001";
-/// Signal declared in circom template is never used in a constraint expression.
-pub const ZK_UNCONSTRAINED_SIGNAL: &str = "Z002";
-/// ZK proof input used in contract logic without on-chain validation.
-pub const ZK_PROOF_INPUT_NOT_VALIDATED: &str = "Z003";
-/// Groth16/SNARK verifier call can be bypassed by a conditional branch.
-pub const ZK_VERIFIER_SKIPPABLE: &str = "Z004";
-/// Nullifier set not checked before processing a proof — double-spend possible.
-pub const ZK_DOUBLE_SPEND_RISK: &str = "Z005";
-/// Public inputs to the verifier are not bound to on-chain state.
-pub const ZK_PUBLIC_INPUT_NOT_BOUND: &str = "Z006";
-/// Circom constraint system has under-constrained intermediate signals.
-pub const ZK_UNDER_CONSTRAINED_SIGNAL: &str = "Z007";
-/// Circom template instantiation uses an unchecked component output.
-pub const ZK_UNCHECKED_COMPONENT_OUTPUT: &str = "Z008";
-/// Trusted setup ceremony parameters are hardcoded in source.
-pub const ZK_HARDCODED_TRUSTED_SETUP: &str = "Z009";
-/// Proof system uses non-standard curve parameters without documentation.
-pub const ZK_NONSTANDARD_CURVE: &str = "Z010";
-/// Verifier does not emit an event after successful proof verification.
-pub const ZK_MISSING_VERIFICATION_EVENT: &str = "Z011";
+/// Verified proof is consumed without recording a nullifier — double-spend possible.
+pub const ZK_MISSING_NULLIFIER: &str = "Z001";
+/// Predictable on-chain entropy (timestamp, ledger sequence) used as a circuit input.
+pub const ZK_INSECURE_RANDOMNESS: &str = "Z002";
+/// Public inputs passed to the verifier are not bound to the transaction context.
+pub const ZK_MISSING_PUBLIC_INPUT_BINDING: &str = "Z003";
+/// Trusted-setup / verifying-key material is hardcoded without ceremony provenance.
+pub const ZK_HARDCODED_TRUSTED_SETUP: &str = "Z004";
+/// Verifying key is loaded from storage and used without an integrity check.
+pub const ZK_MISSING_VK_INTEGRITY_CHECK: &str = "Z005";
+/// Proof accepted without a nonce / uniqueness check — replayable.
+pub const ZK_MISSING_PROOF_NONCE: &str = "Z006";
+/// Circuit inputs are not range-checked against the scalar field modulus.
+pub const ZK_UNDER_CONSTRAINED_INPUTS: &str = "Z007";
+/// On-chain verifier curve/field does not match the off-chain circuit.
+pub const ZK_CURVE_FIELD_MISMATCH: &str = "Z008";
+/// Proof-verification loop is bounded by an unbounded caller-supplied value.
+pub const ZK_UNBOUNDED_VERIFY_LOOP: &str = "Z009";
+/// Verifying-key rotation / upgrade path is missing an admin auth check.
+pub const ZK_UNPROTECTED_VK_ROTATION: &str = "Z010";
+/// Commitment scheme reused across domains without domain separation.
+pub const ZK_COMMITMENT_REUSE_NO_DOMAIN_SEP: &str = "Z011";
 /// Shielded contract exposes more on-chain data than the privacy model claims.
-pub const ZK_OVER_EXPOSURE: &str = "Z012";
-/// Zero-knowledge proof verification result is not checked (ignored return value).
-pub const ZK_VERIFICATION_RESULT_IGNORED: &str = "Z013";
-/// Contract mixes ZK and non-ZK execution paths without clear separation.
-pub const ZK_MIXED_EXECUTION_PATHS: &str = "Z014";
+pub const ZK_PUBLIC_OUTPUT_OVEREXPOSURE: &str = "Z012";
+/// ZK-rollup style batch state transition is insufficiently validated.
+pub const ZK_INSUFFICIENT_BATCH_VALIDATION: &str = "Z013";
+/// Merkle inclusion proof is not verified against the contract's committed root.
+pub const ZK_MISSING_MERKLE_INCLUSION: &str = "Z014";
 
 /// A single finding-code entry with machine-readable code, category, and
 /// human-readable description.
@@ -445,6 +449,33 @@ pub fn all_finding_codes() -> Vec<FindingCode> {
             remediation: "Cap the iteration count with a fixed maximum (e.g. .take(MAX_ITEMS) or an explicit length check before the loop) so the gas cost cannot scale unbounded with caller-supplied input",
             doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules/gas-exhaustion-risk.md",
         },
+        FindingCode {
+            code: ZK_MISSING_PUBLIC_INPUT_BINDING,
+            category: "zk-proof-integrity",
+            description: "Security-relevant runtime values (recipient, amount, caller) are used after proof verification but are not among the public inputs passed to the verifier, allowing a valid proof to be paired with attacker-chosen inputs",
+            title: "Missing Public-Input Binding (Proof Malleability)",
+            severity: FindingSeverity::Critical,
+            remediation: "Include every security-relevant value in the public-input vector passed to the verifier (hashing addresses into a field element where needed) so the circuit commits to the transaction context",
+            doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules/Z003.md",
+        },
+        FindingCode {
+            code: ZK_HARDCODED_TRUSTED_SETUP,
+            category: "zk-trusted-setup",
+            description: "Verifying-key or trusted-setup material is hardcoded in contract source with no adjacent reference to a publicly auditable ceremony transcript or attestation",
+            title: "Unverified Trusted-Setup Parameters (Toxic Waste)",
+            severity: FindingSeverity::Critical,
+            remediation: "Document the ceremony provenance immediately above the constant with a `// ceremony:` comment naming the transcript, its hash, and a public URL, or load the key from governance-controlled storage",
+            doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules/Z004.md",
+        },
+        FindingCode {
+            code: ZK_MISSING_VK_INTEGRITY_CHECK,
+            category: "zk-trusted-setup",
+            description: "A verifying key read from mutable contract storage is passed to the verifier without first being checked against a known-good hash or signature",
+            title: "Missing Verifying-Key Integrity Check",
+            severity: FindingSeverity::High,
+            remediation: "Hash the storage-loaded verifying key and assert it equals a reference hash committed at deployment before using it to verify any proof",
+            doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules/Z005.md",
+        },
     ]
 }
 
@@ -520,5 +551,30 @@ mod tests {
         assert!(codes.iter().any(|c| c.code == TIMESTAMP_RANDOMNESS));
         assert!(codes.iter().any(|c| c.code == REQUIRE_AUTH_FOR_ARGS));
         assert!(codes.iter().any(|c| c.code == GAS_EXHAUSTION_RISK));
+    }
+
+    #[test]
+    fn includes_expected_zk_codes() {
+        let codes = all_finding_codes();
+        assert!(codes
+            .iter()
+            .any(|c| c.code == ZK_MISSING_PUBLIC_INPUT_BINDING));
+        assert!(codes.iter().any(|c| c.code == ZK_HARDCODED_TRUSTED_SETUP));
+        assert!(codes
+            .iter()
+            .any(|c| c.code == ZK_MISSING_VK_INTEGRITY_CHECK));
+    }
+
+    #[test]
+    fn zk_codes_match_the_canonical_catalogue() {
+        // The Z-series numbering is defined by docs/rules/Z0NN.md and mirrored in
+        // data/vulnerability-db.json. Guard against silent renumbering drift.
+        assert_eq!(ZK_MISSING_NULLIFIER, "Z001");
+        assert_eq!(ZK_INSECURE_RANDOMNESS, "Z002");
+        assert_eq!(ZK_MISSING_PUBLIC_INPUT_BINDING, "Z003");
+        assert_eq!(ZK_HARDCODED_TRUSTED_SETUP, "Z004");
+        assert_eq!(ZK_MISSING_VK_INTEGRITY_CHECK, "Z005");
+        assert_eq!(ZK_UNPROTECTED_VK_ROTATION, "Z010");
+        assert_eq!(ZK_MISSING_MERKLE_INCLUSION, "Z014");
     }
 }
