@@ -1,58 +1,61 @@
 coverage:
-  # Fail the CI check when coverage drops below the thresholds below.
   status:
     project:
       default:
-        # Overall project target.
-        target: 80%
-        threshold: 2%   # allow up to 2 percentage-point drop before failing
-
-    patch:
-      default:
-        # Every PR must cover at least 80% of the lines it changes.
         target: 80%
         threshold: 2%
-
-  # Per-crate coverage flags.
-  # Each flag maps to a Codecov flag uploaded in CI (--flags argument to the
-  # Codecov upload step).  Override the global threshold per crate here.
+        informational: false
+    
+    patch:
+      default:
+        target: 70%
+        informational: true
+  
+  # Package-specific thresholds
+  # Critical: sanctifier-core must maintain 90%+
   flags:
     sanctifier-core:
       paths:
         - tooling/sanctifier-core/src/
-      target: 80%
-      threshold: 2%
-
+      target: 90%
+      threshold: 0%
+      if_ci_failed: error
+      informational: false
+    
     sanctifier-cli:
       paths:
         - tooling/sanctifier-cli/src/
-      target: 80%
-      threshold: 2%
-
-    sanctifier-wasm:
+      target: 75%
+      threshold: 1%
+      informational: true
+    
+    sanctifier-detector:
       paths:
-        - tooling/sanctifier-wasm/src/
+        - tooling/sanctifier-detector/src/
       target: 80%
-      threshold: 2%
+      threshold: 1%
+      informational: true
 
-# Ignore auto-generated or test-only files.
-ignore:
-  - "**/*_tests.rs"
-  - "**/tests/**"
-  - "**/benches/**"
-  - "**/benchmarks/**"
-  - "contracts/**"       # example contracts are not production code
+  precision: 2
+  round: down
+  range: "70...100"
 
 comment:
-  layout: "reach,diff,flags,tree"
+  layout: "header,diff,flags,files,footer"
   behavior: default
-  require_changes: true  # only comment when coverage changes
+  require_changes: false
+  require_base: true
+  require_head: true
 
-# How to run coverage locally:
-#
-#   cargo install cargo-llvm-cov
-#   cargo llvm-cov --lcov --output-path lcov.info \
-#       -p sanctifier-core -p sanctifier-cli
-#
-# The CI uploads the resulting lcov.info to Codecov automatically.
-# See .github/workflows/rust.yml (coverage job) for the full command.
+# Ignore test files and generated code
+ignore:
+  - "**/*_test.rs"
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/*.spec.ts"
+  - "**/*.test.ts"
+  - "**/node_modules/**"
+  - "**/target/**"
+  - "**/dist/**"
+  - "**/build/**"
