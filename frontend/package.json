@@ -27,7 +27,7 @@
     "jspdf": "^4.2.0",
     "lucide-react": "^1.27.0",
     "shiki": "^3.2.2",
-    "next": "^16.2.4",
+    "next": "^16.2.12",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-window": "^1.8.10"
