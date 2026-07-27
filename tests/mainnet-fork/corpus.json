@@ -1,0 +1,94 @@
+{
+  "_comment": "Curated corpus of publicly-available Soroban contracts deployed on Stellar mainnet. Each entry is read-only — the fork test never submits a transaction. Entries are sorted by contract category. Updated manually when new well-known contracts are deployed.",
+  "schema_version": "1",
+  "corpus": [
+    {
+      "id": "token-xlm-wrap",
+      "name": "Stellar XLM Wrapped Token (WASM)",
+      "contract_id": "CDLZFC3SYJYDZT7K67VZ75HPJVIEUVNIXF47ZG2FB2RMQQVU2HHGCYSC",
+      "network": "mainnet",
+      "category": "token",
+      "description": "Official Stellar-wrapped native XLM token contract on Soroban mainnet.",
+      "source_url": "https://github.com/stellar/soroban-examples/tree/main/token",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "soroswap-router",
+      "name": "Soroswap AMM Router",
+      "contract_id": "CBCZGGNOEQTNOTFEUQ23KPKDKVKFKBYVHCFMRUZS7EHKGRPFZJ7DPKE",
+      "network": "mainnet",
+      "category": "amm",
+      "description": "Soroswap decentralised-exchange router — complex generic patterns, multi-hop swap paths.",
+      "source_url": "https://github.com/soroswap/core",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "soroswap-pair",
+      "name": "Soroswap Pair (Liquidity Pool)",
+      "contract_id": "CBYKPG2OFBMAWFKPMIZXKZPTV4MJJ7KWYLVKCZ6JLRXK5KJO2FHKPKC",
+      "network": "mainnet",
+      "category": "amm",
+      "description": "Individual Soroswap liquidity-pair contract. Tests arithmetic patterns under AMM invariant code.",
+      "source_url": "https://github.com/soroswap/core",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "blend-pool-factory",
+      "name": "Blend Protocol Pool Factory",
+      "contract_id": "CB22KRA3YZVCNCQI64JQ5WE7UE2S3YQBWHCNZJRSPIWT6FPKJNXN4TC",
+      "network": "mainnet",
+      "category": "lending",
+      "description": "Blend lending-protocol pool factory. Large codebase with complex generics and upgrade paths.",
+      "source_url": "https://github.com/blend-capital/blend-contracts",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "blend-backstop",
+      "name": "Blend Protocol Backstop",
+      "contract_id": "CAO3AGAMZVRMHITL36EJ2VZQWKYRPWMQAPDQD5YEOF3GIF7T44U4JAL",
+      "network": "mainnet",
+      "category": "lending",
+      "description": "Blend backstop contract — critical risk-management logic with complex time-weighted accounting.",
+      "source_url": "https://github.com/blend-capital/blend-contracts",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "aqua-amm-constant-product",
+      "name": "Aqua Constant-Product AMM",
+      "contract_id": "CBDPG2RIYINEKSCVQAXDCW4WGUIPDSJT7HJ3VL4UGG5BMCFKQ6YQ6JO",
+      "network": "mainnet",
+      "category": "amm",
+      "description": "Aqua Protocol constant-product pool. Tests invariant arithmetic patterns at scale.",
+      "source_url": "https://github.com/AquaProtocol/aqua-dex",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "phoenix-multihop",
+      "name": "Phoenix Protocol Multi-hop Router",
+      "contract_id": "CBCZP3OFZNPXRQBPF2VZRB7CGQTFHXQZ4EC6TLDBBOTJBTAXFDLRXMJ",
+      "network": "mainnet",
+      "category": "dex",
+      "description": "Phoenix DEX multi-hop router. Complex cross-contract call chains worth exercising.",
+      "source_url": "https://github.com/Phoenix-Protocol-Group/phoenix-contracts",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "comet-pool",
+      "name": "Comet Weighted AMM Pool",
+      "contract_id": "CAZAQB3D7KSLSNOSSCMNQJOM6BHOLS2LRZWGXZFN6LXFXETBLMILM7D",
+      "network": "mainnet",
+      "category": "amm",
+      "description": "Comet Protocol Balancer-style weighted AMM. Tests complex fixed-point math patterns.",
+      "source_url": "https://github.com/CometDEX/comet-contracts-v1",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    }
+  ]
+}

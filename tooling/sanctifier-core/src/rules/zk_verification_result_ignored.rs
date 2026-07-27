@@ -88,7 +88,7 @@ impl Rule for ZkVerificationResultIgnoredRule {
             .map(|fn_name| {
                 RuleViolation::new(
                     self.name(),
-                    Severity::Critical,
+                    Severity::Error,
                     format!(
                         "Function '{}' calls a ZK verifier but discards the result. \
                         A failing proof is silently ignored and execution continues.",

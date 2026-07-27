@@ -75,7 +75,7 @@ impl Rule for ArkworksCircuitRule {
                             violations.push(
                                 RuleViolation::new(
                                     self.name(),
-                                    Severity::High,
+                                    Severity::Warning,
                                     format!(
                                         "`{}::generate_constraints` allocates {} witness variable(s) \
                                          but contains no range-constraint enforcement \

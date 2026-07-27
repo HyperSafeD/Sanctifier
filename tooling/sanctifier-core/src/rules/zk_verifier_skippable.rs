@@ -92,7 +92,7 @@ impl Rule for ZkVerifierSkippableRule {
             .map(|fn_name| {
                 RuleViolation::new(
                     self.name(),
-                    Severity::Critical,
+                    Severity::Error,
                     format!(
                         "Function '{}' calls the ZK verifier inside an if-branch that has an else \
                         path — an attacker can route execution around proof verification.",
