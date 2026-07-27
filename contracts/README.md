@@ -67,3 +67,20 @@ Run security disclaimer tests:
 ```bash
 cargo test -p security-disclaimers
 ```
+
+## Real-mainnet Fork Corpus
+
+The contracts above are **synthetic fixtures** — hand-written or generated
+specifically to exercise individual detectors.  Real mainnet contracts often
+contain patterns (complex generics, large codebases, macro-heavy code,
+multi-hop call chains) that synthetic fixtures don't exercise.
+
+A complementary **read-only mainnet fork corpus** lives in
+[`tests/mainnet-fork/`](../tests/mainnet-fork/README.md).  It curates real,
+publicly-deployed Soroban contracts and runs the full analysis engine against
+them periodically in CI — without submitting any transaction to mainnet.
+
+See [`tests/mainnet-fork/corpus.json`](../tests/mainnet-fork/corpus.json) for
+the list of contracts and
+[`.github/workflows/mainnet-fork-ci.yml`](../.github/workflows/mainnet-fork-ci.yml)
+for the scheduled CI job.

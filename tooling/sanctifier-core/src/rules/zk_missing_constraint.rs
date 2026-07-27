@@ -66,7 +66,7 @@ impl Rule for ZkMissingConstraintRule {
                             violations.push(
                                 RuleViolation::new(
                                     self.name(),
-                                    Severity::Critical,
+                                    Severity::Error,
                                     format!(
                                         "Function '{}' accepts a ZK proof parameter but has no constraint \
                                         assertions. Without constraint checks the proof is never verified \

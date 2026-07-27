@@ -62,7 +62,7 @@ impl Rule for ZkDoubleSpendRiskRule {
                             violations.push(
                                 RuleViolation::new(
                                     self.name(),
-                                    Severity::Critical,
+                                    Severity::Error,
                                     format!(
                                         "Function '{}' verifies a ZK proof but never checks a nullifier set. \
                                         The same valid proof can be replayed to drain funds multiple times.",

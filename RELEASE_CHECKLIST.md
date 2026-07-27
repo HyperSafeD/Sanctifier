@@ -49,8 +49,17 @@ This document describes the steps required to publish a new release of Sanctifie
 - [ ] Verify https://docs.rs/sanctifier-cli shows the new version
 - [ ] Announce the release in relevant channels
 
+## Mainnet Release Candidate Cutover Addendum (#1140)
+
+- [ ] Verify all Mainnet Launch Readiness milestone issues are resolved or explicitly deferred
+- [ ] Create and complete a `mainnet-signoff` issue using the `.github/ISSUE_TEMPLATE/mainnet_signoff.md` template
+- [ ] Ensure 2 named approvers sign off on the mainnet sign-off issue
+- [ ] Verify read-only mainnet fork CI job (`.github/workflows/mainnet-fork-ci.yml`) is passing
+- [ ] Freeze `v1.0.0-mainnet` release candidate and publish release notes
+
 ## Rollback (if needed)
 
 - [ ] Yank the crate: `cargo yank --vers X.Y.Z sanctifier-cli`
 - [ ] Unpublish the npm package: `npm unpublish @hypersafed/sanctifier-cli@X.Y.Z`
 - [ ] Delete the GitHub release and re-tag
+
