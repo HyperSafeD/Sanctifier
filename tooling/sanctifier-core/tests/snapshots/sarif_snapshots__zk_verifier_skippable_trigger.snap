@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "transfer",
+    "message": "Function 'transfer' calls the ZK verifier inside an if-branch that has an else path — an attacker can route execution around proof verification.",
+    "rule_name": "zk_verifier_skippable",
+    "severity": "Critical",
+    "suggestion": "Move the verifier call unconditionally before any branching logic. The proof must always be verified; use early-return on failure rather than an if/else that skips verification entirely."
+  }
+]

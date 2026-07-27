@@ -23,10 +23,12 @@ use sanctifier_core::rules::{
     unhandled_result::UnhandledResultRule, unsafe_prng::UnsafePrngRule,
     unused_variable::UnusedVariableRule, variable_shadowing::VariableShadowingRule,
     zk_double_spend_risk::ZkDoubleSpendRiskRule,
+    zk_hardcoded_trusted_setup::ZkHardcodedTrustedSetupRule,
     zk_missing_constraint::ZkMissingConstraintRule,
+    zk_missing_public_input_binding::ZkMissingPublicInputBindingRule,
+    zk_missing_vk_integrity_check::ZkMissingVkIntegrityCheckRule,
     zk_verification_result_ignored::ZkVerificationResultIgnoredRule,
-    zk_verifier_skippable::ZkVerifierSkippableRule, Rule,
-    RuleViolation,
+    zk_verifier_skippable::ZkVerifierSkippableRule, Rule, RuleViolation,
 };
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -493,7 +495,10 @@ fn sarif_zk_verification_result_ignored_trigger() {
     "#;
     let rule = ZkVerificationResultIgnoredRule::new();
     let violations = rule.check(source);
-    assert!(!violations.is_empty(), "zk_verification_result_ignored must fire");
+    assert!(
+        !violations.is_empty(),
+        "zk_verification_result_ignored must fire"
+    );
     with_settings!({ sort_maps => true }, {
         insta::assert_json_snapshot!("zk_verification_result_ignored_trigger", violations_json(&violations));
     });
@@ -513,5 +518,159 @@ fn sarif_zk_verification_result_ignored_clean() {
     let violations = rule.check(source);
     with_settings!({ sort_maps => true }, {
         insta::assert_json_snapshot!("zk_verification_result_ignored_clean", violations_json(&violations));
+    });
+}
+
+// ── Z003 / Z004 / Z005 (#1199, #1200, #1201) ─────────────────────────────────
+//
+// These run against the checked-in fixtures rather than inline snippets, so a
+// fixture and its rule cannot drift apart silently.
+
+/// Load a fixture from `contracts/fixtures/finding-codes/`.
+fn fixture(name: &str) -> String {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../contracts/fixtures/finding-codes")
+        .join(name);
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("cannot read fixture {}: {e}", path.display()))
+}
+
+/// The function names a rule fired on, sorted for stable comparison.
+fn flagged_fns(violations: &[RuleViolation]) -> Vec<String> {
+    let mut names: Vec<String> = violations
+        .iter()
+        .map(|v| v.location.split(':').next().unwrap_or("").to_string())
+        .collect();
+    names.sort();
+    names
+}
+
+// ── Z003: missing_public_input_binding ───────────────────────────────────────
+
+#[test]
+fn sarif_z003_missing_public_input_binding_fixture() {
+    let source = fixture("z003_missing_public_input_binding.rs");
+    let violations = ZkMissingPublicInputBindingRule::new().check(&source);
+
+    // Only the unbound-recipient function may fire; the three safe variants
+    // (hash-bound, directly bound, and value-unused-after-verify) must not.
+    assert_eq!(
+        flagged_fns(&violations),
+        vec!["withdraw_vulnerable"],
+        "Z003 flagged the wrong set of functions: {violations:?}"
+    );
+
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!(
+            "z003_missing_public_input_binding_trigger",
+            violations_json(&violations)
+        );
+    });
+}
+
+#[test]
+fn sarif_z003_clean() {
+    let source = r#"
+        impl Shielded {
+            pub fn withdraw(env: Env, proof: Vec<u64>, recipient: Address, amount: i128) {
+                let recipient_hash = hash_address(&env, &recipient);
+                let public_inputs = vec![&env, recipient_hash, amount as u64];
+                verify_proof(&env, &proof, &public_inputs);
+                token_client.transfer(&env.current_contract_address(), &recipient, &amount);
+            }
+        }
+    "#;
+    let violations = ZkMissingPublicInputBindingRule::new().check(source);
+    assert!(violations.is_empty(), "bound inputs must not fire");
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!(
+            "z003_missing_public_input_binding_clean",
+            violations_json(&violations)
+        );
+    });
+}
+
+// ── Z004: hardcoded_trusted_setup ────────────────────────────────────────────
+
+#[test]
+fn sarif_z004_unverified_trusted_setup_fixture() {
+    let source = fixture("z004_unverified_trusted_setup.rs");
+    let violations = ZkHardcodedTrustedSetupRule::new().check(&source);
+
+    // The two undocumented constants fire; the ceremony-documented keys, the
+    // storage-key string, and the unrelated limit must not.
+    assert_eq!(
+        flagged_fns(&violations),
+        vec!["TRUSTED_SETUP_PARAMS", "VK_ALPHA_G1_UNDOCUMENTED"],
+        "Z004 flagged the wrong set of constants: {violations:?}"
+    );
+
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!(
+            "z004_unverified_trusted_setup_trigger",
+            violations_json(&violations)
+        );
+    });
+}
+
+#[test]
+fn sarif_z004_clean() {
+    let source = "\
+// ceremony: perpetual powers-of-tau phase2, contribution #47
+// transcript sha256: 3f7a1c04e5b28d9f6a1103bb77c4e2d5081aa93cf4be6710d2ac5f38e91b7c19
+const VERIFYING_KEY: [u8; 4] = [0x01, 0x02, 0x03, 0x04];
+";
+    let violations = ZkHardcodedTrustedSetupRule::new().check(source);
+    assert!(violations.is_empty(), "documented ceremony must not fire");
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!(
+            "z004_unverified_trusted_setup_clean",
+            violations_json(&violations)
+        );
+    });
+}
+
+// ── Z005: missing_vk_integrity_check ─────────────────────────────────────────
+
+#[test]
+fn sarif_z005_missing_vk_integrity_check_fixture() {
+    let source = fixture("z005_missing_vk_integrity_check.rs");
+    let violations = ZkMissingVkIntegrityCheckRule::new().check(&source);
+
+    // Both unchecked storage-loaded paths fire; the hash-asserted path, the
+    // immutable constant key, and the plain getter must not.
+    assert_eq!(
+        flagged_fns(&violations),
+        vec!["verify_inline_vulnerable", "verify_vulnerable"],
+        "Z005 flagged the wrong set of functions: {violations:?}"
+    );
+
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!(
+            "z005_missing_vk_integrity_check_trigger",
+            violations_json(&violations)
+        );
+    });
+}
+
+#[test]
+fn sarif_z005_clean() {
+    let source = r#"
+        impl Verifier {
+            pub fn verify(env: Env, proof: Vec<u8>, inputs: Vec<u64>) -> bool {
+                let vk: BytesN<64> = env.storage().persistent().get(&DataKey::VerifyingKey).unwrap();
+                let expected: BytesN<32> = env.storage().persistent().get(&DataKey::VkHash).unwrap();
+                assert_eq!(env.crypto().sha256(&Bytes::from_slice(&env, vk.as_ref())), expected, "vk integrity");
+                groth16_verify(vk.as_ref(), &proof, &inputs)
+            }
+        }
+    "#;
+    let violations = ZkMissingVkIntegrityCheckRule::new().check(source);
+    assert!(violations.is_empty(), "checked VK must not fire");
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!(
+            "z005_missing_vk_integrity_check_clean",
+            violations_json(&violations)
+        );
     });
 }

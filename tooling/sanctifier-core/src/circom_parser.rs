@@ -12,8 +12,6 @@
 //! - Known gaps: `pragma` versions, `include` directives, and `function`
 //!   blocks are parsed but not deeply analysed.
 
-use std::collections::HashMap;
-
 /// A parsed circom template.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CircomTemplate {
@@ -151,7 +149,10 @@ fn parse_template<'a>(
         let params: Vec<String> = if params_str.trim().is_empty() {
             vec![]
         } else {
-            params_str.split(',').map(|p| p.trim().to_string()).collect()
+            params_str
+                .split(',')
+                .map(|p| p.trim().to_string())
+                .collect()
         };
         (name, params)
     } else {
@@ -168,7 +169,10 @@ fn parse_template<'a>(
     let mut constraint_body = String::new();
 
     for (_ln, raw) in lines.by_ref() {
-        let line = raw.trim();
+        // Strip line comments before anything else: a comment must not affect
+        // brace depth, and — critically — must not be mistaken for a constraint
+        // mentioning a signal (`// inter is never constrained`).
+        let line = raw.split("//").next().unwrap_or(raw).trim();
 
         // Track brace depth to know when the template closes.
         for ch in line.chars() {
@@ -187,9 +191,6 @@ fn parse_template<'a>(
         if depth == 0 {
             break;
         }
-
-        constraint_body.push(' ');
-        constraint_body.push_str(line);
 
         // Signal declaration
         if line.starts_with("signal") {
@@ -211,13 +212,16 @@ fn parse_template<'a>(
         if line.contains("===") || line.contains("<==") || line.contains("==>") {
             raw_constraints.push(line.to_string());
         }
+
+        // Only executable lines feed the constrained-signal scan; declarations
+        // and comments were skipped above.
+        constraint_body.push(' ');
+        constraint_body.push_str(line);
     }
 
     // Mark signals that appear in a constraint.
     for signal in signals.iter_mut() {
-        if raw_constraints
-            .iter()
-            .any(|c| c.contains(&signal.name))
+        if raw_constraints.iter().any(|c| c.contains(&signal.name))
             || constraint_body.contains(&format!(" {} ", signal.name))
         {
             signal.is_constrained = true;
@@ -240,9 +244,15 @@ fn parse_signal_decl(line: &str) -> Option<Signal> {
     //   signal inter;
     let rest = line.trim_start_matches("signal").trim();
     let (direction, rest) = if rest.starts_with("input ") {
-        (SignalDirection::Input, rest.trim_start_matches("input").trim())
+        (
+            SignalDirection::Input,
+            rest.trim_start_matches("input").trim(),
+        )
     } else if rest.starts_with("output ") {
-        (SignalDirection::Output, rest.trim_start_matches("output").trim())
+        (
+            SignalDirection::Output,
+            rest.trim_start_matches("output").trim(),
+        )
     } else {
         (SignalDirection::Intermediate, rest)
     };
@@ -349,7 +359,11 @@ template LeakyMult() {
         let f = parse(MULTIPLIER).unwrap();
         let t = &f.templates[0];
         for sig in &t.signals {
-            assert!(sig.is_constrained, "signal {} must be constrained", sig.name);
+            assert!(
+                sig.is_constrained,
+                "signal {} must be constrained",
+                sig.name
+            );
         }
     }
 
