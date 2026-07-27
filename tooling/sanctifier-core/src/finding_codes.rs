@@ -86,6 +86,37 @@ pub const REQUIRE_AUTH_FOR_ARGS: &str = "S030";
 /// Loop bound or iteration count derives from an unbounded user-controlled parameter, risking out-of-gas reverts.
 pub const GAS_EXHAUSTION_RISK: &str = "S031";
 
+// ── Z-series: ZK / circom integration rules ──────────────────────────────────
+
+/// ZK circuit function has no constraint assertions — proof may be unsound.
+pub const ZK_MISSING_CONSTRAINT: &str = "Z001";
+/// Signal declared in circom template is never used in a constraint expression.
+pub const ZK_UNCONSTRAINED_SIGNAL: &str = "Z002";
+/// ZK proof input used in contract logic without on-chain validation.
+pub const ZK_PROOF_INPUT_NOT_VALIDATED: &str = "Z003";
+/// Groth16/SNARK verifier call can be bypassed by a conditional branch.
+pub const ZK_VERIFIER_SKIPPABLE: &str = "Z004";
+/// Nullifier set not checked before processing a proof — double-spend possible.
+pub const ZK_DOUBLE_SPEND_RISK: &str = "Z005";
+/// Public inputs to the verifier are not bound to on-chain state.
+pub const ZK_PUBLIC_INPUT_NOT_BOUND: &str = "Z006";
+/// Circom constraint system has under-constrained intermediate signals.
+pub const ZK_UNDER_CONSTRAINED_SIGNAL: &str = "Z007";
+/// Circom template instantiation uses an unchecked component output.
+pub const ZK_UNCHECKED_COMPONENT_OUTPUT: &str = "Z008";
+/// Trusted setup ceremony parameters are hardcoded in source.
+pub const ZK_HARDCODED_TRUSTED_SETUP: &str = "Z009";
+/// Proof system uses non-standard curve parameters without documentation.
+pub const ZK_NONSTANDARD_CURVE: &str = "Z010";
+/// Verifier does not emit an event after successful proof verification.
+pub const ZK_MISSING_VERIFICATION_EVENT: &str = "Z011";
+/// Shielded contract exposes more on-chain data than the privacy model claims.
+pub const ZK_OVER_EXPOSURE: &str = "Z012";
+/// Zero-knowledge proof verification result is not checked (ignored return value).
+pub const ZK_VERIFICATION_RESULT_IGNORED: &str = "Z013";
+/// Contract mixes ZK and non-ZK execution paths without clear separation.
+pub const ZK_MIXED_EXECUTION_PATHS: &str = "Z014";
+
 /// A single finding-code entry with machine-readable code, category, and
 /// human-readable description.
 #[derive(Debug, Clone, Serialize)]

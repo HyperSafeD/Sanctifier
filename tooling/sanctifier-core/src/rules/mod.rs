@@ -56,6 +56,17 @@ pub mod timestamp_randomness;
 pub mod transfer_from_no_allowance;
 /// Variable shadowing in nested scopes.
 pub mod variable_shadowing;
+
+// ── Z-series: ZK / circom integration rules ──────────────────────────────────
+/// Z001 — ZK function with no constraint assertions (proof never checked).
+pub mod zk_missing_constraint;
+/// Z004 — Groth16/SNARK verifier call inside a skippable if/else branch.
+pub mod zk_verifier_skippable;
+/// Z005 — No nullifier-set check before processing a proof (double-spend risk).
+pub mod zk_double_spend_risk;
+/// Z013 — ZK proof verification result discarded (ignored return value).
+pub mod zk_verification_result_ignored;
+
 use serde::Serialize;
 use std::any::Any;
 
@@ -227,6 +238,11 @@ impl RuleRegistry {
         registry.register(timestamp_randomness::TimestampRandomnessRule::new());
         registry.register(require_auth_for_args::RequireAuthForArgsRule::new());
         registry.register(gas_exhaustion::GasExhaustionRiskRule::new());
+        // ── Z-series ZK rules (#1230) ─────────────────────────────────────────
+        registry.register(zk_missing_constraint::ZkMissingConstraintRule::new());
+        registry.register(zk_verifier_skippable::ZkVerifierSkippableRule::new());
+        registry.register(zk_double_spend_risk::ZkDoubleSpendRiskRule::new());
+        registry.register(zk_verification_result_ignored::ZkVerificationResultIgnoredRule::new());
         registry
     }
 }

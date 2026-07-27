@@ -21,7 +21,11 @@ use sanctifier_core::rules::{
     storage_update_state_check::StorageUpdateStateCheckRule,
     truncation_bounds::TruncationBoundsRule, unchecked_external_call::UncheckedExternalCallRule,
     unhandled_result::UnhandledResultRule, unsafe_prng::UnsafePrngRule,
-    unused_variable::UnusedVariableRule, variable_shadowing::VariableShadowingRule, Rule,
+    unused_variable::UnusedVariableRule, variable_shadowing::VariableShadowingRule,
+    zk_double_spend_risk::ZkDoubleSpendRiskRule,
+    zk_missing_constraint::ZkMissingConstraintRule,
+    zk_verification_result_ignored::ZkVerificationResultIgnoredRule,
+    zk_verifier_skippable::ZkVerifierSkippableRule, Rule,
     RuleViolation,
 };
 
@@ -352,5 +356,162 @@ fn sarif_ledger_size_clean() {
     let violations = rule.check(source);
     with_settings!({ sort_maps => true }, {
         insta::assert_json_snapshot!("ledger_size_clean", violations_json(&violations));
+    });
+}
+
+// ── Z-series snapshot tests (#1224) ──────────────────────────────────────────
+
+// ── Z001: zk_missing_constraint (triggering fixture) ─────────────────────────
+
+#[test]
+fn sarif_zk_missing_constraint_trigger() {
+    let source = r#"
+        impl ShieldedContract {
+            pub fn withdraw(env: Env, proof: Vec<u8>, amount: i128) {
+                env.storage().persistent().set(&symbol_short!("BAL"), &amount);
+            }
+        }
+    "#;
+    let rule = ZkMissingConstraintRule::new();
+    let violations = rule.check(source);
+    assert!(!violations.is_empty(), "zk_missing_constraint must fire");
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!("zk_missing_constraint_trigger", violations_json(&violations));
+    });
+}
+
+#[test]
+fn sarif_zk_missing_constraint_clean() {
+    let source = r#"
+        impl ShieldedContract {
+            pub fn withdraw(env: Env, proof: Vec<u8>, amount: i128) {
+                verify_proof(&env, &proof).expect("invalid proof");
+                env.storage().persistent().set(&symbol_short!("BAL"), &amount);
+            }
+        }
+    "#;
+    let rule = ZkMissingConstraintRule::new();
+    let violations = rule.check(source);
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!("zk_missing_constraint_clean", violations_json(&violations));
+    });
+}
+
+// ── Z004: zk_verifier_skippable (triggering fixture) ─────────────────────────
+
+#[test]
+fn sarif_zk_verifier_skippable_trigger() {
+    let source = r#"
+        impl PrivateTransfer {
+            pub fn transfer(env: Env, proof: Vec<u8>, use_zk: bool, amount: i128) {
+                if use_zk {
+                    verify_proof(&env, &proof);
+                } else {
+                    // verification bypassed
+                }
+                env.storage().persistent().set(&symbol_short!("BAL"), &amount);
+            }
+        }
+    "#;
+    let rule = ZkVerifierSkippableRule::new();
+    let violations = rule.check(source);
+    assert!(!violations.is_empty(), "zk_verifier_skippable must fire");
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!("zk_verifier_skippable_trigger", violations_json(&violations));
+    });
+}
+
+#[test]
+fn sarif_zk_verifier_skippable_clean() {
+    let source = r#"
+        impl PrivateTransfer {
+            pub fn transfer(env: Env, proof: Vec<u8>, amount: i128) {
+                verify_proof(&env, &proof).expect("invalid proof");
+                env.storage().persistent().set(&symbol_short!("BAL"), &amount);
+            }
+        }
+    "#;
+    let rule = ZkVerifierSkippableRule::new();
+    let violations = rule.check(source);
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!("zk_verifier_skippable_clean", violations_json(&violations));
+    });
+}
+
+// ── Z005: zk_double_spend_risk (triggering fixture) ──────────────────────────
+
+#[test]
+fn sarif_zk_double_spend_risk_trigger() {
+    let source = r#"
+        impl PrivatePool {
+            pub fn withdraw(env: Env, proof: Vec<u8>, amount: i128) {
+                verify_proof(&env, &proof).expect("bad proof");
+                env.storage().persistent().set(&symbol_short!("BAL"), &amount);
+            }
+        }
+    "#;
+    let rule = ZkDoubleSpendRiskRule::new();
+    let violations = rule.check(source);
+    assert!(!violations.is_empty(), "zk_double_spend_risk must fire");
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!("zk_double_spend_risk_trigger", violations_json(&violations));
+    });
+}
+
+#[test]
+fn sarif_zk_double_spend_risk_clean() {
+    let source = r#"
+        impl PrivatePool {
+            pub fn withdraw(env: Env, proof: Vec<u8>, nullifier: BytesN<32>, amount: i128) {
+                let is_spent: bool = env.storage().persistent()
+                    .get(&nullifier).unwrap_or(false);
+                assert!(!is_spent, "nullifier already spent");
+                verify_proof(&env, &proof).expect("bad proof");
+                env.storage().persistent().set(&nullifier, &true);
+                env.storage().persistent().set(&symbol_short!("BAL"), &amount);
+            }
+        }
+    "#;
+    let rule = ZkDoubleSpendRiskRule::new();
+    let violations = rule.check(source);
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!("zk_double_spend_risk_clean", violations_json(&violations));
+    });
+}
+
+// ── Z013: zk_verification_result_ignored (triggering fixture) ────────────────
+
+#[test]
+fn sarif_zk_verification_result_ignored_trigger() {
+    let source = r#"
+        impl ShieldedTransfer {
+            pub fn execute(env: Env, proof: Vec<u8>, amount: i128) {
+                verify_proof(&env, &proof);
+                env.storage().persistent().set(&symbol_short!("BAL"), &amount);
+            }
+        }
+    "#;
+    let rule = ZkVerificationResultIgnoredRule::new();
+    let violations = rule.check(source);
+    assert!(!violations.is_empty(), "zk_verification_result_ignored must fire");
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!("zk_verification_result_ignored_trigger", violations_json(&violations));
+    });
+}
+
+#[test]
+fn sarif_zk_verification_result_ignored_clean() {
+    let source = r#"
+        impl ShieldedTransfer {
+            pub fn execute(env: Env, proof: Vec<u8>, amount: i128) {
+                verify_proof(&env, &proof).expect("invalid proof");
+                env.storage().persistent().set(&symbol_short!("BAL"), &amount);
+            }
+        }
+    "#;
+    let rule = ZkVerificationResultIgnoredRule::new();
+    let violations = rule.check(source);
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!("zk_verification_result_ignored_clean", violations_json(&violations));
     });
 }
