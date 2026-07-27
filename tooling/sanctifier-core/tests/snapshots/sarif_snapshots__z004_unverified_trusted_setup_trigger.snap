@@ -1,0 +1,20 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "VK_ALPHA_G1_UNDOCUMENTED",
+    "message": "Trusted-setup constant 'VK_ALPHA_G1_UNDOCUMENTED' is hardcoded at line 25 with no reference to a public ceremony transcript. Without documented provenance there is no way to audit whether the setup's toxic waste was destroyed, so the key cannot be trusted for mainnet value.",
+    "rule_name": "hardcoded_trusted_setup",
+    "severity": "Critical",
+    "suggestion": "Add a comment directly above the constant recording the ceremony provenance, e.g. `// ceremony: perpetual powers-of-tau phase2, contribution #47, transcript sha256 <hash>, https://ceremony.example/transcript.json`. Alternatively load the verifying key from governance-controlled storage so it can be rotated (Z010) and integrity-checked at each use (Z005)."
+  },
+  {
+    "location": "TRUSTED_SETUP_PARAMS",
+    "message": "Trusted-setup constant 'TRUSTED_SETUP_PARAMS' is hardcoded at line 31 with no reference to a public ceremony transcript. Without documented provenance there is no way to audit whether the setup's toxic waste was destroyed, so the key cannot be trusted for mainnet value.",
+    "rule_name": "hardcoded_trusted_setup",
+    "severity": "Critical",
+    "suggestion": "Add a comment directly above the constant recording the ceremony provenance, e.g. `// ceremony: perpetual powers-of-tau phase2, contribution #47, transcript sha256 <hash>, https://ceremony.example/transcript.json`. Alternatively load the verifying key from governance-controlled storage so it can be rotated (Z010) and integrity-checked at each use (Z005)."
+  }
+]

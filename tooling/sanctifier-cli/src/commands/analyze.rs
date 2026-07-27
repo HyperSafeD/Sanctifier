@@ -303,8 +303,8 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
             .iter()
             .map(|(file, v)| {
                 let level = match format!("{:?}", v.severity).as_str() {
-                    "Error" => "error",
-                    "Warning" => "warning",
+                    "Critical" | "Error" => "error",
+                    "High" | "Warning" => "warning",
                     _ => "note",
                 };
                 let msg = match &v.suggestion {

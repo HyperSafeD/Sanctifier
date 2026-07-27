@@ -2,7 +2,7 @@
 
 This guide shows how to wire `sanctifier zk lint` and `sanctifier verify-circuit` into an existing **circom + snarkjs** or **Noir** project's development workflow and CI pipeline.
 
-> **See also:** [INTEGRATION-GUIDE.md](./INTEGRATION-GUIDE.md) for generic SARIF pipeline patterns and [ZK-SECURITY-GUIDE.md](./ZK-SECURITY-GUIDE.md) for a reference on ZK vulnerability classes.
+> **See also:** [INTEGRATION-GUIDE.md](./INTEGRATION-GUIDE.md) for generic SARIF pipeline patterns and [zk-security-guide.md](./zk-security-guide.md) for a reference on ZK vulnerability classes.
 
 ---
 
@@ -24,20 +24,24 @@ Sanctifier applies its **Z-rules** (Z001–Z014) to ZK circuits and their on-cha
 
 | Rule | Finding | Severity |
 |------|---------|----------|
-| Z001 | Unconstrained signal input | critical |
-| Z002 | Missing public input binding | critical |
-| Z003 | Trusted setup parameter exposure | critical |
-| Z004 | Soundness violation via under-constrained output | critical |
-| Z005 | Witness arithmetic overflow | high |
-| Z006 | Under-constrained circuit component | high |
-| Z007 | Proof malleability | high |
-| Z008 | Verifying key mismatch | high |
+| Z001 | Missing nullifier / double-spend check | critical |
+| Z002 | Insecure or predictable randomness as circuit input | high |
+| Z003 | Missing public-input binding (proof malleability) | critical |
+| Z004 | Unverified trusted-setup parameters | critical |
+| Z005 | Missing verifying-key integrity check | high |
+| Z006 | Missing proof nonce / uniqueness enforcement | high |
+| Z007 | Under-constrained circuit inputs | critical |
+| Z008 | Curve / field mismatch | critical |
 | Z009 | Unbounded proof-verification loop (DoS) | high |
-| Z010 | Verifying key rotation without access control | critical |
-| Z011 | Non-deterministic witness generation | medium |
-| Z012 | Missing nullifier uniqueness check | critical |
-| Z013 | Proof replay attack | high |
-| Z014 | Insecure randomness in circuit | high |
+| Z010 | Verifying-key rotation without access control | critical |
+| Z011 | Commitment reuse without domain separation | high |
+| Z012 | ZK property leak via public-output over-exposure | medium |
+| Z013 | Insufficient batch-validation in ZK-rollup transitions | critical |
+| Z014 | Missing Merkle-root inclusion-proof verification | critical |
+
+> The canonical catalogue lives in [`docs/rules/`](rules/) (`Z001.md`–`Z014.md`) and is
+> mirrored by `data/vulnerability-db.json` and `data/sarif/rule-metadata.yaml`.
+> See [zk-roadmap.md](zk-roadmap.md) for which of these ship as implemented rules today.
 
 ---
 
