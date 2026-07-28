@@ -1,0 +1,14 @@
+---
+source: tooling/sanctifier-core/tests/detector_snapshots.rs
+expression: findings
+---
+- rule_name: S023
+  severity: Error
+  message: "Function 'withdraw_reserve' moves reserve/treasury funds without strong authorization (missing require_auth or admin+nonce check)"
+  location: withdraw_reserve
+  suggestion: Add require_auth() or a strict admin+nonce validation
+- rule_name: S023
+  severity: Error
+  message: "Function 'treasury_transfer' moves reserve/treasury funds without strong authorization (missing require_auth or admin+nonce check)"
+  location: treasury_transfer
+  suggestion: Add require_auth() or a strict admin+nonce validation

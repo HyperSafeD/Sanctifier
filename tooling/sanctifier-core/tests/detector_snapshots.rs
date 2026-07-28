@@ -409,3 +409,12 @@ fn sanct_visibility_flags_only_the_exposed_unauthenticated_helper() {
         .iter()
         .any(|message| message.contains("internal_set_flag")));
 }
+
+#[test]
+fn snapshot_reserve_withdrawal() {
+    assert_detector_snapshot(
+        "reserve_withdrawal",
+        &sanctifier_core::rules::reserve_withdrawal::ReserveWithdrawalRule::new(),
+        include_str!("fixtures/detectors/reserve_withdrawal.rs"),
+    );
+}

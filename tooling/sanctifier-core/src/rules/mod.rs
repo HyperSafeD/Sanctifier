@@ -14,6 +14,7 @@ pub mod ledger_seconds;
 pub mod ledger_size;
 pub mod missing_ttl;
 pub mod panic_detection;
+pub mod reserve_withdrawal;
 pub mod sanct_unwrap;
 pub mod shift_overflow;
 pub mod state_write_in_view;
@@ -178,6 +179,7 @@ impl RuleRegistry {
         registry.register(unsigned_underflow::UnsignedUnderflowRule::new());
         registry.register(ledger_seconds::LedgerSecondsRule::new());
         registry.register(tier_boundary_off_by_one::TierBoundaryOffByOneRule::new());
+        registry.register(reserve_withdrawal::ReserveWithdrawalRule::new());
         registry
     }
 }
