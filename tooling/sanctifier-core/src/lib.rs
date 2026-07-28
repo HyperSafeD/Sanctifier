@@ -80,7 +80,7 @@ pub use reentrancy::ReentrancyEdge;
 pub use rules::{Patch, Rule, RuleRegistry, RuleViolation, Severity};
 pub use sep41::{Sep41Issue, Sep41IssueKind, Sep41VerificationReport};
 #[cfg(feature = "smt")]
-pub use smt::SmtInvariantIssue;
+pub use smt::{CircuitRangeCheckResult, FlaggedSignal, SmtInvariantIssue};
 
 #[cfg(not(feature = "smt"))]
 #[derive(Debug, Serialize, Clone)]
@@ -88,6 +88,21 @@ pub struct SmtInvariantIssue {
     pub function_name: String,
     pub description: String,
     pub location: String,
+}
+
+#[cfg(not(feature = "smt"))]
+#[derive(Debug, Serialize, Clone)]
+pub struct CircuitRangeCheckResult {
+    pub template_name: String,
+    pub flagged_signals: Vec<FlaggedSignal>,
+}
+
+#[cfg(not(feature = "smt"))]
+#[derive(Debug, Serialize, Clone)]
+pub struct FlaggedSignal {
+    pub signal_name: String,
+    pub counterexample: Option<String>,
+    pub is_timeout: bool,
 }
 
 pub use storage_collision::StorageCollisionIssue;
@@ -137,6 +152,9 @@ pub struct SanctifyConfig {
     /// Custom regex rules (field name "rules" in TOML).
     #[serde(default, alias = "custom_rules")]
     pub rules: Vec<CustomRule>,
+    /// SMT solver timeout in milliseconds for deep-verify mode (default: 5000).
+    #[serde(default)]
+    pub smt_timeout_ms: Option<u64>,
 }
 
 fn default_ignore_paths() -> Vec<String> {
@@ -498,6 +516,30 @@ impl Analyzer {
             }
         }
         matches
+    }
+
+    /// Deep-verify a circom circuit's range constraints using Z3 SMT encoding.
+    ///
+    /// This is an optional deeper-analysis mode for Z007 findings.  When the
+    /// `--deep-verify` flag is set, this method translates the parsed circuit's
+    /// constraint set into SMT assertions and checks whether each signal used
+    /// in comparisons is provably bounded.
+    #[cfg(feature = "smt")]
+    pub fn deep_verify_circuit_range(
+        &self,
+        circuit: &circom_parser::CircomFile,
+    ) -> Vec<CircuitRangeCheckResult> {
+        let timeout_ms = self.config.smt_timeout_ms.unwrap_or(5000);
+        smt::circuit_range::verify_circuit_range_checks(circuit, timeout_ms)
+    }
+
+    /// Stub for non-SMT builds.
+    #[cfg(not(feature = "smt"))]
+    pub fn deep_verify_circuit_range(
+        &self,
+        _circuit: &circom_parser::CircomFile,
+    ) -> Vec<CircuitRangeCheckResult> {
+        vec![]
     }
 
     pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {

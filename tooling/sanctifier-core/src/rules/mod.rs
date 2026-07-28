@@ -74,6 +74,8 @@ pub mod zk_missing_vk_integrity_check;
 pub mod zk_verification_result_ignored;
 /// Z004 — Groth16/SNARK verifier call inside a skippable if/else branch.
 pub mod zk_verifier_skippable;
+/// Z007 — Under-constrained circuit inputs for circom circuits.
+pub mod z007_under_constrained;
 
 use serde::Serialize;
 use std::any::Any;
@@ -259,6 +261,8 @@ impl RuleRegistry {
         registry.register(zk_missing_public_input_binding::ZkMissingPublicInputBindingRule::new());
         registry.register(zk_hardcoded_trusted_setup::ZkHardcodedTrustedSetupRule::new());
         registry.register(zk_missing_vk_integrity_check::ZkMissingVkIntegrityCheckRule::new());
+        // ── Z007 (#1213) circom under-constrained inputs with optional SMT deep-verify ─
+        registry.register(z007_under_constrained::Z007UnderConstrainedRule::new());
         registry
     }
 }
