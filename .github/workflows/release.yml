@@ -3,15 +3,41 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      override_mainnet_gate:
+        description: "Justification to override mainnet readiness gate"
+        required: false
+        type: string
 
-permissions: {}
+permissions:
+  contents: write
+  issues: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  mainnet-readiness-gate:
+    name: Check Mainnet Readiness
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-mainnet') && github.event.inputs.override_mainnet_gate == ''
+    steps:
+      - name: Check open milestone issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OPEN_ISSUES=$(gh issue list --repo ${{ github.repository }} --milestone "Mainnet Launch Readiness" --state open --json number,title --jq length)
+          if [ "$OPEN_ISSUES" -gt 0 ]; then
+            echo "::error::There are $OPEN_ISSUES open issues in the 'Mainnet Launch Readiness' milestone."
+            gh issue list --repo ${{ github.repository }} --milestone "Mainnet Launch Readiness" --state open
+            exit 1
+          fi
+
   build-and-release:
     name: Build (${{ matrix.target }})
+    needs: mainnet-readiness-gate
+    if: always() && needs.mainnet-readiness-gate.result != 'failure'
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
