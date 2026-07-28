@@ -1434,3 +1434,42 @@ fn test_no_profile_no_exit_code_exits_zero_with_findings() {
         .assert()
         .success();
 }
+
+/// Verify documented CLI exit codes (0 = SUCCESS, 1 = FINDINGS_FOUND, 2 = ERROR).
+#[test]
+fn test_documented_exit_codes() {
+    let valid_fixture = env::current_dir()
+        .unwrap()
+        .join("tests/fixtures/valid_contract.rs");
+    let vulnerable_fixture = env::current_dir()
+        .unwrap()
+        .join("tests/fixtures/vulnerable_contract.rs");
+    
+    // Code 0: SUCCESS (no findings)
+    Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("analyze")
+        .arg(&valid_fixture)
+        .arg("--profile")
+        .arg("ci")
+        .assert()
+        .code(0);
+
+    // Code 1: FINDINGS_FOUND (has findings with strict profile)
+    Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("analyze")
+        .arg(&vulnerable_fixture)
+        .arg("--profile")
+        .arg("ci")
+        .assert()
+        .code(1);
+
+    // Code 2: ERROR (e.g., invalid path)
+    Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("analyze")
+        .arg("path/that/does/not/exist.rs")
+        .assert()
+        .code(2);
+}

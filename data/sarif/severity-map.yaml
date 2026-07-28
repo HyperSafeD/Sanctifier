@@ -1,5 +1,13 @@
+# Severity mapping for standard S-rules
 severity_mapping:
   info: low
   warning: medium
   error: high
   blocker: critical
+
+# ZK specific mapping guidelines (Z0xx namespace):
+# ZK rules follow the same severity levels as S-rules but have distinct vulnerability classes:
+# - missing-nullifier: blocker (critical)
+# - weak-fiat-shamir: error (high)
+# - constraint-under-specification: warning (medium)
+# - unused-public-input: info (low)
