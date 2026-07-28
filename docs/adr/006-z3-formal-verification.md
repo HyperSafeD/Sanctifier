@@ -60,6 +60,32 @@ Sanctifier's design goal is *zero-annotation* analysis — drop the binary on an
 crate and get findings without modifying the source. Creusot and Prusti cannot meet this
 requirement without significant annotation scaffolding.
 
+## Extensions
+
+### Circuit range-check verification (Z007 deep-verify, #1213)
+
+The SMT layer has been extended to encode Circom circuit constraints as Z3
+assertions (`smt::circuit_range`).  For each signal used in a comparison
+(`<`, `>`, `<=`, `>=`), the solver checks whether the signal is provably
+bounded by the accumulated constraint set — beyond what the heuristic AST
+pattern in Z007 can detect.
+
+**Encoding approach:**
+- Each signal is modelled as a `Z3 Int` variable constrained to `[0, p-1]`
+  where `p` is the BN254 field modulus.
+- Linear constraints (`===`) are translated directly as equality assertions.
+- Comparison expressions (`a < b`) are modelled as `ite(a < b, 1, 0)`.
+- The solver is asked whether the signal can exceed a reasonable bound
+  (e.g. 2^64 - 1) while still satisfying all constraints — `Sat` means
+  the signal is under-constrained.
+
+**Limitations** (documented in `circuit_range.rs` and ADR-011):
+- Only BN254 field modulus is supported.
+- Component instantiations are not inlined.
+- `Num2Bits` / bit-vector range checks are not yet modelled.
+- The encoding is a conservative approximation — missed constraints may
+  produce false positives.
+
 ## Consequences
 
 **Positive:**
@@ -68,6 +94,8 @@ requirement without significant annotation scaffolding.
 - Z3's bitvector and integer theories align naturally with Soroban's `i128`/`u128` token
   arithmetic.
 - The `z3` crate is actively maintained and licensed MIT.
+- Circuit range-check verification (Z007 deep-verify) adds a formally-grounded
+  complement to heuristic pattern matching for under-constrained signal detection.
 
 **Negative:**
 - Z3 is a heavyweight dependency (~30 MB shared library). The Sanctifier binary ships
@@ -76,3 +104,5 @@ requirement without significant annotation scaffolding.
   very complex control flow requires abstraction that may miss some paths.
 - SMT solving is NP-hard in the worst case; pathological contracts can time out. We
   apply a configurable solver timeout (default: 5 s) and emit a warning when it fires.
+- Circuit range-check encoding does not model component instantiations or bit-vector
+  range checks; see ADR-011 for the full scope of formal-verification limitations.

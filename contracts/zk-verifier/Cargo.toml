@@ -2,7 +2,7 @@
 name = "zk-verifier"
 version = "0.1.0"
 edition = "2021"
-description = "NullifierSet storage module and ZK-verifier reference implementation for Sanctifier"
+description = "Groth16 proof-verifier reference contract for Soroban with nullifier checks, public-input binding, and access-controlled VK storage"
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -12,6 +12,9 @@ soroban-sdk = { workspace = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
 
 [profile.release]
 opt-level = "z"
