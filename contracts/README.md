@@ -21,6 +21,9 @@ This directory contains the Soroban contracts used by Sanctifier for analysis, f
 - `unsafe-prng-example`: Fixture exposing predictable randomness usage.
 - `vesting`: Vesting flow fixture for time-gated token release logic.
 - `vulnerable-contract`: Intentionally unsafe contract used to verify detector coverage.
+- `zk-verifier`: Reference Groth16 proof-verifier contract with nullifier-set storage,
+  public-input binding, access-controlled VK rotation (multisig+timelock), and Kani
+  proof harnesses (Z001, Z003, Z005, Z010).
 
 ## Fixture notes
 
