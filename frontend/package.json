@@ -1,12 +1,14 @@
 {
   "name": "frontend",
   "version": "0.1.1",
+  "license": "MIT",
   "private": true,
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
   },
   "scripts": {
+    "license-check": "license-checker --production --json --out license-report.json",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -33,6 +35,7 @@
     "react-window": "^1.8.10"
   },
   "devDependencies": {
+    "license-checker": "^25.0.1",
     "@axe-core/playwright": "^4.11.1",
     "@commitlint/cli": "^20.5.2",
     "@commitlint/config-conventional": "^20.5.0",

@@ -420,3 +420,20 @@ jobs:
           name: sanctifier-wasm-pkg
           path: tooling/sanctifier-wasm/pkg/
           retention-days: 7
+
+  license-compliance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo install cargo-deny --locked
+      - run: cargo deny check licenses
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm install -g license-checker
+      - name: Check npm licenses
+        run: |
+          for dir in frontend vscode-extension packages/sanctifier-cli-npm; do
+            (cd "$dir" && npm run license-check)
+          done
