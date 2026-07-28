@@ -66,8 +66,7 @@ impl Z007UnderConstrainedRule {
             // Deep-verify: SMT-based boundedness check (only if enabled).
             #[cfg(feature = "smt")]
             if self.deep_verify {
-                let results =
-                    crate::smt::circuit_range::verify_circuit_range_checks(circuit, 5000);
+                let results = crate::smt::verify_circuit_range_checks(circuit, 5000);
                 for result in &results {
                     if result.template_name != template.name {
                         continue;
@@ -85,13 +84,18 @@ impl Z007UnderConstrainedRule {
                             msg.push_str("  (Z3 timed out — result is inconclusive)");
                         }
                         violations.push(
-                            RuleViolation::new(self.name(), Severity::High, msg, template.name.clone())
-                                .with_suggestion(
-                                    "Consider adding an explicit range constraint (Num2Bits, \
+                            RuleViolation::new(
+                                self.name(),
+                                Severity::High,
+                                msg,
+                                template.name.clone(),
+                            )
+                            .with_suggestion(
+                                "Consider adding an explicit range constraint (Num2Bits, \
                                      LessThan, or enforce_in_range) on this signal, or verify \
                                      manually that the constraint set bounds it adequately."
-                                        .to_string(),
-                                ),
+                                    .to_string(),
+                            ),
                         );
                     }
                 }

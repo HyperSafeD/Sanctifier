@@ -51,13 +51,13 @@ use thiserror::Error;
 
 pub mod analysis_cache;
 pub mod cfg;
+pub mod circom_parser;
 pub mod complexity;
 pub mod constant_folding;
 pub mod contract_discovery;
 pub mod finding_codes;
 pub mod gas_estimator;
 pub mod gas_report;
-pub mod circom_parser;
 pub mod input_validation;
 pub mod noir_parser;
 pub mod parser;
@@ -531,7 +531,7 @@ impl Analyzer {
         circuit: &circom_parser::CircomFile,
     ) -> Vec<CircuitRangeCheckResult> {
         let timeout_ms = self.config.smt_timeout_ms.unwrap_or(5000);
-        smt::circuit_range::verify_circuit_range_checks(circuit, timeout_ms)
+        smt::verify_circuit_range_checks(circuit, timeout_ms)
     }
 
     /// Stub for non-SMT builds.

@@ -28,13 +28,14 @@
 //!
 //! This module is gated behind `#[cfg(feature = "smt")]`.
 
-use z3::ast::{Bool, Int};
+use z3::ast::{Ast, Int};
 use z3::{Config, Context, SatResult, Solver};
 
 use crate::circom_parser::CircomFile;
 
 /// BN254 (BabyJubJub) field modulus used by Circom 2.x.
-const BN254_MODULUS: &str = "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+const BN254_MODULUS: &str =
+    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
 
 /// Result of a circuit range-check verification.
 #[derive(Debug, Clone, PartialEq)]
@@ -219,7 +220,6 @@ fn encode_constraint(
         if let (Some(l), Some(r)) = (left_expr, right_expr) {
             solver.assert(&l._eq(&r));
         }
-        return;
     }
 }
 
@@ -241,7 +241,7 @@ fn parse_expression<'ctx>(
         let one = Int::from_u64(ctx, 1);
         let zero = Int::from_u64(ctx, 0);
         // (if a < b then 1 else 0)
-        return Some(zero.ite(&lt, &one));
+        return Some(lt.ite(&one, &zero));
     }
 
     // Check for comparison `>` — returns either 1 (true) or 0 (false).
@@ -253,7 +253,7 @@ fn parse_expression<'ctx>(
         let gt = l.gt(&r);
         let one = Int::from_u64(ctx, 1);
         let zero = Int::from_u64(ctx, 0);
-        return Some(zero.ite(&gt, &one));
+        return Some(gt.ite(&one, &zero));
     }
 
     // For simple expressions, try as a term (which handles +, -, *).
@@ -323,8 +323,8 @@ fn parse_primary<'ctx>(
     }
 
     // Negation (unary minus).
-    if primary.starts_with('-') {
-        let operand = parse_primary(ctx, primary[1..].trim(), signal_vars)?;
+    if let Some(stripped) = primary.strip_prefix('-') {
+        let operand = parse_primary(ctx, stripped.trim(), signal_vars)?;
         let zero = Int::from_u64(ctx, 0);
         return Some(Int::sub(ctx, &[&zero, &operand]));
     }
@@ -337,8 +337,8 @@ fn parse_primary<'ctx>(
     }
 
     // Numeric literal.
-    if let Ok(_) = primary.parse::<i64>() {
-        return Some(Int::from_str(ctx, primary).ok()?);
+    if primary.parse::<i64>().is_ok() {
+        return Int::from_str(ctx, primary);
     }
 
     // Unknown — skip.

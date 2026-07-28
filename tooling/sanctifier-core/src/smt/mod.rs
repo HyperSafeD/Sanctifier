@@ -30,10 +30,9 @@ mod types;
 
 // Types
 pub use types::{
-    CircuitRangeCheckResult, FixedPointCounterexample, FixedPointMulDivSpec,
-    FixedPointProofError, FixedPointProofReport, FlaggedSignal, InvariantSpec, SmtBackend,
-    SmtConfig, SmtFinding, SmtInvariantIssue, SmtLatencyBenchmarkReport, SmtProofStrategy,
-    SmtStrategyLatency,
+    FixedPointCounterexample, FixedPointMulDivSpec, FixedPointProofError, FixedPointProofReport,
+    InvariantSpec, SmtBackend, SmtConfig, SmtFinding, SmtInvariantIssue, SmtLatencyBenchmarkReport,
+    SmtProofStrategy, SmtStrategyLatency,
 };
 
 // Invariant verification (S011 entry-points)
@@ -45,7 +44,7 @@ pub use backend::{
 };
 
 // Circuit range-check (Z007 deep-verify mode)
-pub use circuit_range::verify_circuit_range_checks;
+pub use circuit_range::{verify_circuit_range_checks, CircuitRangeCheckResult, FlaggedSignal};
 
 // Benchmark
 pub use benchmark::run_smt_latency_benchmark;
