@@ -62,6 +62,7 @@ impl ConfigGenerator {
                 },
             ],
             approaching_threshold: 0.8,
+            smt_timeout_ms: None,
         }
     }
 }

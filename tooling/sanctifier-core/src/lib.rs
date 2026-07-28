@@ -188,7 +188,8 @@ impl Default for SanctifyConfig {
             approaching_threshold: default_approaching_threshold(),
             telemetry: default_telemetry_enabled(),
             strict_mode: false,
-            rules: vec![],
+            rules: Vec::new(),
+            smt_timeout_ms: None,
         }
     }
 }

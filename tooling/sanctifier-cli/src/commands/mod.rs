@@ -2,6 +2,7 @@ pub mod analyze;
 pub mod badge;
 pub mod benchmark;
 pub mod callgraph;
+pub mod ci;
 pub mod color;
 pub mod complexity;
 pub mod deploy;

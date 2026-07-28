@@ -97,7 +97,7 @@ cargo install sanctifier-cli
 sanctifier analyze ./contracts
 
 # 3. integrate into CI — exit 1 on high/critical findings
-sanctifier analyze ./contracts --exit-code --format sarif > sanctifier.sarif
+sanctifier ci --format sarif > sanctifier.sarif
 
 # 4. ship a security badge for your README
 sanctifier analyze . --format json > report.json

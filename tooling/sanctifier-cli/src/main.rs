@@ -31,6 +31,8 @@ struct Cli {
 pub enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
     Analyze(commands::analyze::AnalyzeArgs),
+    /// Run analysis + invariant verification for CI/CD gates
+    Ci(commands::ci::CiArgs),
     /// Initialize a .sanctify.toml configuration file
     Init(commands::init::InitArgs),
     /// Language Server Protocol (LSP) for editor integration
@@ -118,6 +120,7 @@ fn run() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Analyze(args) => commands::analyze::exec(args),
+        Commands::Ci(args) => commands::ci::exec(args),
         Commands::Init(args) => commands::init::exec(args, None),
         Commands::Lsp(args) => commands::lsp::exec(args),
         Commands::Report(args) => commands::report::exec(args),
