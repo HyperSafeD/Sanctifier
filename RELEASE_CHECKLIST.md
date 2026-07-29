@@ -49,13 +49,84 @@ This document describes the steps required to publish a new release of Sanctifie
 - [ ] Verify https://docs.rs/sanctifier-cli shows the new version
 - [ ] Announce the release in relevant channels
 
-## Mainnet Release Candidate Cutover Addendum (#1140)
+## Mainnet Release Addendum (#1140)
 
-- [ ] Verify all Mainnet Launch Readiness milestone issues are resolved or explicitly deferred
-- [ ] Create and complete a `mainnet-signoff` issue using the `.github/ISSUE_TEMPLATE/mainnet_signoff.md` template
-- [ ] Ensure 2 named approvers sign off on the mainnet sign-off issue
-- [ ] Verify read-only mainnet fork CI job (`.github/workflows/mainnet-fork-ci.yml`) is passing
-- [ ] Freeze `v1.0.0-mainnet` release candidate and publish release notes
+> **⚠️ This addendum is mandatory for any release tagged `v1.0.0-mainnet*`.**  
+> It MUST be completed, filled out with named sign-offs, and attached as a comment to the release PR **before** the release tag is pushed.
+
+This addendum layers an additional non-skippable sign-off gate on top of the general release checklist. Mainnet releases carry materially higher stakes and require explicit, named approval against every relevant mainnet-readiness criterion.
+
+### Prerequisites
+
+Before the sign-off can be completed, the following must all be satisfied:
+
+- [ ] All issues in the [Mainnet Launch Readiness milestone](https://github.com/HyperSafeD/Sanctifier/milestones) are resolved or explicitly deferred with a documented rationale.
+- [ ] The [`mainnet-fork-ci`](.github/workflows/mainnet-fork-ci.yml) workflow is passing on the release candidate branch.
+- [ ] The release candidate branch has been frozen and is receiving only blocker fixes.
+
+### Sign-Off Checklist
+
+Each of the following items must be reviewed and signed off by **two named individuals** (the Release Manager and at least one independent Second Reviewer). Place an `X` in the checkbox and write your name & date below each item.
+
+```
+Example:
+- [X] **Release Manager:** Alice Smith — 2026-07-28
+- [X] **Second Reviewer:** Bob Chen — 2026-07-28
+```
+
+---
+
+**1. Security checklist (`SECURITY.md` addendum) — #1115**
+
+Verify that the mainnet security checklist published in `SECURITY.md` has been reviewed and all applicable items are satisfied.
+
+- [ ] **Release Manager:**
+- [ ] **Second Reviewer:**
+
+---
+
+**2. Formal-verification (Kani + Z3) coverage — #1114**
+
+Confirm that a full formal-verification pass using Kani has been completed on every contract in scope. See [`docs/kani-integration.md`](docs/kani-integration.md) for the integration strategy and `contracts/kani-poc/` for proof-harness examples.
+
+- [ ] **Release Manager:**
+- [ ] **Second Reviewer:**
+
+---
+
+**3. Rollback / circuit-breaker procedure — #1137**
+
+Confirm that a documented rollback and circuit-breaker procedure exists and has been reviewed for failed mainnet deployments. See [`ROLLBACK_PROCEDURE.md`](./ROLLBACK_PROCEDURE.md) for the full procedure.
+
+- [ ] **Release Manager:**
+- [ ] **Second Reviewer:**
+
+---
+
+**4. External security audit — #1112**
+
+Confirm that an external smart-contract security audit has been completed and all critical/high findings are resolved or explicitly accepted with a risk rationale.
+
+- [ ] **Release Manager:**
+- [ ] **Second Reviewer:**
+
+---
+
+**5. Bug bounty program — #1116**
+
+Confirm that the bug bounty program (Immunefi / HackenProof) is live and accepting submissions before the mainnet release tag is cut.
+
+- [ ] **Release Manager:**
+- [ ] **Second Reviewer:**
+
+---
+
+**6. Deployment safety — #1133, #1134, #1135**
+
+Confirm that the `--confirm-mainnet` safety flag is enforced in deploy tooling, the end-to-end deployment runbook is complete, and a dry-run has passed.
+
+- [ ] **Release Manager:**
+- [ ] **Second Reviewer:
 
 ## Rollback (if needed)
 
