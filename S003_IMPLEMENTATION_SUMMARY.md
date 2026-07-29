@@ -353,13 +353,6 @@ FindingCode {
 3. Update `docs/rules/s003-arithmetic-overflow.md`
 4. Add fixture example to `s003_arithmetic.rs`
 
-### Modifying Behavior
-
-1. Update unit tests to reflect new behavior
-2. Regenerate SARIF snapshots: `cargo insta review`
-3. Update integration tests in `lib.rs`
-4. Document change in `docs/rules/s003-arithmetic-overflow.md` Changelog
-5. Consider schema versioning if JSON format changes
 
 ### Testing Checklist
 
@@ -368,6 +361,15 @@ FindingCode {
 - [ ] Fixture contract validates: Check `contracts/fixtures/finding-codes/s003_arithmetic.rs`
 - [ ] SARIF snapshot matches: `cargo insta test`
 - [ ] Documentation updated: Review `docs/rules/s003-arithmetic-overflow.md`
+
+### Modifying Behavior
+
+1. Update unit tests to reflect new behavior
+2. Regenerate SARIF snapshots: `cargo insta review`
+3. Update integration tests in `lib.rs`
+4. Document change in `docs/rules/s003-arithmetic-overflow.md` Changelog
+5. Consider schema versioning if JSON format changes
+
 
 ## Related Work
 
