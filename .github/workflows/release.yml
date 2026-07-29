@@ -34,9 +34,81 @@ jobs:
             exit 1
           fi
 
+  generate-changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      - name: Generate changelog section for this tag
+        id: git-cliff
+        run: |
+          # Generate changelog section for the current tag only
+          git-cliff --config cliff.toml \
+            --tag "${{ github.ref_name }}" \
+            --strip header \
+            --output changelog-section.md
+          echo "Generated changelog section:"
+          cat changelog-section.md
+
+      - name: Upload changelog section artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: changelog-section
+          path: changelog-section.md
+          retention-days: 7
+
+      - name: Prepend new section to CHANGELOG.md
+        run: |
+          if [ -s changelog-section.md ]; then
+            # Create updated CHANGELOG.md with new section prepended
+            HEADER_LINE=$(grep -n "^# " CHANGELOG.md | head -1 | cut -d: -f1)
+            # Extract the header (lines before first version section) and insert new section after it
+            if [ -n "$HEADER_LINE" ]; then
+              head -n $HEADER_LINE CHANGELOG.md > updated-changelog.md
+              echo "" >> updated-changelog.md
+              cat changelog-section.md >> updated-changelog.md
+              echo "" >> updated-changelog.md
+              tail -n +$((HEADER_LINE + 1)) CHANGELOG.md >> updated-changelog.md
+            else
+              cat changelog-section.md > updated-changelog.md
+              echo "" >> updated-changelog.md
+              cat CHANGELOG.md >> updated-changelog.md
+            fi
+            mv updated-changelog.md CHANGELOG.md
+            echo "CHANGELOG.md updated successfully"
+          else
+            echo "No changelog section generated; skipping CHANGELOG.md update"
+          fi
+
+      - name: Commit updated CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(release): update CHANGELOG.md for ${{ github.ref_name }}
+            
+            [skip ci]"
+            git push
+            echo "Committed and pushed updated CHANGELOG.md"
+          else
+            echo "CHANGELOG.md unchanged; nothing to commit"
+          fi
+
   build-and-release:
     name: Build (${{ matrix.target }})
-    needs: mainnet-readiness-gate
+    needs: [mainnet-readiness-gate, generate-changelog]
     if: always() && needs.mainnet-readiness-gate.result != 'failure'
     runs-on: ${{ matrix.os }}
     permissions:
@@ -121,13 +193,19 @@ jobs:
           path: ${{ matrix.artifact_name }}
           retention-days: 7
 
+      - name: Download changelog section
+        uses: actions/download-artifact@v6
+        with:
+          name: changelog-section
+          path: .
+
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             ${{ matrix.artifact_name }}
             ${{ matrix.artifact_name }}.sha256
-          body_path: CHANGELOG.md
+          body_path: changelog-section.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
