@@ -353,6 +353,7 @@ in a single terminal session.
 | Write your own rule | [docs/rule-authoring-guide.md](docs/rule-authoring-guide.md) |
 | See it benchmarked | [docs/case-studies/soroban-examples.md](docs/case-studies/soroban-examples.md) |
 | Review the threat model | [docs/security-threat-model.md](docs/security-threat-model.md) |
+| **Check service reliability targets** | **[docs/SLO.md](docs/SLO.md)** — uptime, latency, and error budgets for the hosted API |
 | Rollback procedures for mainnet | [ROLLBACK_PROCEDURE.md](./ROLLBACK_PROCEDURE.md) |
 | Understand versioning policy | [VERSIONING_POLICY.md](./VERSIONING_POLICY.md) |
 | Browse design decisions | [docs/adr/](docs/adr/) |
