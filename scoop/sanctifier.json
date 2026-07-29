@@ -6,19 +6,25 @@
   "architecture": {
     "64bit": {
       "url": "https://github.com/HyperSafeD/Sanctifier/releases/download/v0.1.0/sanctifier-windows-amd64.exe",
-      "hash": "PLACEHOLDER_SHA256"
+      "hash": "PLACEHOLDER_SHA256",
+      "bin": [
+        [
+          "sanctifier-windows-amd64.exe",
+          "sanctifier"
+        ]
+      ]
     },
     "arm64": {
       "url": "https://github.com/HyperSafeD/Sanctifier/releases/download/v0.1.0/sanctifier-windows-arm64.exe",
-      "hash": "PLACEHOLDER_SHA256"
+      "hash": "PLACEHOLDER_SHA256",
+      "bin": [
+        [
+          "sanctifier-windows-arm64.exe",
+          "sanctifier"
+        ]
+      ]
     }
   },
-  "bin": [
-    [
-      "sanctifier-windows-amd64.exe",
-      "sanctifier"
-    ]
-  ],
   "checkver": {
     "github": "https://github.com/HyperSafeD/Sanctifier"
   },
