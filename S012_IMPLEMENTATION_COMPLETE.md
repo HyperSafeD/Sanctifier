@@ -33,16 +33,18 @@ Successfully hardened the S012 (SEP-41 token interface compliance) checker in `t
 - Usage examples and safety considerations
 - Clear contribution guidelines
 
-**Rule Documentation:**
-- Complete rule guide at `docs/rules/s012-sep41-interface.md` (431 lines)
-- Examples for all three issue types
-- Remediation guidance and reference implementations
-- Cross-references to related checks
+
 
 **Reference Implementation:**
 - Production-ready example at `examples/sep41-compliant-token.rs` (317 lines)
 - Demonstrates all 10 SEP-41 functions correctly
 - Extensive inline comments explaining compliance
+
+**Rule Documentation:**
+- Complete rule guide at `docs/rules/s012-sep41-interface.md` (431 lines)
+- Examples for all three issue types
+- Remediation guidance and reference implementations
+- Cross-references to related checks
 
 ### ✅ Tests Added (Unit + Integration)
 
