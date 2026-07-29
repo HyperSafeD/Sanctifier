@@ -1,26 +1,48 @@
 name: Soroban Runtime Guard Deployment
 
 on:
-  # Pruned to manual-only: this workflow was persistently red on push/PR/schedule.
-  # Run on demand from the Actions tab.
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Deployment target network'
+        required: true
+        default: 'testnet'
+        type: choice
+        options:
+          - testnet
+          - mainnet
+      dry_run:
+        description: 'Perform a dry run without broadcasting'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      ref:
+        description: 'Git ref to deploy (branch, tag, or SHA)'
+        required: false
+        default: ''
+        type: string
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build-and-deploy:
-    name: Build & Deploy Runtime Guard Wrapper
+  # ── Shared build — produces the WASM artifact ──────────────────────────────
+  build:
+    name: Build Runtime Guard Wrapper
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      deployments: write
-      checks: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
 
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -70,6 +92,43 @@ jobs:
           fi
           echo "WASM size: $(du -h "$WASM_PATH" | cut -f1)"
           echo "WASM_PATH=$WASM_PATH" >> $GITHUB_ENV
+          echo "WASM_HASH=$(sha256sum "$WASM_PATH" | awk '{print $1}')" >> $GITHUB_ENV
+
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: runtime-guard-wrapper-wasm
+          path: target/wasm32-unknown-unknown/release/runtime_guard_wrapper.wasm
+          retention-days: 7
+
+  # ── Testnet deploy (existing path) ─────────────────────────────────────────
+  testnet-deploy:
+    name: Deploy to Soroban Testnet
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event.inputs.target == 'testnet'
+    permissions:
+      contents: read
+      deployments: write
+      checks: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Soroban CLI
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libdbus-1-dev libudev-dev pkg-config
+          export PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH
+          echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          cargo install --locked soroban-cli || true
+
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: runtime-guard-wrapper-wasm
+          path: target/wasm32-unknown-unknown/release/
 
       - name: Show Soroban network info
         run: |
@@ -83,7 +142,7 @@ jobs:
             echo "present=true" >> "$GITHUB_OUTPUT"
           else
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::SOROBAN_SECRET_KEY secret is not configured — deployment steps will be skipped. Add the secret to the repository to enable live deployments."
+            echo "::warning::SOROBAN_SECRET_KEY secret is not configured — deployment steps will be skipped."
           fi
         env:
           SOROBAN_SECRET_KEY: ${{ secrets.SOROBAN_SECRET_KEY }}
@@ -91,72 +150,68 @@ jobs:
       - name: Deploy to Soroban testnet (Dry Run)
         if: github.event.inputs.dry_run == 'true' && steps.check-key.outputs.present == 'true'
         run: |
-          bash scripts/deploy-soroban-testnet.sh \
+          bash scripts/deploy.sh \
             --network testnet \
             --dry-run \
-            --debug
+            --wasm target/wasm32-unknown-unknown/release/runtime_guard_wrapper.wasm
         env:
           SOROBAN_SECRET_KEY: ${{ secrets.SOROBAN_SECRET_KEY }}
-          SOROBAN_ACCOUNT_ID: ${{ secrets.SOROBAN_ACCOUNT_ID }}
 
       - name: Deploy to Soroban testnet
         if: github.event.inputs.dry_run != 'true' && steps.check-key.outputs.present == 'true'
         run: |
-          bash scripts/deploy-soroban-testnet.sh \
+          bash scripts/deploy.sh \
             --network testnet \
-            --interval 300 \
-            --no-continuous \
-            --debug
+            --wasm target/wasm32-unknown-unknown/release/runtime_guard_wrapper.wasm
+        env:
+          SOROBAN_SECRET_KEY: ${{ secrets.SOROBAN_SECRET_KEY }}
+        timeout-minutes: 30
+
+      - name: Continuous validation
+        if: github.event.inputs.dry_run != 'true' && steps.check-key.outputs.present == 'true'
+        run: |
+          echo "Running continuous validation checks..."
+          if [ -f ".deployment-manifest.json" ]; then
+            CONTRACTS=$(jq -r '.deployments[].contract_id' .deployment-manifest.json)
+            for CID in $CONTRACTS; do
+              echo "Validating: $CID"
+              if soroban contract invoke --id "$CID" --network testnet -- health_check; then
+                echo "✓ Health check passed"
+              else
+                echo "✗ Health check failed"
+                exit 1
+              fi
+            done
+          fi
         env:
           SOROBAN_SECRET_KEY: ${{ secrets.SOROBAN_SECRET_KEY }}
           SOROBAN_ACCOUNT_ID: ${{ secrets.SOROBAN_ACCOUNT_ID }}
-        timeout-minutes: 30
 
       - name: Upload deployment manifest
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: deployment-manifest-${{ github.run_id }}
+          name: deployment-manifest-testnet-${{ github.run_id }}
           path: .deployment-manifest.json
           retention-days: 30
 
-      - name: Upload deployment log
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: deployment-log-${{ github.run_id }}
-          path: .deployment.log
-          retention-days: 30
-
-      - name: Parse deployment results
-        if: always()
-        run: |
-          if [ -f ".deployment-manifest.json" ]; then
-            echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            jq '.deployments[] | "- **\(.name)**: `\(.contract_id)` (\(.status))"' \
-              .deployment-manifest.json >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "Last updated: $(jq -r '.last_updated' .deployment-manifest.json)" >> $GITHUB_STEP_SUMMARY
-          fi
-
-  continuous-validation:
-    name: Continuous Validation
+  # ── Mainnet deploy (gated by GitHub Environment + manual approval) ───────
+  mainnet-deploy:
+    name: Deploy to Soroban Mainnet
     runs-on: ubuntu-latest
-    needs: build-and-deploy
-    if: success() && github.ref == 'refs/heads/main'
+    needs: build
+    if: github.event.inputs.target == 'mainnet'
+    environment:
+      name: mainnet
+      url: https://stellar.expert/explorer
     permissions:
       contents: read
       deployments: write
+      checks: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-
-      - name: Download deployment manifest
-        uses: actions/download-artifact@v6
-        with:
-          name: deployment-manifest-${{ github.run_id }}
 
       - name: Install Soroban CLI
         run: |
@@ -166,95 +221,106 @@ jobs:
           echo "PKG_CONFIG_PATH=$PKG_CONFIG_PATH" >> $GITHUB_ENV
           cargo install --locked soroban-cli || true
 
-      - name: Run continuous validation checks
+      - name: Download WASM artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: runtime-guard-wrapper-wasm
+          path: target/wasm32-unknown-unknown/release/
+
+      - name: Show Soroban network info
         run: |
-          echo "Running continuous validation checks..."
-          
+          soroban network ls
+          soroban network info --network mainnet
+
+      - name: Check mainnet deployment secrets
+        id: check-key
+        run: |
+          if [[ -n "${SOROBAN_MAINNET_SECRET_KEY:-}" ]]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::error::SOROBAN_MAINNET_SECRET_KEY is not configured — aborting."
+            exit 1
+          fi
+        env:
+          SOROBAN_MAINNET_SECRET_KEY: ${{ secrets.SOROBAN_MAINNET_SECRET_KEY }}
+
+      - name: Dry-run first (preflight simulation)
+        run: |
+          bash scripts/deploy.sh \
+            --network mainnet \
+            --confirm-mainnet \
+            --dry-run \
+            --wasm target/wasm32-unknown-unknown/release/runtime_guard_wrapper.wasm
+        env:
+          SOROBAN_SECRET_KEY: ${{ secrets.SOROBAN_MAINNET_SECRET_KEY }}
+
+      - name: Deploy to Soroban mainnet
+        run: |
+          bash scripts/deploy.sh \
+            --network mainnet \
+            --confirm-mainnet \
+            --wasm target/wasm32-unknown-unknown/release/runtime_guard_wrapper.wasm
+        env:
+          SOROBAN_SECRET_KEY: ${{ secrets.SOROBAN_MAINNET_SECRET_KEY }}
+        timeout-minutes: 30
+
+      - name: Continuous validation
+        run: |
+          echo "Running mainnet validation checks..."
           if [ -f ".deployment-manifest.json" ]; then
             CONTRACTS=$(jq -r '.deployments[].contract_id' .deployment-manifest.json)
-            
-            for CONTRACT_ID in $CONTRACTS; do
-              echo ""
-              echo "Validating contract: $CONTRACT_ID"
-              
-              # Health check
-              if soroban contract invoke \
-                  --id "$CONTRACT_ID" \
-                  --network testnet \
-                  -- health_check; then
-                echo "✓ Health check passed for $CONTRACT_ID"
+            for CID in $CONTRACTS; do
+              echo "Validating: $CID"
+              if soroban contract invoke --id "$CID" --network mainnet -- health_check; then
+                echo "✓ Health check passed"
               else
-                echo "✗ Health check failed for $CONTRACT_ID"
+                echo "✗ Health check failed"
                 exit 1
-              fi
-              
-              # Get stats
-              if soroban contract invoke \
-                  --id "$CONTRACT_ID" \
-                  --network testnet \
-                  -- get_stats 2>/dev/null; then
-                echo "✓ Stats retrieved for $CONTRACT_ID"
               fi
             done
           fi
         env:
-          SOROBAN_SECRET_KEY: ${{ secrets.SOROBAN_SECRET_KEY }}
-          SOROBAN_ACCOUNT_ID: ${{ secrets.SOROBAN_ACCOUNT_ID }}
+          SOROBAN_SECRET_KEY: ${{ secrets.SOROBAN_MAINNET_SECRET_KEY }}
 
-      - name: Generate validation report
+      - name: Upload deployment manifest
         if: always()
-        run: |
-          echo "## Continuous Validation Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Timestamp: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
-          echo "- Network: testnet" >> $GITHUB_STEP_SUMMARY
-          echo "- Status: Success" >> $GITHUB_STEP_SUMMARY
+        uses: actions/upload-artifact@v6
+        with:
+          name: deployment-manifest-mainnet-${{ github.run_id }}
+          path: .deployment-manifest.json
+          retention-days: 90
 
-  notification:
-    name: Send Deployment Notification
+  # ── Summary ──────────────────────────────────────────────────────────────
+  summary:
+    name: Deployment Summary
     runs-on: ubuntu-latest
-    needs: [build-and-deploy, continuous-validation]
+    needs: [build, testnet-deploy, mainnet-deploy]
     if: always()
     permissions:
       checks: write
 
     steps:
-      - name: Determine status
+      - name: Determine overall status
         id: status
         run: |
-          if [ "${{ needs.build-and-deploy.result }}" = "success" ]; then
+          if [[ '${{ needs.testnet-deploy.result }}' == 'success' || '${{ needs.mainnet-deploy.result }}' == 'success' ]]; then
             echo "DEPLOYMENT_STATUS=✅ Success" >> $GITHUB_OUTPUT
             echo "DEPLOYMENT_COLOR=0x28a745" >> $GITHUB_OUTPUT
-          else
+          elif [[ '${{ needs.testnet-deploy.result }}' == 'failure' || '${{ needs.mainnet-deploy.result }}' == 'failure' ]]; then
             echo "DEPLOYMENT_STATUS=❌ Failed" >> $GITHUB_OUTPUT
             echo "DEPLOYMENT_COLOR=0xdc3545" >> $GITHUB_OUTPUT
+          else
+            echo "DEPLOYMENT_STATUS=⏭️ Skipped" >> $GITHUB_OUTPUT
+            echo "DEPLOYMENT_COLOR=0x6c757d" >> $GITHUB_OUTPUT
           fi
-
-      - name: Create deployment status check
-        uses: actions/github-script@v8
-        with:
-          script: |
-            github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'Soroban Runtime Guard Deployment',
-              head_sha: context.sha,
-              status: '${{ needs.build-and-deploy.result }}' === 'success' ? 'completed' : 'completed',
-              conclusion: '${{ needs.build-and-deploy.result }}' === 'success' ? 'success' : 'failure',
-              output: {
-                title: 'Deployment ${{ steps.status.outputs.DEPLOYMENT_STATUS }}',
-                summary: 'Runtime guard wrapper contract has been deployed to Soroban testnet',
-                text: 'Check the deployment artifacts for detailed logs and manifests.'
-              }
-            });
 
       - name: Post deployment summary
         run: |
-          echo "## 🚀 Soroban Runtime Guard Deployment Complete" >> $GITHUB_STEP_SUMMARY
+          echo "## 🚀 Soroban Runtime Guard Deployment" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Status**: ${{ steps.status.outputs.DEPLOYMENT_STATUS }}" >> $GITHUB_STEP_SUMMARY
-          echo "**Network**: testnet" >> $GITHUB_STEP_SUMMARY
+          echo "**Target**: ${{ github.event.inputs.target || 'testnet' }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Dry Run**: ${{ github.event.inputs.dry_run || 'true' }}" >> $GITHUB_STEP_SUMMARY
           echo "**Timestamp**: $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
           echo "**Commit**: ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "[View Artifacts](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> $GITHUB_STEP_SUMMARY

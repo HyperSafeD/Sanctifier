@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+See [VERSIONING_POLICY.md](./VERSIONING_POLICY.md) for the detailed policy on what constitutes a breaking change for CLI flags, output schemas, and rule sets.
 
 ## Format Guidelines
 
