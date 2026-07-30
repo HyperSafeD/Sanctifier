@@ -89,6 +89,8 @@ pub enum Commands {
     Badge(commands::badge::BadgeArgs),
     /// Compare two scan results and show new/resolved findings
     Diff(commands::diff::DiffArgs),
+    /// Generate native AFL/honggfuzz fuzz-harness scaffolds from a contract's ABI
+    Harness(commands::harness::HarnessArgs),
 }
 
 fn main() {
@@ -146,5 +148,6 @@ fn run() -> anyhow::Result<()> {
         Commands::Export(args) => commands::export::exec(args),
         Commands::Badge(args) => commands::badge::exec(args),
         Commands::Diff(args) => commands::diff::exec(args),
+        Commands::Harness(args) => commands::harness::exec(args),
     }
 }

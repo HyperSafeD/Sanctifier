@@ -221,6 +221,7 @@ sanctifier diff       [PATH] --baseline <report.json>   # new/resolved findings 
 sanctifier watch      [PATH]              # re-runs on file change
 sanctifier workspace  [PATH]              # cargo-workspace-aware scan
 sanctifier callgraph  [PATH] --output callgraph.dot
+sanctifier harness    [PATH] --output fuzz-harness --target afl|honggfuzz|both
 sanctifier badge      --report report.json --svg-output sanctifier.svg
 sanctifier fix        [PATH] --rule S003  # apply patcher fixes
 sanctifier verify     [PATH]              # Z3-only invariant pass
