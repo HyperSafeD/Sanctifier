@@ -121,7 +121,8 @@ impl NullifierSet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Env as _, Bytes, Env};
+    use crate::ZkVerifier;
+    use soroban_sdk::{Bytes, Env};
 
     fn ctx(env: &Env) -> Bytes {
         Bytes::from_slice(env, b"test-campaign")
@@ -131,46 +132,58 @@ mod tests {
         Bytes::from_slice(env, &[n; 32])
     }
 
+    /// Storage operations require an active contract execution frame, so
+    /// unit tests exercise `NullifierSet` inside `Env::as_contract`.
+    fn with_contract<F: FnOnce(&Env)>(f: F) {
+        let env = Env::default();
+        let contract_id = env.register_contract(None, ZkVerifier);
+        env.as_contract(&contract_id, || f(&env));
+    }
+
     #[test]
     fn unspent_nullifier_is_not_spent() {
-        let env = Env::default();
-        let ns = NullifierSet::new();
-        assert!(!ns.is_spent(&env, &ctx(&env), &null(&env, 0x01)));
+        with_contract(|env| {
+            let ns = NullifierSet::new();
+            assert!(!ns.is_spent(env, &ctx(env), &null(env, 0x01)));
+        });
     }
 
     #[test]
     fn mark_spent_records_nullifier() {
-        let env = Env::default();
-        let ns = NullifierSet::new();
-        let nullifier = null(&env, 0x02);
-        ns.mark_spent(&env, &ctx(&env), &nullifier);
-        assert!(ns.is_spent(&env, &ctx(&env), &nullifier));
+        with_contract(|env| {
+            let ns = NullifierSet::new();
+            let nullifier = null(env, 0x02);
+            ns.mark_spent(env, &ctx(env), &nullifier);
+            assert!(ns.is_spent(env, &ctx(env), &nullifier));
+        });
     }
 
     #[test]
     #[should_panic(expected = "nullifier already spent")]
     fn assert_unspent_panics_on_spent() {
-        let env = Env::default();
-        let ns = NullifierSet::new();
-        let nullifier = null(&env, 0x03);
-        ns.mark_spent(&env, &ctx(&env), &nullifier);
-        ns.assert_unspent(&env, &ctx(&env), &nullifier);
+        with_contract(|env| {
+            let ns = NullifierSet::new();
+            let nullifier = null(env, 0x03);
+            ns.mark_spent(env, &ctx(env), &nullifier);
+            ns.assert_unspent(env, &ctx(env), &nullifier);
+        });
     }
 
     #[test]
     #[should_panic(expected = "nullifier absent (possibly evicted) — failing closed")]
     fn assert_unspent_panics_on_absent_entry_fail_closed() {
-        let env = Env::default();
-        let ns = NullifierSet::new();
-        // Simulate eviction: write then manually remove the key so the entry
-        // appears absent to storage, then assert_unspent must panic (fail closed).
-        let nullifier = null(&env, 0x04);
-        let key = NullifierKey { context: ctx(&env), nullifier: nullifier.clone() };
-        env.storage()
-            .persistent()
-            .set::<NullifierKey, NullifierState>(&key, &NullifierState::Spent);
-        env.storage().persistent().remove(&key);
-        // Now the entry is absent — as if it had been evicted.
-        ns.assert_unspent(&env, &ctx(&env), &nullifier);
+        with_contract(|env| {
+            let ns = NullifierSet::new();
+            // Simulate eviction: write then manually remove the key so the entry
+            // appears absent to storage, then assert_unspent must panic (fail closed).
+            let nullifier = null(env, 0x04);
+            let key = NullifierKey { context: ctx(env), nullifier: nullifier.clone() };
+            env.storage()
+                .persistent()
+                .set::<NullifierKey, NullifierState>(&key, &NullifierState::Spent);
+            env.storage().persistent().remove(&key);
+            // Now the entry is absent — as if it had been evicted.
+            ns.assert_unspent(env, &ctx(env), &nullifier);
+        });
     }
 }

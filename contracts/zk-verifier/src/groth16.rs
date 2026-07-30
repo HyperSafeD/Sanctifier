@@ -28,38 +28,48 @@ pub enum ProofError {
 }
 
 impl Proof {
-    pub fn from_bytes(env: &Env, bytes: &[u8]) -> Result<Self, ProofError> {
+    /// Parse a `Proof` out of a Soroban `Bytes` buffer.
+    ///
+    /// `Bytes` is a host-managed object rather than a native Rust slice, so
+    /// sub-ranges are extracted with `Bytes::slice` instead of indexing into
+    /// a `&[u8]`.
+    pub fn from_bytes(_env: &Env, bytes: &Bytes) -> Result<Self, ProofError> {
         if bytes.len() != 192 {
             return Err(ProofError::InvalidProofLength);
         }
-        let a = Bytes::from_slice(env, &bytes[0..48]);
-        let b = Bytes::from_slice(env, &bytes[48..144]);
-        let c = Bytes::from_slice(env, &bytes[144..192]);
+        let a = bytes.slice(0..48);
+        let b = bytes.slice(48..144);
+        let c = bytes.slice(144..192);
         Ok(Self { a, b, c })
     }
 }
 
 impl VerifyingKey {
-    pub fn from_bytes(env: &Env, bytes: &[u8]) -> Result<Self, ProofError> {
-        if bytes.len() < 340 {
+    /// Parse a `VerifyingKey` out of a Soroban `Bytes` buffer.
+    pub fn from_bytes(env: &Env, bytes: &Bytes) -> Result<Self, ProofError> {
+        let len = bytes.len();
+        if len < 340 {
             return Err(ProofError::InvalidVkLength);
         }
-        let alpha_g1 = Bytes::from_slice(env, &bytes[0..48]);
-        let beta_g2 = Bytes::from_slice(env, &bytes[48..144]);
-        let gamma_g2 = Bytes::from_slice(env, &bytes[144..240]);
-        let delta_g2 = Bytes::from_slice(env, &bytes[240..336]);
+        let alpha_g1 = bytes.slice(0..48);
+        let beta_g2 = bytes.slice(48..144);
+        let gamma_g2 = bytes.slice(144..240);
+        let delta_g2 = bytes.slice(240..336);
 
         let num_inputs = u32::from_le_bytes([
-            bytes[336], bytes[337], bytes[338], bytes[339],
-        ]) as usize;
+            bytes.get(336).unwrap_or(0),
+            bytes.get(337).unwrap_or(0),
+            bytes.get(338).unwrap_or(0),
+            bytes.get(339).unwrap_or(0),
+        ]);
 
         let mut gamma_abc: Vec<G1Point> = Vec::new(env);
-        let mut offset = 340;
+        let mut offset: u32 = 340;
         for _ in 0..num_inputs {
-            if offset + 48 > bytes.len() {
+            if offset + 48 > len {
                 return Err(ProofError::InvalidVkLength);
             }
-            gamma_abc.push_back(Bytes::from_slice(env, &bytes[offset..offset + 48]));
+            gamma_abc.push_back(bytes.slice(offset..offset + 48));
             offset += 48;
         }
         Ok(Self { alpha_g1, beta_g2, gamma_g2, delta_g2, gamma_abc })
@@ -133,8 +143,9 @@ mod tests {
         buf[0] = 0xAB;
         buf[48] = 0xCD;
         buf[144] = 0xEF;
+        let bytes = Bytes::from_slice(&env, &buf);
 
-        let proof = Proof::from_bytes(&env, &buf).unwrap();
+        let proof = Proof::from_bytes(&env, &bytes).unwrap();
         assert_eq!(proof.a, Bytes::from_slice(&env, &buf[0..48]));
         assert_eq!(proof.b, Bytes::from_slice(&env, &buf[48..144]));
         assert_eq!(proof.c, Bytes::from_slice(&env, &buf[144..192]));
@@ -143,7 +154,8 @@ mod tests {
     #[test]
     fn proof_from_bytes_rejects_wrong_length() {
         let env = Env::default();
-        let result = Proof::from_bytes(&env, &[0u8; 10]);
+        let bytes = Bytes::from_slice(&env, &[0u8; 10]);
+        let result = Proof::from_bytes(&env, &bytes);
         assert_eq!(result, Err(ProofError::InvalidProofLength));
     }
 
