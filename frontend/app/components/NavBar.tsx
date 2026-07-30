@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ThemeToggle } from "./ThemeToggle";
+import { NetworkBadge } from "./NetworkBadge";
 
 export function NavBar() {
   const pathname = usePathname();
@@ -27,13 +28,14 @@ export function NavBar() {
     <nav className="sticky top-0 z-50 w-full border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md theme-high-contrast:bg-black theme-high-contrast:border-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
-          <div className="flex items-center">
+          <div className="flex items-center gap-3">
             <Link
               href="/"
               className="text-xl font-bold text-zinc-900 dark:text-zinc-50 theme-high-contrast:text-yellow-300 transition-colors"
             >
               Sanctifier
             </Link>
+            <NetworkBadge />
             <div className="hidden md:ml-10 md:flex md:space-x-8">
               {navLinks.map((link) => (
                 <Link
