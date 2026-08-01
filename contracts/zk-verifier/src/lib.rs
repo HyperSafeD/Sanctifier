@@ -6,15 +6,15 @@ pub mod vk_storage;
 
 use groth16::{bind_public_inputs, verify, Proof, VerifyingKey, G1Point, G2Point};
 use nullifier_set::{NullifierKey, NullifierSet, NullifierState};
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Address, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Vec};
 use vk_storage::{read_rotation_state, DataKey, RotationState};
 
 /// TTL thresholds (matching nullifier_set.rs).
 const TTL_BUMP_THRESHOLD: u32 = 100_000;
 const TTL_BUMP_TO: u32 = 6_307_200;
 
-#[contracttype]
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum VerifierError {
     AlreadyInitialized = 1,
     NotInitialized = 2,
@@ -116,7 +116,7 @@ impl ZkVerifier {
 
         let pi_vec_final: Vec<BytesN<32>> = pi_ref;
 
-        let pi_len = pi_vec_final.len() as usize;
+        let pi_len = pi_vec_final.len();
         let mut pi_flat: Vec<BytesN<32>> = Vec::new(&env);
         for i in 0..pi_len {
             pi_flat.push_back(pi_vec_final.get(i).unwrap_or(BytesN::from_array(&env, &[0u8; 32])));
@@ -245,9 +245,12 @@ impl ZkVerifier {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
     use soroban_sdk::testutils::Address as _;
     use soroban_sdk::{Address, Env};
+    use std::vec;
 
     fn make_vk_bytes(env: &Env) -> Bytes {
         let mut buf = vec![0u8; 340 + 96];
@@ -278,7 +281,7 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
         let admin = Address::generate(&env);
-        let contract_id = env.register(ZkVerifier, ());
+        let contract_id = env.register_contract(None, ZkVerifier);
         let client = ZkVerifierClient::new(&env, &contract_id);
 
         let vk_bytes = make_vk_bytes(&env);
@@ -308,7 +311,7 @@ mod tests {
         let mut public_inputs: Vec<BytesN<32>> = Vec::new(&env);
         public_inputs.push_back(BytesN::from_array(&env, &[0x10; 32]));
 
-        let result = client.verify_proof(&proof_bytes, &public_inputs, &context, &nullifier);
+        let result = client.try_verify_proof(&proof_bytes, &public_inputs, &context, &nullifier);
         assert!(result.is_ok());
     }
 
@@ -324,9 +327,9 @@ mod tests {
         let mut public_inputs: Vec<BytesN<32>> = Vec::new(&env);
         public_inputs.push_back(BytesN::from_array(&env, &[0x10; 32]));
 
-        client.verify_proof(&proof_bytes, &public_inputs, &context, &nullifier).unwrap();
+        client.verify_proof(&proof_bytes, &public_inputs, &context, &nullifier);
 
-        let result = client.verify_proof(&proof_bytes, &public_inputs, &context, &nullifier);
+        let result = client.try_verify_proof(&proof_bytes, &public_inputs, &context, &nullifier);
         assert!(result.is_err());
     }
 
@@ -383,7 +386,7 @@ mod tests {
         let mut public_inputs: Vec<BytesN<32>> = Vec::new(&env);
         public_inputs.push_back(BytesN::from_array(&env, &[0x10; 32]));
 
-        client.verify_proof(&proof_bytes, &public_inputs, &context, &nullifier).unwrap();
+        client.verify_proof(&proof_bytes, &public_inputs, &context, &nullifier);
 
         assert!(client.is_nullifier_spent(&context, &nullifier));
     }
