@@ -30,7 +30,8 @@
         "format",
         "timeout_secs",
         "cached_files",
-        "total_files"
+        "total_files",
+        "network"
       ],
       "additionalProperties": false,
       "properties": {
@@ -67,6 +68,11 @@
           "type": "integer",
           "minimum": 0,
           "description": "Total number of Rust files found in the project."
+        },
+        "network": {
+          "type": "string",
+          "description": "Target network for this analysis run (e.g. testnet, futurenet, mainnet). Inferred from SOROBAN_NETWORK env var or CLI --network flag.",
+          "examples": ["testnet", "mainnet"]
         }
       }
     },

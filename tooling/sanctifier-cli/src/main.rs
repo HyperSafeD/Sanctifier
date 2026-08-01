@@ -23,6 +23,11 @@ struct Cli {
     #[arg(long)]
     pub telemetry: bool,
 
+    /// Target network (testnet, futurenet, mainnet).
+    /// Overrides SOROBAN_NETWORK env var. Default: testnet.
+    #[arg(short = 'n', long, global = true, default_value = "testnet")]
+    pub network: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -104,6 +109,14 @@ fn run() -> anyhow::Result<()> {
     if cli.no_color {
         commands::color::set_no_color(true);
     }
+
+    // Print network indicator banner
+    let network_badge = match cli.network.as_str() {
+        "mainnet" => format!("{}", commands::color::red_bold("[ MAINNET ]")),
+        "futurenet" => format!("{}", commands::color::yellow_bold("[ FUTURENET ]")),
+        _ => format!("{}", commands::color::green_bold("[ TESTNET ]")),
+    };
+    eprintln!("{} Sanctifier — {}", network_badge, commands::color::dimmed(&cli.network));
 
     // Initialize structured logging before dispatching
     let log_format = match &cli.command {
