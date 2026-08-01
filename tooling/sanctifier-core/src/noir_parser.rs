@@ -199,14 +199,6 @@ fn parse_function(lines: &[&str], start: usize) -> Result<(NoirFunction, usize),
 
     Ok((
         NoirFunction { name, params, return_type, return_visibility, body },
-        (consumed as usize).saturating_sub(1),
-        NoirFunction {
-            name,
-            params,
-            return_type,
-            return_visibility,
-            body,
-        },
         consumed.saturating_sub(1),
     ))
 }

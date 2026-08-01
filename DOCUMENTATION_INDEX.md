@@ -69,6 +69,14 @@
 - Cross-contract message wire format stability
 - Local reproduction recipes
 
+### Fuzz-Harness Generator
+
+**[docs/fuzz-harness-generator.md](docs/fuzz-harness-generator.md)** - `sanctifier harness` CLI command
+
+- Generates native `afl.rs` / `honggfuzz` fuzz-target scaffolds from a contract's ABI
+- Bridges static analysis (AST-level function/parameter extraction) to dynamic analysis
+- `SorobanArbitrary`-based input generation, crate auto-detection, usage examples
+
 ### Technical Architecture
 
 **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and components

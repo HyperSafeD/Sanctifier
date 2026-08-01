@@ -11,6 +11,7 @@ pub mod explain;
 pub mod export;
 pub mod fix;
 pub mod gas;
+pub mod harness;
 pub mod init;
 pub mod install_hooks;
 pub mod lsp;
