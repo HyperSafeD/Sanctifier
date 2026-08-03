@@ -629,6 +629,10 @@ If your PR has not received a response within the SLA, ping `@HyperSafeD` in the
 | `area: contracts` | Changes to `contracts/` |
 | `area: docs` | Changes to documentation files |
 | `area: testing` | Test infrastructure or coverage |
+| `area: zk` | Zero-knowledge proof related work |
+| `mainnet` | Mainnet deployment and configuration |
+| `component:zk` | ZK component work |
+| `zk` | Zero-knowledge proof related |
 | `difficulty: easy` | Good for first-time contributors; well-scoped |
 | `difficulty: medium` | Requires familiarity with the codebase |
 | `difficulty: hard` | Complex; discuss approach before starting |
