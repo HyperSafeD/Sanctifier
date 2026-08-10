@@ -29,7 +29,7 @@
     "jspdf": "^4.2.0",
     "lucide-react": "^1.30.0",
     "shiki": "^3.2.2",
-    "next": "^16.2.12",
+    "next": "^16.3.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.8",
     "react-window": "^1.8.10"
