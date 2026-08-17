@@ -27,7 +27,7 @@
   "dependencies": {
     "@sanctifier/wasm": "file:../tooling/sanctifier-wasm/pkg",
     "jspdf": "^4.2.0",
-    "lucide-react": "^1.30.0",
+    "lucide-react": "^1.31.0",
     "shiki": "^3.2.2",
     "next": "^16.3.1",
     "react": "^19.2.3",
