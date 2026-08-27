@@ -8,6 +8,7 @@ import { FindingsList } from "../components/FindingsList";
 import { ZkFindingsPanel } from "../components/ZkFindingsPanel";
 import { SeverityFilter } from "../components/SeverityFilter";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { CallGraphSkeleton } from "../components/CallGraphSkeleton";
 import { nextScanProgressPhase } from "../lib/scan-progress";
 import { getSettingsHeaders } from "../lib/settings";
 import type { Finding, Severity } from "../types";
@@ -15,11 +16,7 @@ import Link from "next/link";
 
 const CallGraph = dynamic(() => import("../components/CallGraph").then((m) => m.CallGraph), {
   ssr: false,
-  loading: () => (
-    <div className="h-[400px] w-full flex items-center justify-center rounded-xl border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 text-zinc-500">
-      Loading call graph…
-    </div>
-  ),
+  loading: () => <CallGraphSkeleton />,
 });
 
 export default function ScanPage() {
@@ -190,7 +187,7 @@ export default function ScanPage() {
         {findings.length > 0 && !isAnalyzing && (
           <section className="space-y-12 animate-in fade-in duration-1000 pt-10 border-t border-zinc-200 dark:border-zinc-800">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <ErrorBoundary>
+              <ErrorBoundary compact>
                 <SanctityScore findings={findings} />
               </ErrorBoundary>
               <div className="space-y-6">
@@ -229,7 +226,7 @@ export default function ScanPage() {
                 <h2 className="text-2xl font-bold tracking-tight">Security Findings</h2>
                 <SeverityFilter selected={severityFilter} onChange={setSeverityFilter} />
               </div>
-              <ErrorBoundary>
+              <ErrorBoundary compact>
                 <ZkFindingsPanel findings={findings} />
                 <FindingsList findings={findings} severityFilter={severityFilter} />
               </ErrorBoundary>
@@ -237,7 +234,7 @@ export default function ScanPage() {
 
             <div className="space-y-6 pt-10 border-t border-zinc-200 dark:border-zinc-800">
               <h2 className="text-2xl font-bold tracking-tight">System Integrity Map</h2>
-              <ErrorBoundary>
+              <ErrorBoundary compact>
                 <CallGraph nodes={[]} edges={[]} /> {/* Call graph would need more data from API if desired */}
                 <p className="text-xs text-zinc-500 text-center italic mt-4">Note: Visualizing complex call structures requires multiple analysis passes.</p>
               </ErrorBoundary>
