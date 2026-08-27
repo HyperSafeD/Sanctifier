@@ -1,6 +1,15 @@
 #![no_std]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Env, Symbol};
 
+/// Typed payload for the `admin_set` event (issue #1445), matching the
+/// `contracttype` + `events().publish((topic,), data)` convention already
+/// used elsewhere in this workspace (e.g. `contracts/flashloan-token`),
+/// rather than publishing loose tuples an indexer would have to guess the
+/// shape of.
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AdminSetEvent {
+    pub new_admin: Symbol,
 /// Storage keys using contracttype enum to prevent collisions.
 ///
 /// Using an enum ensures:
@@ -63,6 +72,13 @@ impl VulnerableContract {
     pub fn set_admin(env: Env, new_admin: Symbol) {
         env.storage()
             .instance()
+            .set(&symbol_short!("admin"), &new_admin);
+        env.events().publish(
+            (symbol_short!("admin_set"),),
+            AdminSetEvent {
+                new_admin: new_admin.clone(),
+            },
+        );
             .set(&StorageKey::Admin, &new_admin);
     }
 
@@ -76,6 +92,13 @@ impl VulnerableContract {
         // env.require_auth(&admin); // Assume we can verify this if it were an Address
         env.storage()
             .instance()
+            .set(&symbol_short!("admin"), &new_admin);
+        env.events().publish(
+            (symbol_short!("admin_set"),),
+            AdminSetEvent {
+                new_admin: new_admin.clone(),
+            },
+        );
             .set(&StorageKey::Admin, &new_admin);
     }
 
