@@ -1,0 +1,49 @@
+name: Lockfile Staleness Checks
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  lockfiles:
+    name: Pinned lockfiles in sync, no floating ranges
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify workspace Cargo.lock is in sync
+        # `cargo update --locked` resolves the workspace against committed
+        # manifests and errors if any Cargo.lock would need to change,
+        # covering Cargo.lock plus the cli/wasm workspace members.
+        run: cargo update --locked --workspace
+
+      - name: Reject unbounded/floating dependency ranges
+        run: python3 .github/scripts/check_manifest_ranges.py
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Verify root package-lock.json
+        run: npm ci --ignore-scripts
+
+      - name: Verify frontend/package-lock.json
+        run: npm ci --ignore-scripts --prefix frontend
+
+      - name: Verify vscode-extension/package-lock.json
+        run: npm ci --ignore-scripts --prefix vscode-extension
+
+      - name: Verify no lockfiles were modified by the checks
+        run: git diff --exit-code
