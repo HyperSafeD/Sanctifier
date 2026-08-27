@@ -7,14 +7,14 @@
 //! the double-spend risk that Z001 is meant to prevent.
 //!
 //! This module therefore:
-//! 1. Bumps the TTL on every write (`mark_spent`).
-//! 2. **Fails closed** on read: an absent entry is treated as "unknown /
-//!    must reject", never as "unspent / allow".  The `assert_unspent` method
-//!    panics on both "definitely spent" and "evicted / unknown" states,
-//!    matching the closed-world assumption of a spend check.
-//!
-//! Callers that want to distinguish "unknown" from "spent" should use
-//! `state()` directly and apply their own policy.
+//! 1. Bumps the TTL on every write (`mark_spent`) so spent entries persist;
+//!    eviction after `max_ttl` is therefore treated as an operational risk,
+//!    bounded by `TTL_BUMP_TO` (~1 year), not silently relied upon.
+//! 2. **Rejects only what is provably spent.** A nullifier that is absent
+//!    from storage is either genuinely unspent or — in the extreme —
+//!    evicted after TTL expiry; both cases are indistinguishable, and the
+//!    first-time spend must be allowed.  The absence of an entry is therefore
+//!    treated as *unspent*, never as a double-spend.
 
 use soroban_sdk::{contracttype, Bytes, Env};
 
@@ -44,19 +44,26 @@ pub struct NullifierKey {
 /// spend-check / mark-spent API with explicit TTL management.
 pub struct NullifierSet;
 
+impl Default for NullifierSet {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl NullifierSet {
     pub fn new() -> Self {
         Self
     }
 
-    /// Returns `true` if `nullifier` is definitely recorded as spent.
+    /// Returns `true` if `nullifier` is recorded as spent.
     ///
-    /// Returns `false` for **both** the "unspent" and the "evicted / absent"
-    /// cases.  Callers that must distinguish eviction from genuinely-unspent
-    /// should use `state()` and apply their own policy; most callers should
-    /// use `assert_unspent` which fails closed on both.
+    /// Returns `false` for both the "unspent" and the "evicted / absent"
+    /// cases; the two are indistinguishable at storage level.
     pub fn is_spent(&self, env: &Env, context: &Bytes, nullifier: &Bytes) -> bool {
-        let key = NullifierKey { context: context.clone(), nullifier: nullifier.clone() };
+        let key = NullifierKey {
+            context: context.clone(),
+            nullifier: nullifier.clone(),
+        };
         env.storage()
             .persistent()
             .get::<NullifierKey, NullifierState>(&key)
@@ -67,36 +74,43 @@ impl NullifierSet {
     /// Returns the raw `Option<NullifierState>` from storage.
     ///
     /// `None` means the entry is absent — either genuinely unspent *or*
-    /// evicted due to TTL expiry.  Treat `None` as untrusted.
+    /// evicted due to TTL expiry; the two cannot be distinguished here.
     pub fn state(&self, env: &Env, context: &Bytes, nullifier: &Bytes) -> Option<NullifierState> {
-        let key = NullifierKey { context: context.clone(), nullifier: nullifier.clone() };
-        env.storage().persistent().get::<NullifierKey, NullifierState>(&key)
+        let key = NullifierKey {
+            context: context.clone(),
+            nullifier: nullifier.clone(),
+        };
+        env.storage()
+            .persistent()
+            .get::<NullifierKey, NullifierState>(&key)
     }
 
-    /// Panics if `nullifier` is spent **or absent** (fail-closed policy).
+    /// Panics if `nullifier` is provably spent.
     ///
-    /// Call this before granting any asset access, then call `mark_spent`
-    /// before returning.
+    /// A nullifier that has never been written is allowed to spend; the call
+    /// site must then `mark_spent` before returning to close the TOCTOU
+    /// window.  Entries evicted after `TTL_BUMP_TO` read as absent and are
+    /// therefore treated as unspent; keep spent entries' TTL bumped so this
+    /// residual window stays bounded by the bump interval.
     pub fn assert_unspent(&self, env: &Env, context: &Bytes, nullifier: &Bytes) {
-        let key = NullifierKey { context: context.clone(), nullifier: nullifier.clone() };
-        match env.storage().persistent().get::<NullifierKey, NullifierState>(&key) {
+        let key = NullifierKey {
+            context: context.clone(),
+            nullifier: nullifier.clone(),
+        };
+        match env
+            .storage()
+            .persistent()
+            .get::<NullifierKey, NullifierState>(&key)
+        {
             Some(NullifierState::Spent) => {
                 panic!("nullifier already spent — replay attack rejected")
             }
             None => {
-                // Fail closed: absent could mean evicted.  Reject to prevent
-                // a TTL-eviction-based replay attack.
-                //
-                // If this fires unexpectedly in production it means entries
-                // are expiring faster than expected; increase TTL_BUMP_TO or
-                // migrate spent nullifiers to a longer-lived tier.
-                panic!("nullifier absent (possibly evicted) — failing closed to prevent replay")
+                // Absent = never spent (or evicted well past the TTL bump
+                // window); first-time spends are legitimate.  Allow and let
+                // the caller `mark_spent` immediately after.
             }
-            _ => {} // NullifierState::Spent is the only variant; exhaustive.
         }
-        // Unreachable: both Some(Spent) and None panic above.  The match
-        // guard keeps the compiler happy if new variants are added later.
-        let _ = key;
     }
 
     /// Mark `nullifier` as spent and bump its TTL.
@@ -105,7 +119,10 @@ impl NullifierSet {
     /// from the verify function to prevent TOCTOU races in parallel
     /// transaction scenarios.
     pub fn mark_spent(&self, env: &Env, context: &Bytes, nullifier: &Bytes) {
-        let key = NullifierKey { context: context.clone(), nullifier: nullifier.clone() };
+        let key = NullifierKey {
+            context: context.clone(),
+            nullifier: nullifier.clone(),
+        };
         env.storage()
             .persistent()
             .set::<NullifierKey, NullifierState>(&key, &NullifierState::Spent);
@@ -170,19 +187,24 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "nullifier absent (possibly evicted) — failing closed")]
-    fn assert_unspent_panics_on_absent_entry_fail_closed() {
+    fn absent_nullifier_is_allowed_once() {
         with_contract(|env| {
             let ns = NullifierSet::new();
-            // Simulate eviction: write then manually remove the key so the entry
-            // appears absent to storage, then assert_unspent must panic (fail closed).
+            // Absent (never spent / evicted) is indistinguishable from a
+            // legitimate first-time spend, so it must be allowed; the test
+            // passes only if this does not panic.
             let nullifier = null(env, 0x04);
-            let key = NullifierKey { context: ctx(env), nullifier: nullifier.clone() };
-            env.storage()
-                .persistent()
-                .set::<NullifierKey, NullifierState>(&key, &NullifierState::Spent);
-            env.storage().persistent().remove(&key);
-            // Now the entry is absent — as if it had been evicted.
+            ns.assert_unspent(env, &ctx(env), &nullifier);
+        });
+    }
+
+    #[test]
+    #[should_panic(expected = "nullifier already spent")]
+    fn spent_nullifier_is_rejected() {
+        with_contract(|env| {
+            let ns = NullifierSet::new();
+            let nullifier = null(env, 0x05);
+            ns.mark_spent(env, &ctx(env), &nullifier);
             ns.assert_unspent(env, &ctx(env), &nullifier);
         });
     }
