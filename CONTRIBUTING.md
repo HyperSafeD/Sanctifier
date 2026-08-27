@@ -36,17 +36,30 @@ After the container builds, all dependencies will be ready and `cargo build --wo
 
 Before you begin, ensure you have the following installed:
 
-- **Rust** 1.78+ ([rustup](https://rustup.rs/))
-- **Node.js** 24+ ([nvm](https://github.com/nvm-sh/nvm) recommended)
-- **Z3 Theorem Prover**:
-  - Debian/Ubuntu: `sudo apt-get install -y libz3-dev`
-  - macOS: `brew install z3 llvm`
-  - Windows: Download from [Z3Prover/z3 releases](https://github.com/Z3Prover/z3/releases)
-- **Clang/LLVM** (for Z3 bindings):
-  - Debian/Ubuntu: `sudo apt-get install -y clang libclang-dev`
-  - macOS: `brew install llvm`
-- **soroban-cli**: `cargo install soroban-cli`
-- **wasm-pack**: `cargo install wasm-pack`
+| Dependency | Version | Installation |
+|------------|---------|--------------|
+| **Rust** | 1.78+ | [rustup](https://rustup.rs/) |
+| **Node.js** | 24+ | [nvm](https://github.com/nvm-sh/nvm) recommended |
+| **soroban-cli** | Latest | `cargo install soroban-cli` |
+| **wasm-pack** | Latest | `cargo install wasm-pack` |
+
+#### Platform-Specific Dependencies
+
+**Z3 Theorem Prover:**
+
+| Platform | Installation Command |
+|----------|---------------------|
+| Debian/Ubuntu | `sudo apt-get install -y libz3-dev` |
+| macOS | `brew install z3 llvm` |
+| Windows | Download from [Z3Prover/z3 releases](https://github.com/Z3Prover/z3/releases) |
+
+**Clang/LLVM** (for Z3 bindings):
+
+| Platform | Installation Command |
+|----------|---------------------|
+| Debian/Ubuntu | `sudo apt-get install -y clang libclang-dev` |
+| macOS | `brew install llvm` |
+| Windows | Included with Visual Studio |
 
 ### One-Command Setup
 
@@ -56,13 +69,16 @@ Run the automated setup script to install all prerequisites:
 make dev-setup
 ```
 
-This will:
-- Update and set the stable Rust toolchain
-- Add the WASM target
-- Install wasm-pack and soroban-cli
-- Install Node.js dependencies
+> **Note:** After running `make dev-setup`, you'll need to manually install Z3 (see platform-specific instructions above).
 
-After running `make dev-setup`, you'll need to manually install Z3 (see platform-specific instructions above).
+**What `make dev-setup` does:**
+
+| Step | Action |
+|------|--------|
+| 1️⃣ | Update and set the stable Rust toolchain |
+| 2️⃣ | Add the WASM target (`wasm32-unknown-unknown`) |
+| 3️⃣ | Install `wasm-pack` and `soroban-cli` |
+| 4️⃣ | Install Node.js dependencies via `npm install` |
 
 ### Manual Setup Steps
 
@@ -298,14 +314,13 @@ Follow the PR process outlined below.
 
 ## Contributing Z-Rules (ZK Analysis)
 
-> **Required reading before proposing a Z-rule:** the ZK threat model (#1193)
-> and the namespace/severity ADR (#1192). These two documents define the
-> contracts that every Z-rule must honour.
+> **⚠️ Required Reading:** Before proposing a Z-rule, review:
+> - The ZK threat model (#1193)
+> - The namespace/severity ADR (#1192)
+>
+> These documents define the contracts that every Z-rule must honor.
 
-Z-rules are Sanctifier's family of security-analysis rules targeting
-zero-knowledge (ZK) circuit and verifier patterns used in Soroban smart
-contracts. They live in the same rules layer as S-rules but occupy their own
-finding-code namespace and carry ZK-specific severity guidance.
+Z-rules are Sanctifier's family of security-analysis rules targeting zero-knowledge (ZK) circuit and verifier patterns used in Soroban smart contracts. They live in the same rules layer as S-rules but occupy their own finding-code namespace and carry ZK-specific severity guidance.
 
 ### Z-Rule Numbering Convention
 
@@ -386,20 +401,26 @@ any existing `docs/rules/S0xx.md`). Include:
 
 #### Checklist for Z-Rule PRs
 
-- [ ] ID chosen from the correct `Z0xx` range
-- [ ] Implementation file prefixed `z` and placed in `rules/`
-- [ ] Both `z<ID>_VULNERABLE.rs` and `z<ID>_SAFE.rs` fixtures present
-- [ ] `data/sarif/severity-map.yaml` entry added
-- [ ] `docs/rules/Z<ID>.md` rule reference page added
-- [ ] Severity set per the guidance table above (never lower than the minimum)
-- [ ] Threat model reference included in doc and code comments
+Use this checklist before submitting your Z-rule pull request:
+
+- [ ] **ID Assignment:** ID chosen from the correct `Z0xx` range
+- [ ] **File Naming:** Implementation file prefixed `z` and placed in `rules/`
+- [ ] **Test Fixtures:** Both `z<ID>_VULNERABLE.rs` and `z<ID>_SAFE.rs` fixtures present
+- [ ] **SARIF Configuration:** `data/sarif/severity-map.yaml` entry added
+- [ ] **Documentation:** `docs/rules/Z<ID>.md` rule reference page added
+- [ ] **Severity Assignment:** Severity set per the guidance table above (never lower than the minimum)
+- [ ] **Threat Model Reference:** Threat model reference included in doc and code comments
 
 ### Where to Start
 
-- **Threat model** (#1193) — lists the prioritised ZK vulnerability classes
-- **Namespace/severity ADR** (#1192) — the authoritative spec for `Z0xx` conventions
-- **`docs/rule-authoring-guide.md`** — general YAML/Rust rule authoring tutorial
-- **`docs/rules/`** — existing S-rule reference pages as structural templates
+Looking to contribute a Z-rule? Start here:
+
+| Resource | Purpose | Link |
+|----------|---------|------|
+| **Threat model** | Lists prioritised ZK vulnerability classes | #1193 |
+| **Namespace/severity ADR** | Authoritative spec for `Z0xx` conventions | #1192 |
+| **Rule authoring guide** | General YAML/Rust rule authoring tutorial | `docs/rule-authoring-guide.md` |
+| **Existing rule references** | Structural templates for documentation | `docs/rules/` |
 
 ## PR Checklist
 
@@ -453,37 +474,53 @@ operations in transfer functions.
 Closes #123
 ```
 
-## Code Style Guide
+### Code Style Guide
 
-### Rust
+Follow these style conventions for consistency across the codebase.
 
-- **Formatting**: Use `cargo fmt --all` (standard rustfmt config)
-- **Linting**: Use `cargo clippy --all-targets --all-features -- -D warnings`
-- **Naming**:
-  - `snake_case` for functions and variables
-  - `PascalCase` for types and traits
-  - `SCREAMING_SNAKE_CASE` for constants
-- **Error Handling**: Prefer `Result<T, E>` over `panic!` / `unwrap()` in library code
-- **Documentation**: Every public item must have a doc comment (`///`)
-- **Function Size**: Keep functions short and focused; extract helpers rather than nesting deeply
-- **Imports**: Group imports (std, external crates, internal modules) with blank lines between groups
+#### Rust
 
-### TypeScript / JavaScript (Frontend)
+| Aspect | Convention | Example |
+|--------|------------|---------|
+| **Formatting** | Use `cargo fmt --all` | Standard rustfmt config |
+| **Linting** | Use `cargo clippy` with deny warnings | `cargo clippy --all-targets --all-features -- -D warnings` |
+| **Functions** | `snake_case` | `calculate_risk_score()` |
+| **Types/Traits** | `PascalCase` | `RuleContext`, `Analyzer` |
+| **Constants** | `SCREAMING_SNAKE_CASE` | `MAX_SEVERITY_LEVEL` |
+| **Error Handling** | Prefer `Result<T, E>` over panics | Use `?` operator, avoid `unwrap()` in libraries |
+| **Documentation** | Every public item needs `///` doc comment | See existing code for examples |
 
-- **Formatting**: Use Prettier (`npm run format` or `pnpm format`)
-- **Linting**: Use ESLint (`npm run lint` or `pnpm lint`)
-- **Naming**:
-  - `camelCase` for variables and functions
-  - `PascalCase` for components and types
-  - `UPPER_SNAKE_CASE` for constants
-- **Type Safety**: 
-  - All React components must be typed with explicit prop interfaces
-  - No `any` types without a comment explaining why
-  - Prefer `interface` over `type` for object shapes
-- **Components**: 
-  - One component per file
-  - Co-locate styles with components
-  - Use functional components with hooks
+> **Note:** Keep functions short and focused. Extract helper functions rather than deeply nesting logic.
+
+**Import Organization:**
+
+```rust
+// 1. Standard library
+use std::collections::HashMap;
+use std::fs;
+
+// 2. External crates
+use serde::{Deserialize, Serialize};
+use tokio::runtime::Runtime;
+
+// 3. Internal modules
+use crate::rules::Rule;
+use crate::engine::Analyzer;
+```
+
+#### TypeScript / JavaScript (Frontend)
+
+| Aspect | Convention | Example |
+|--------|------------|---------|
+| **Formatting** | Use Prettier | `npm run format` |
+| **Linting** | Use ESLint | `npm run lint` |
+| **Variables/Functions** | `camelCase` | `getUserData()`, `isActive` |
+| **Components/Types** | `PascalCase` | `ScanResults`, `UserProfile` |
+| **Constants** | `UPPER_SNAKE_CASE` | `API_ENDPOINT`, `MAX_RETRIES` |
+| **Type Safety** | Explicit prop interfaces, no `any` | Use `interface` for object shapes |
+| **Components** | One component per file | Functional components with hooks |
+
+> **⚠️ Important:** All React components must be typed with explicit prop interfaces. Never use `any` without a comment explaining why.
 
 ### YAML (GitHub Actions, Config)
 
