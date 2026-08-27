@@ -18,7 +18,7 @@ inputs:
     required: false
     default: ""
   min-severity:
-    description: Minimum severity to report (critical|high|medium|low|info)
+    description: Minimum severity to report (critical|high|medium|low)
     required: false
     default: high
   format:
