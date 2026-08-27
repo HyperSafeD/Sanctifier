@@ -34,7 +34,8 @@ use z3::{Config, Context, SatResult, Solver};
 use crate::circom_parser::CircomFile;
 
 /// BN254 (BabyJubJub) field modulus used by Circom 2.x.
-const BN254_MODULUS: &str = "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+const BN254_MODULUS: &str =
+    "21888242871839275222246405745257275088548364400416034343698204186575808495617";
 
 /// Result of a circuit range-check verification.
 #[derive(Debug, Clone, PartialEq)]

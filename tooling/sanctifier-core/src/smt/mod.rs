@@ -30,10 +30,9 @@ mod types;
 
 // Types
 pub use types::{
-    CircuitRangeCheckResult, FixedPointCounterexample, FixedPointMulDivSpec,
-    FixedPointProofError, FixedPointProofReport, FlaggedSignal, InvariantSpec, SmtBackend,
-    SmtConfig, SmtFinding, SmtInvariantIssue, SmtLatencyBenchmarkReport, SmtProofStrategy,
-    SmtStrategyLatency,
+    CircuitRangeCheckResult, FixedPointCounterexample, FixedPointMulDivSpec, FixedPointProofError,
+    FixedPointProofReport, FlaggedSignal, InvariantSpec, SmtBackend, SmtConfig, SmtFinding,
+    SmtInvariantIssue, SmtLatencyBenchmarkReport, SmtProofStrategy, SmtStrategyLatency,
 };
 
 // Invariant verification (S011 entry-points)

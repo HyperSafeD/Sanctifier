@@ -44,8 +44,7 @@
 use sanctifier_core::rules::{RuleRegistry, RuleViolation};
 use serde::{Deserialize, Serialize};
 use std::{
-    env,
-    fs,
+    env, fs,
     io::Write,
     panic::{self, AssertUnwindSafe},
     path::PathBuf,
@@ -66,8 +65,7 @@ const SINGLE_CONTRACT_ENV: &str = "SANCTIFIER_FORK_CONTRACT";
 const ANALYSIS_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Stellar Expert contract source endpoint (returns Rust source when available).
-const STELLAR_EXPERT_SOURCE_BASE: &str =
-    "https://api.stellar.expert/explorer/public/contract";
+const STELLAR_EXPERT_SOURCE_BASE: &str = "https://api.stellar.expert/explorer/public/contract";
 
 /// Corpus manifest path relative to workspace root.
 const CORPUS_MANIFEST: &str = "tests/mainnet-fork/corpus.json";
@@ -223,11 +221,7 @@ fn analyze_with_timeout(source: String) -> Result<Vec<RuleViolation>, String> {
             let msg = panic_payload
                 .downcast_ref::<String>()
                 .cloned()
-                .or_else(|| {
-                    panic_payload
-                        .downcast_ref::<&str>()
-                        .map(|s| s.to_string())
-                })
+                .or_else(|| panic_payload.downcast_ref::<&str>().map(|s| s.to_string()))
                 .unwrap_or_else(|| "unknown panic".to_string());
             Err(format!("analysis panicked: {msg}"))
         }
@@ -420,9 +414,18 @@ fn mainnet_fork_read_only_analysis() {
     }
 
     // ── Write report ──────────────────────────────────────────────────────────
-    let passed = results.iter().filter(|r| r.status == ResultStatus::Passed).count();
-    let skipped = results.iter().filter(|r| r.status == ResultStatus::Skipped).count();
-    let failed = results.iter().filter(|r| r.status == ResultStatus::Failed).count();
+    let passed = results
+        .iter()
+        .filter(|r| r.status == ResultStatus::Passed)
+        .count();
+    let skipped = results
+        .iter()
+        .filter(|r| r.status == ResultStatus::Skipped)
+        .count();
+    let failed = results
+        .iter()
+        .filter(|r| r.status == ResultStatus::Failed)
+        .count();
 
     let report = ForkReport {
         schema_version: "1",
@@ -499,7 +502,11 @@ fn analyze_with_timeout_does_not_panic_on_valid_contract() {
         }
     "#;
     let result = analyze_with_timeout(source.to_string());
-    assert!(result.is_ok(), "valid contract must not crash: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "valid contract must not crash: {:?}",
+        result
+    );
 }
 
 #[test]

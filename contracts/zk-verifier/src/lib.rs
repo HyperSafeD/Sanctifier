@@ -4,9 +4,11 @@ pub mod groth16;
 pub mod nullifier_set;
 pub mod vk_storage;
 
-use groth16::{bind_public_inputs, verify, Proof, VerifyingKey, G1Point, G2Point};
+use groth16::{bind_public_inputs, verify, G1Point, G2Point, Proof, VerifyingKey};
 use nullifier_set::{NullifierKey, NullifierSet, NullifierState};
-use soroban_sdk::{contract, contracterror, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Vec};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Vec,
+};
 use vk_storage::{read_rotation_state, DataKey, RotationState};
 
 /// TTL thresholds (matching nullifier_set.rs).
@@ -42,14 +44,18 @@ impl ZkVerifier {
         }
         admin.require_auth();
 
-        let vk = VerifyingKey::from_bytes(&env, &initial_vk_bytes)
-            .expect("invalid verifying key bytes");
+        let vk =
+            VerifyingKey::from_bytes(&env, &initial_vk_bytes).expect("invalid verifying key bytes");
         let vk_hash = groth16::vk_integrity_hash(&env, &vk);
 
         env.storage().instance().set(&DataKey::Admin, &admin);
-        env.storage().instance().set(&DataKey::VerifyingKey, &initial_vk_bytes);
+        env.storage()
+            .instance()
+            .set(&DataKey::VerifyingKey, &initial_vk_bytes);
         env.storage().instance().set(&DataKey::VkHash, &vk_hash);
-        env.storage().instance().extend_ttl(TTL_BUMP_THRESHOLD, TTL_BUMP_TO);
+        env.storage()
+            .instance()
+            .extend_ttl(TTL_BUMP_THRESHOLD, TTL_BUMP_TO);
     }
 
     /// Verify a Groth16 proof against the stored verifying key and public inputs.
@@ -65,15 +71,17 @@ impl ZkVerifier {
         context: Bytes,
         nullifier: Bytes,
     ) -> Result<(), VerifierError> {
-        let vk_bytes: Bytes = env.storage().instance()
+        let vk_bytes: Bytes = env
+            .storage()
+            .instance()
             .get(&DataKey::VerifyingKey)
             .ok_or(VerifierError::NotInitialized)?;
 
-        let vk = VerifyingKey::from_bytes(&env, &vk_bytes)
-            .map_err(|_| VerifierError::InvalidProof)?;
+        let vk =
+            VerifyingKey::from_bytes(&env, &vk_bytes).map_err(|_| VerifierError::InvalidProof)?;
 
-        let proof = Proof::from_bytes(&env, &proof_bytes)
-            .map_err(|_| VerifierError::InvalidProof)?;
+        let proof =
+            Proof::from_bytes(&env, &proof_bytes).map_err(|_| VerifierError::InvalidProof)?;
 
         let inputs: Vec<BytesN<32>> = public_inputs;
 
@@ -94,7 +102,12 @@ impl ZkVerifier {
             pi_vec.push_back(public_inputs_ref.get(i).unwrap());
         }
 
-        let binding = bind_public_inputs(&env, &[pi_vec.get(0).unwrap_or(BytesN::from_array(&env, &[0u8; 32]))]);
+        let binding = bind_public_inputs(
+            &env,
+            &[pi_vec
+                .get(0)
+                .unwrap_or(BytesN::from_array(&env, &[0u8; 32]))],
+        );
 
         let _ = binding;
 
@@ -119,7 +132,11 @@ impl ZkVerifier {
         let pi_len = pi_vec_final.len();
         let mut pi_flat: Vec<BytesN<32>> = Vec::new(&env);
         for i in 0..pi_len {
-            pi_flat.push_back(pi_vec_final.get(i).unwrap_or(BytesN::from_array(&env, &[0u8; 32])));
+            pi_flat.push_back(
+                pi_vec_final
+                    .get(i)
+                    .unwrap_or(BytesN::from_array(&env, &[0u8; 32])),
+            );
         }
 
         verify(&vk, &proof, &[]).map_err(|_| VerifierError::InvalidProof)?;
@@ -138,8 +155,12 @@ impl ZkVerifier {
         let unlock_at = env.ledger().timestamp() + unlock_delay;
 
         env.storage().persistent().set(&DataKey::PendingVk, &new_vk);
-        env.storage().persistent().set(&DataKey::RotationUnlockAt, &unlock_at);
-        env.storage().persistent().set(&DataKey::RotationApprovalCount, &0u32);
+        env.storage()
+            .persistent()
+            .set(&DataKey::RotationUnlockAt, &unlock_at);
+        env.storage()
+            .persistent()
+            .set(&DataKey::RotationApprovalCount, &0u32);
 
         env.events().publish(
             (symbol_short!("rotation"), symbol_short!("proposed")),
@@ -155,13 +176,20 @@ impl ZkVerifier {
             panic!("no pending rotation");
         }
 
-        let approval_count: u32 = env.storage().persistent()
-            .get(&DataKey::RotationApprovalCount).unwrap_or(0);
+        let approval_count: u32 = env
+            .storage()
+            .persistent()
+            .get(&DataKey::RotationApprovalCount)
+            .unwrap_or(0);
 
-        let threshold: u32 = env.storage().instance()
-            .get(&DataKey::Threshold).unwrap_or(1);
+        let threshold: u32 = env
+            .storage()
+            .instance()
+            .get(&DataKey::Threshold)
+            .unwrap_or(1);
 
-        env.storage().persistent()
+        env.storage()
+            .persistent()
             .set(&DataKey::RotationApprovalCount, &(approval_count + 1));
 
         env.events().publish(
@@ -193,16 +221,20 @@ impl ZkVerifier {
             &VerifyingKey::from_bytes(&env, &state.new_vk).expect("invalid VK"),
         );
 
-        env.storage().instance().set(&DataKey::VerifyingKey, &state.new_vk);
+        env.storage()
+            .instance()
+            .set(&DataKey::VerifyingKey, &state.new_vk);
         env.storage().instance().set(&DataKey::VkHash, &new_vk_hash);
         env.storage().persistent().remove(&DataKey::PendingVk);
-        env.storage().persistent().remove(&DataKey::RotationUnlockAt);
-        env.storage().persistent().remove(&DataKey::RotationApprovalCount);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::RotationUnlockAt);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::RotationApprovalCount);
 
-        env.events().publish(
-            (symbol_short!("rotation"), symbol_short!("executed")),
-            (),
-        );
+        env.events()
+            .publish((symbol_short!("rotation"), symbol_short!("executed")), ());
     }
 
     /// Cancel a pending VK rotation. Always permitted until executed.
@@ -212,13 +244,15 @@ impl ZkVerifier {
             panic!("no pending rotation to cancel");
         }
         env.storage().persistent().remove(&DataKey::PendingVk);
-        env.storage().persistent().remove(&DataKey::RotationUnlockAt);
-        env.storage().persistent().remove(&DataKey::RotationApprovalCount);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::RotationUnlockAt);
+        env.storage()
+            .persistent()
+            .remove(&DataKey::RotationApprovalCount);
 
-        env.events().publish(
-            (symbol_short!("rotation"), symbol_short!("cancelled")),
-            (),
-        );
+        env.events()
+            .publish((symbol_short!("rotation"), symbol_short!("cancelled")), ());
     }
 
     /// Set the approval threshold for VK rotation.
@@ -227,12 +261,15 @@ impl ZkVerifier {
         if threshold == 0 {
             panic!("threshold must be > 0");
         }
-        env.storage().instance().set(&DataKey::Threshold, &threshold);
+        env.storage()
+            .instance()
+            .set(&DataKey::Threshold, &threshold);
     }
 
     /// Query the current VK hash.
     pub fn get_vk_hash(env: Env) -> BytesN<32> {
-        env.storage().instance()
+        env.storage()
+            .instance()
             .get(&DataKey::VkHash)
             .expect("not initialized")
     }

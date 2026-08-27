@@ -90,12 +90,21 @@ async fn wait_for_server_healthy(client: &Client, base_url: &str, timeout: Durat
 async fn test_mainnet_concurrency_isolation_and_no_leak() {
     let port = 9199;
     let server = ServerGuard::start(port);
-    let client = Arc::new(Client::builder().timeout(Duration::from_secs(10)).build().unwrap());
+    let client = Arc::new(
+        Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .unwrap(),
+    );
     let base_url = server.url();
 
     // 1. Wait for server to become healthy
     let is_healthy = wait_for_server_healthy(&client, &base_url, Duration::from_secs(5)).await;
-    assert!(is_healthy, "Server failed to start and respond to /health on port {}", port);
+    assert!(
+        is_healthy,
+        "Server failed to start and respond to /health on port {}",
+        port
+    );
 
     // 2. Setup concurrency test parameters (mainnet-scale batch: 60 total requests, 3 distinct inputs)
     let concurrency_count = 60;
@@ -126,7 +135,11 @@ async fn test_mainnet_concurrency_isolation_and_no_leak() {
                 .await
                 .expect("HTTP request failed");
 
-            assert!(resp.status().is_success(), "Response status failed for task {}", i);
+            assert!(
+                resp.status().is_success(),
+                "Response status failed for task {}",
+                i
+            );
             let json: serde_json::Value = resp.json().await.expect("Failed to parse JSON response");
 
             (i, expected_type, json)
@@ -177,7 +190,9 @@ async fn test_mainnet_concurrency_isolation_and_no_leak() {
                     id
                 );
                 assert_eq!(
-                    panic_issues[0].get("function_name").and_then(|v| v.as_str()),
+                    panic_issues[0]
+                        .get("function_name")
+                        .and_then(|v| v.as_str()),
                     Some("boom"),
                     "Task {}: Panic function name mismatch",
                     id
@@ -205,5 +220,8 @@ async fn test_mainnet_concurrency_isolation_and_no_leak() {
         .send()
         .await
         .expect("Final health check failed");
-    assert!(final_health.status().is_success(), "Server remains healthy after concurrent load");
+    assert!(
+        final_health.status().is_success(),
+        "Server remains healthy after concurrent load"
+    );
 }

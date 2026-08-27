@@ -36,10 +36,14 @@ impl GuardStatus {
 /// * `current_status` - The current status in storage.
 /// * Returns `Ok(GuardStatus::Locked)` if transition is allowed (Unlocked -> Locked).
 /// * Returns `Err("reentrancy detected")` if already locked.
+
 pub fn enter_pure(current_status: GuardStatus) -> Result<GuardStatus, &'static str> {
     if current_status == GuardStatus::Locked {
         return Err("reentrancy detected");
     }
+    // Explicit invariant: The guard must be unlocked to successfully enter.
+    // This provides a formal verification assertion that the Z3 solver backend can analyze.
+    assert!(current_status == GuardStatus::Unlocked);
     Ok(GuardStatus::Locked)
 }
 

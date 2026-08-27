@@ -61,9 +61,7 @@ impl VulnerableContract {
     // ❌ SECURITY FLAW: Missing authentication!
     // Anyone can call this and overwrite the admin.
     pub fn set_admin(env: Env, new_admin: Symbol) {
-        env.storage()
-            .instance()
-            .set(&StorageKey::Admin, &new_admin);
+        env.storage().instance().set(&StorageKey::Admin, &new_admin);
     }
 
     // ✅ Secure version with proper authentication
@@ -74,9 +72,7 @@ impl VulnerableContract {
             .get(&StorageKey::Admin)
             .expect("Admin not set");
         // env.require_auth(&admin); // Assume we can verify this if it were an Address
-        env.storage()
-            .instance()
-            .set(&StorageKey::Admin, &new_admin);
+        env.storage().instance().set(&StorageKey::Admin, &new_admin);
     }
 
     /// Get current admin (demonstrates key reuse safety)
@@ -101,6 +97,8 @@ impl VulnerableContract {
     // ✅ Improved version with Result return type
     pub fn fail_gracefully(_env: Env) -> Result<(), Symbol> {
         Err(symbol_short!("ERR"))
+    }
+
     // ❌ SECURITY FLAW: mutates the stored balance with plain `+`/`-` — see
     // `credit_pure`/the Kani harnesses below for the proof that this
     // overflows/underflows for some inputs.
@@ -262,4 +260,3 @@ mod tests {
         client.init_admin(&admin2);
     }
 }
-
