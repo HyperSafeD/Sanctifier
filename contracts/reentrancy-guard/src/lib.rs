@@ -36,7 +36,6 @@ impl GuardStatus {
 /// * `current_status` - The current status in storage.
 /// * Returns `Ok(GuardStatus::Locked)` if transition is allowed (Unlocked -> Locked).
 /// * Returns `Err("reentrancy detected")` if already locked.
-
 pub fn enter_pure(current_status: GuardStatus) -> Result<GuardStatus, &'static str> {
     if current_status == GuardStatus::Locked {
         return Err("reentrancy detected");

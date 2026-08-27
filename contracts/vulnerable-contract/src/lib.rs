@@ -140,8 +140,8 @@ impl VulnerableContract {
     }
 
     // ✅ Improved version with Result return type
-    pub fn fail_gracefully(_env: Env) -> Result<(), Symbol> {
-        Err(symbol_short!("ERR"))
+    pub fn fail_gracefully(_env: Env) -> Result<(), soroban_sdk::Error> {
+        Err(soroban_sdk::Error::from_contract_error(1))
     }
 
     // ❌ SECURITY FLAW: mutates the stored balance with plain `+`/`-` — see
