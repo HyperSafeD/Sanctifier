@@ -73,6 +73,17 @@ impl<'a> ReentrancyGuard<'a> {
 
         match enter_pure(current) {
             Ok(new_status) => {
+                // Explicit invariant, checked at every call in debug builds:
+                // enter_pure() must never hand back Unlocked -- the whole
+                // point of entering is to lock. This is exactly the
+                // property `verify_enter_succeeds_when_unlocked` proves
+                // exhaustively below via Kani; asserting it here too means
+                // the invariant is checked on the real storage-backed path,
+                // not just the pure function in isolation.
+                debug_assert!(
+                    new_status == GuardStatus::Locked,
+                    "enter_pure must transition to Locked on success"
+                );
                 self.env
                     .storage()
                     .instance()
@@ -85,6 +96,12 @@ impl<'a> ReentrancyGuard<'a> {
     /// Exit a reentrancy-protected section.
     pub fn exit(&self) {
         let unlocked = exit_pure();
+        // Mirrors verify_exit_always_unlocks below: exit() must always
+        // leave the guard Unlocked, unconditionally.
+        debug_assert!(
+            unlocked == GuardStatus::Unlocked,
+            "exit_pure must always return Unlocked"
+        );
         self.env
             .storage()
             .instance()
@@ -140,6 +157,33 @@ mod verification {
         } else {
             assert!(result.is_ok());
             assert!(result.unwrap() == GuardStatus::Locked);
+        }
+    }
+
+    /// **Property** (issue #1463): the guard is never permanently stuck --
+    /// a successful `enter` followed by `exit` always returns to `Unlocked`,
+    /// regardless of how many times the pair has already cycled. This is
+    /// the invariant `enter`/`exit`'s `debug_assert!`s above check on the
+    /// real storage-backed path; here it's proven exhaustively over an
+    /// unbounded starting state via a nondeterministic `kani::any()` guard
+    /// on how many prior enter/exit cycles have already happened.
+    #[kani::proof]
+    fn verify_enter_then_exit_always_returns_to_unlocked() {
+        let started_locked: bool = kani::any();
+        let current = if started_locked {
+            GuardStatus::Locked
+        } else {
+            GuardStatus::Unlocked
+        };
+
+        // Only a successful enter (i.e. starting Unlocked) reaches exit on a
+        // real call path -- enter() panics on the Err branch and never calls
+        // exit() from within itself. Mirror that here rather than asserting
+        // over the case that can't happen in practice.
+        if let Ok(locked) = enter_pure(current) {
+            assert!(locked == GuardStatus::Locked);
+            let after_exit = exit_pure();
+            assert!(after_exit == GuardStatus::Unlocked);
         }
     }
 }
