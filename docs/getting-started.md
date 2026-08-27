@@ -197,6 +197,50 @@ Sanctifier will print findings for the three issues intentionally left in the co
 | Current directory | `cd my-contract && sanctifier analyze` |
 | JSON output (for CI) | `sanctifier analyze ./my-contract --format json` |
 
+### Machine-readable output
+
+For scripting or CI, run with `--format json` instead of the default human-readable
+terminal output:
+
+```bash
+sanctifier analyze ./my-contract --format json
+```
+
+```json
+{
+  "schema_version": "1.0.0",
+  "rule_violations": [
+    {
+      "file": "src/lib.rs",
+      "rule_name": "auth_gaps",
+      "severity": "Critical",
+      "message": "Function `increment` is modifying state without require_auth()",
+      "location": "src/lib.rs:increment",
+      "suggestion": "Call `user.require_auth()` before mutating storage."
+    },
+    {
+      "file": "src/lib.rs",
+      "rule_name": "panics",
+      "severity": "High",
+      "message": "panic! aborts the contract (src/lib.rs:reset)",
+      "location": "src/lib.rs:reset",
+      "suggestion": "Return a Result and propagate errors instead of panicking."
+    }
+  ],
+  "error_codes": ["S001", "S002", "S003", "..."],
+  "summary": {
+    "total_findings": 2,
+    "duration_ms": 84,
+    "version": "0.x.y"
+  }
+}
+```
+
+Pipe it through [`jq`](https://jqlang.org/) to filter by severity, e.g. `jq '.rule_violations[] | select(.severity == "Critical")'`.
+
+A [SARIF](https://sarifweb.azurewebsites.net/) variant is also available via `--format sarif`,
+for tools that ingest that format directly (e.g. GitHub code scanning's `upload-sarif` action).
+
 ---
 
 ## 5. Project Configuration (`.sanctify.toml`)
@@ -388,6 +432,53 @@ vulnerabilities, interpreted the findings, applied fixes, and confirmed a clean 
 
 ---
 
+## 9. CI Integration
+
+`sanctifier analyze` exits `0` when the run is clean, `1` when findings triggered the
+active profile (fail the build on this), and `2` on an unrecoverable error such as a
+bad path or unparseable config — so a plain exit-code check is enough to gate a
+pipeline without parsing any output at all:
+
+```yaml
+# .github/workflows/sanctifier.yml
+name: Sanctifier
+
+on: [pull_request]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Sanctifier
+        run: cargo install sanctifier-cli --locked
+
+      - name: Run security scan
+        run: sanctifier analyze ./contracts --format json | tee sanctifier-report.json
+        # Exits 1 on findings, which fails this step (and the job) automatically.
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanctifier-report
+          path: sanctifier-report.json
+```
+
+If you'd rather warn instead of fail on findings during a migration period, capture the
+exit code explicitly:
+
+```bash
+sanctifier analyze ./contracts --format json > report.json; code=$?
+if [ "$code" -eq 2 ]; then
+  echo "Sanctifier itself errored — treat as a build failure." >&2
+  exit 1
+elif [ "$code" -eq 1 ]; then
+  echo "::warning::Sanctifier found issues — see report.json"
+fi
+```
+
 ## 9. Troubleshooting
 
 Common errors while working through this guide, and how to resolve them.
@@ -476,5 +567,4 @@ see `CONTRIBUTING.md` for the issue template.
 - **Formal Verification** — See [`docs/kani-integration.md`](./kani-integration.md) to add model-checking with the Kani verifier.
 - **Runtime Guards** — See [`docs/runtime-guards-integration.md`](./runtime-guards-integration.md) to add runtime invariant wrappers in your existing Soroban contract.
 - **Video Tutorials** — See [`docs/formal-verification-video-series.md`](./formal-verification-video-series.md) for short walkthrough episodes on report reading and Kani proofs.
-- **CI Integration** — Use `--format json` and pipe the output to your pipeline's static analysis step to fail builds on new findings.
 - **Contributing** — Bug reports and new rule ideas are welcome. See `CONTRIBUTING.md` for guidelines.
