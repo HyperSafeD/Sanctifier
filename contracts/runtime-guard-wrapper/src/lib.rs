@@ -2,16 +2,24 @@
 #![allow(unexpected_cfgs)]
 
 use soroban_sdk::{
-    contract, contractimpl, Address, Env, Error, IntoVal, Symbol, TryFromVal, Val, Vec,
+    contract, contractimpl, symbol_short, Address, Env, Error, IntoVal, Symbol, TryFromVal, Val,
+    Vec,
 };
 
-const WRAPPED_CONTRACT_ADDRESS: &str = "wrapped";
-const CALL_LOG: &str = "calls";
-const INVARIANTS_CHECKED: &str = "checked";
-const GUARD_FAILURES: &str = "failures";
-const EXECUTION_METRICS: &str = "metrics";
+// Storage keys as compile-time `Symbol` constants (#1415). Previously these
+// were `&str` literals re-wrapped in `Symbol::new(&env, ...)` at every call
+// site — a runtime host call on each use, and a scattering of the same
+// literal across a dozen call sites with no single source of truth.
+// `symbol_short!` builds the packed `Symbol` once at compile time, so every
+// call site below just refers to the constant directly.
+const WRAPPED_CONTRACT_ADDRESS: Symbol = symbol_short!("wrapped");
+const CALL_LOG: Symbol = symbol_short!("calls");
+const INVARIANTS_CHECKED: Symbol = symbol_short!("checked");
+const GUARD_FAILURES: Symbol = symbol_short!("failures");
+const EXECUTION_METRICS: Symbol = symbol_short!("metrics");
+const CONFIG_KEY: Symbol = symbol_short!("cfg");
+const CONTRACT_VERSION_KEY: Symbol = symbol_short!("ver");
 const HEALTHY_STORAGE_LIMIT: u32 = 64;
-const CONTRACT_VERSION_KEY: &str = "ver";
 
 /// Current storage schema version. Increment when persistent storage layout
 /// changes and provide a migration path in `docs/contract-versioning.md`.
@@ -148,8 +156,8 @@ impl RuntimeGuardWrapper {
     /// - Lazy initialization of collections (only allocate on first use)
     /// - Packed config storage reduces storage slots
     pub fn init(env: Env, wrapped_contract: Address) {
-        let wrapped_key = Symbol::new(&env, WRAPPED_CONTRACT_ADDRESS);
-        
+        let wrapped_key = WRAPPED_CONTRACT_ADDRESS;
+
         // Idempotency check with early return (saves gas on re-init)
         if env.storage().instance().has(&wrapped_key) {
             Self::emit_guard_event(
@@ -166,7 +174,7 @@ impl RuntimeGuardWrapper {
         // Pack guard config into single storage slot (4 bools + u32 = 8 bytes)
         let config = GuardConfig::default();
         env.storage().instance().set(
-            &Symbol::new(&env, "cfg"),
+            &CONFIG_KEY,
             &(
                 config.check_storage_invariants,
                 config.check_auth_guards,
@@ -178,12 +186,12 @@ impl RuntimeGuardWrapper {
         // Initialize counters (lazy vectors will be allocated on first write)
         env.storage()
             .persistent()
-            .set(&Symbol::new(&env, INVARIANTS_CHECKED), &0u32);
+            .set(&INVARIANTS_CHECKED, &0u32);
 
         // Store version with short key
         env.storage()
             .instance()
-            .set(&Symbol::new(&env, CONTRACT_VERSION_KEY), &CONTRACT_VERSION);
+            .set(&CONTRACT_VERSION_KEY, &CONTRACT_VERSION);
 
         Self::emit_guard_event(
             env,
@@ -196,14 +204,14 @@ impl RuntimeGuardWrapper {
     pub fn get_version(env: Env) -> u32 {
         env.storage()
             .instance()
-            .get::<Symbol, u32>(&Symbol::new(&env, CONTRACT_VERSION_KEY))
+            .get::<Symbol, u32>(&CONTRACT_VERSION_KEY)
             .unwrap_or(CONTRACT_VERSION)
     }
 
     pub fn get_wrapped_contract(env: Env) -> Address {
         env.storage()
             .instance()
-            .get(&Symbol::new(&env, WRAPPED_CONTRACT_ADDRESS))
+            .get(&WRAPPED_CONTRACT_ADDRESS)
             .unwrap()
     }
 
@@ -233,8 +241,8 @@ impl RuntimeGuardWrapper {
     /// **Gas optimization**: Single storage read with early return pattern.
     #[inline]
     fn pre_execution_guards(env: Env) -> Result<(), RuntimeGuardError> {
-        let wrapped_key = Symbol::new(&env, WRAPPED_CONTRACT_ADDRESS);
-        
+        let wrapped_key = WRAPPED_CONTRACT_ADDRESS;
+
         // Single storage read (cached for remainder of transaction)
         if env.storage().instance().get::<Symbol, Address>(&wrapped_key).is_none() {
             Self::emit_guard_event(
@@ -254,7 +262,7 @@ impl RuntimeGuardWrapper {
     #[inline]
     fn post_execution_guards(env: Env) -> Result<(), RuntimeGuardError> {
         // Optimized: increment counter directly without separate read
-        let checked_key = Symbol::new(&env, INVARIANTS_CHECKED);
+        let checked_key = INVARIANTS_CHECKED;
         let current: u32 = env.storage().persistent().get(&checked_key).unwrap_or(0);
         env.storage().persistent().set(&checked_key, &current.saturating_add(1));
         
@@ -361,8 +369,8 @@ impl RuntimeGuardWrapper {
     /// Uses in-place rotation instead of allocating new vectors.
     fn log_execution(env: Env, function_name: &Symbol, _result: &Val) {
         let persistent = env.storage().persistent();
-        let call_log_symbol = Symbol::new(&env, CALL_LOG);
-        
+        let call_log_symbol = CALL_LOG;
+
         let mut log: Vec<Symbol> = persistent
             .get(&call_log_symbol)
             .unwrap_or_else(|| Vec::new(&env));
@@ -388,8 +396,8 @@ impl RuntimeGuardWrapper {
     /// **Gas optimization**: Packed tuple format reduces storage by 50%.
     fn record_metrics(env: Env, metrics: ExecutionMetrics) {
         let persistent = env.storage().persistent();
-        let metrics_symbol = Symbol::new(&env, EXECUTION_METRICS);
-        
+        let metrics_symbol = EXECUTION_METRICS;
+
         let mut metrics_vec: Vec<(u32, u64)> = persistent
             .get(&metrics_symbol)
             .unwrap_or_else(|| Vec::new(&env));
@@ -406,7 +414,7 @@ impl RuntimeGuardWrapper {
 
     fn record_guard_failure(env: Env, failure: Symbol) {
         let persistent = env.storage().persistent();
-        let failure_symbol = Symbol::new(&env, GUARD_FAILURES);
+        let failure_symbol = GUARD_FAILURES;
         let mut failures: Vec<Symbol> = persistent
             .get(&failure_symbol)
             .unwrap_or_else(|| Vec::new(&env));
@@ -426,16 +434,14 @@ impl RuntimeGuardWrapper {
     pub fn get_stats(env: Env) -> (u32, u32, u32) {
         let persistent = env.storage().persistent();
 
-        let invariants_checked: u32 = persistent
-            .get(&Symbol::new(&env, INVARIANTS_CHECKED))
-            .unwrap_or(0);
+        let invariants_checked: u32 = persistent.get(&INVARIANTS_CHECKED).unwrap_or(0);
 
         let call_log: Vec<Symbol> = persistent
-            .get(&Symbol::new(&env, CALL_LOG))
+            .get(&CALL_LOG)
             .unwrap_or_else(|| Vec::new(&env));
 
         let guard_failures: Vec<Symbol> = persistent
-            .get(&Symbol::new(&env, GUARD_FAILURES))
+            .get(&GUARD_FAILURES)
             .unwrap_or_else(|| Vec::new(&env));
 
         (invariants_checked, call_log.len(), guard_failures.len())
@@ -446,7 +452,7 @@ impl RuntimeGuardWrapper {
     /// **Gas optimization**: Early returns and single storage access per key.
     pub fn health_check(env: Env) -> bool {
         // Early return on critical failure
-        if !env.storage().instance().has(&Symbol::new(&env, WRAPPED_CONTRACT_ADDRESS)) {
+        if !env.storage().instance().has(&WRAPPED_CONTRACT_ADDRESS) {
             return false;
         }
 
@@ -454,14 +460,14 @@ impl RuntimeGuardWrapper {
         let metrics: Vec<(u32, u64)> = env
             .storage()
             .persistent()
-            .get(&Symbol::new(&env, EXECUTION_METRICS))
+            .get(&EXECUTION_METRICS)
             .unwrap_or_else(|| Vec::new(&env));
 
         // Single storage read for call log (cached)
         let call_log: Vec<Symbol> = env
             .storage()
             .persistent()
-            .get(&Symbol::new(&env, CALL_LOG))
+            .get(&CALL_LOG)
             .unwrap_or_else(|| Vec::new(&env));
 
         metrics.len() < HEALTHY_STORAGE_LIMIT && call_log.len() < HEALTHY_STORAGE_LIMIT
