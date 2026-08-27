@@ -369,15 +369,32 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
         if !all_violations.is_empty() {
             println!("\n{} Found {} issue(s):", "⚠️".yellow(), total);
             for (file, v) in &all_violations {
+                // Severity-colored arrow + location context (previously every
+                // violation printed the same red arrow regardless of severity,
+                // and v.location -- the field that actually carries the
+                // fn/line context each rule already computes -- was silently
+                // dropped from this output entirely).
+                let arrow = match v.severity {
+                    sanctifier_core::rules::Severity::Critical
+                    | sanctifier_core::rules::Severity::Error => "->".red().bold(),
+                    sanctifier_core::rules::Severity::High => "->".magenta().bold(),
+                    sanctifier_core::rules::Severity::Warning => "->".yellow(),
+                    sanctifier_core::rules::Severity::Info => "->".cyan(),
+                    // Severity is #[non_exhaustive] -- a future variant falls
+                    // back to plain red rather than failing to compile.
+                    _ => "->".red(),
+                };
                 println!(
-                    "   {} [{}] {} — {}",
-                    "->".red(),
+                    "   {} [{}] {}:{} ({:?}) — {}",
+                    arrow,
                     v.rule_name.bold(),
                     file,
+                    v.location,
+                    v.severity,
                     v.message
                 );
                 if let Some(s) = &v.suggestion {
-                    println!("      Suggestion: {}", s);
+                    println!("      {} {}", "Suggestion:".green(), s);
                 }
             }
         }
