@@ -40,6 +40,9 @@ pub fn enter_pure(current_status: GuardStatus) -> Result<GuardStatus, &'static s
     if current_status == GuardStatus::Locked {
         return Err("reentrancy detected");
     }
+    // Explicit invariant: The guard must be unlocked to successfully enter.
+    // This provides a formal verification assertion that the Z3 solver backend can analyze.
+    assert!(current_status == GuardStatus::Unlocked);
     Ok(GuardStatus::Locked)
 }
 

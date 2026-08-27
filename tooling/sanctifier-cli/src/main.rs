@@ -118,7 +118,11 @@ fn run() -> anyhow::Result<()> {
         "futurenet" => format!("{}", commands::color::yellow_bold("[ FUTURENET ]")),
         _ => format!("{}", commands::color::green_bold("[ TESTNET ]")),
     };
-    eprintln!("{} Sanctifier — {}", network_badge, commands::color::dimmed(&cli.network));
+    eprintln!(
+        "{} Sanctifier — {}",
+        network_badge,
+        commands::color::dimmed(&cli.network)
+    );
 
     // Initialize structured logging before dispatching
     let log_format = match &cli.command {

@@ -60,6 +60,8 @@ pub mod transfer_from_no_allowance;
 pub mod variable_shadowing;
 
 // ── Z-series: ZK / circom integration rules ──────────────────────────────────
+/// Z007 — Under-constrained circuit inputs for circom circuits.
+pub mod z007_under_constrained;
 /// Z005 — No nullifier-set check before processing a proof (double-spend risk).
 pub mod zk_double_spend_risk;
 /// Z004 — hardcoded trusted-setup material without ceremony provenance.
@@ -74,8 +76,6 @@ pub mod zk_missing_vk_integrity_check;
 pub mod zk_verification_result_ignored;
 /// Z004 — Groth16/SNARK verifier call inside a skippable if/else branch.
 pub mod zk_verifier_skippable;
-/// Z007 — Under-constrained circuit inputs for circom circuits.
-pub mod z007_under_constrained;
 
 use serde::Serialize;
 use std::any::Any;

@@ -72,7 +72,13 @@ impl VerifyingKey {
             gamma_abc.push_back(bytes.slice(offset..offset + 48));
             offset += 48;
         }
-        Ok(Self { alpha_g1, beta_g2, gamma_g2, delta_g2, gamma_abc })
+        Ok(Self {
+            alpha_g1,
+            beta_g2,
+            gamma_g2,
+            delta_g2,
+            gamma_abc,
+        })
     }
 
     pub fn num_public_inputs(&self) -> usize {
@@ -209,9 +215,7 @@ mod field_arithmetic_proofs {
             for i in 0..N {
                 let mut carry = 0u64;
                 for j in 0..N - i {
-                    let v = result[i + j] as u64
-                        + self.0[i] as u64 * other.0[j] as u64
-                        + carry;
+                    let v = result[i + j] as u64 + self.0[i] as u64 * other.0[j] as u64 + carry;
                     result[i + j] = v as u8;
                     carry = v >> 8;
                 }

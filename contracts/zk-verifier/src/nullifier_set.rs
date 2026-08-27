@@ -56,7 +56,10 @@ impl NullifierSet {
     /// should use `state()` and apply their own policy; most callers should
     /// use `assert_unspent` which fails closed on both.
     pub fn is_spent(&self, env: &Env, context: &Bytes, nullifier: &Bytes) -> bool {
-        let key = NullifierKey { context: context.clone(), nullifier: nullifier.clone() };
+        let key = NullifierKey {
+            context: context.clone(),
+            nullifier: nullifier.clone(),
+        };
         env.storage()
             .persistent()
             .get::<NullifierKey, NullifierState>(&key)
@@ -69,8 +72,13 @@ impl NullifierSet {
     /// `None` means the entry is absent — either genuinely unspent *or*
     /// evicted due to TTL expiry.  Treat `None` as untrusted.
     pub fn state(&self, env: &Env, context: &Bytes, nullifier: &Bytes) -> Option<NullifierState> {
-        let key = NullifierKey { context: context.clone(), nullifier: nullifier.clone() };
-        env.storage().persistent().get::<NullifierKey, NullifierState>(&key)
+        let key = NullifierKey {
+            context: context.clone(),
+            nullifier: nullifier.clone(),
+        };
+        env.storage()
+            .persistent()
+            .get::<NullifierKey, NullifierState>(&key)
     }
 
     /// Panics if `nullifier` is spent **or absent** (fail-closed policy).
@@ -78,8 +86,15 @@ impl NullifierSet {
     /// Call this before granting any asset access, then call `mark_spent`
     /// before returning.
     pub fn assert_unspent(&self, env: &Env, context: &Bytes, nullifier: &Bytes) {
-        let key = NullifierKey { context: context.clone(), nullifier: nullifier.clone() };
-        match env.storage().persistent().get::<NullifierKey, NullifierState>(&key) {
+        let key = NullifierKey {
+            context: context.clone(),
+            nullifier: nullifier.clone(),
+        };
+        match env
+            .storage()
+            .persistent()
+            .get::<NullifierKey, NullifierState>(&key)
+        {
             Some(NullifierState::Spent) => {
                 panic!("nullifier already spent — replay attack rejected")
             }
@@ -105,7 +120,10 @@ impl NullifierSet {
     /// from the verify function to prevent TOCTOU races in parallel
     /// transaction scenarios.
     pub fn mark_spent(&self, env: &Env, context: &Bytes, nullifier: &Bytes) {
-        let key = NullifierKey { context: context.clone(), nullifier: nullifier.clone() };
+        let key = NullifierKey {
+            context: context.clone(),
+            nullifier: nullifier.clone(),
+        };
         env.storage()
             .persistent()
             .set::<NullifierKey, NullifierState>(&key, &NullifierState::Spent);
@@ -177,7 +195,10 @@ mod tests {
             // Simulate eviction: write then manually remove the key so the entry
             // appears absent to storage, then assert_unspent must panic (fail closed).
             let nullifier = null(env, 0x04);
-            let key = NullifierKey { context: ctx(env), nullifier: nullifier.clone() };
+            let key = NullifierKey {
+                context: ctx(env),
+                nullifier: nullifier.clone(),
+            };
             env.storage()
                 .persistent()
                 .set::<NullifierKey, NullifierState>(&key, &NullifierState::Spent);

@@ -206,26 +206,27 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
     // each file's registry/ledger-size/storage-collision passes are
     // independent, so this mirrors the Arc<Analyzer> + par_iter pattern
     // workspace.rs already uses for the same shape of per-file work.
-    let per_file_results: Vec<(String, Vec<sanctifier_core::RuleViolation>, usize, usize)> = rs_files
-        .par_iter()
-        .filter_map(|file_path| {
-            let content = fs::read_to_string(file_path).ok()?;
-            let file_str = file_path.display().to_string();
-            // In JSON/SARIF log modes stderr must stay structured, so route the
-            // progress line through the tracing subscriber. In text mode print it
-            // directly so it is always visible regardless of the log level.
-            if args.format == "json" || args.format == "sarif" {
-                tracing::info!(target: "sanctifier", "Analyzing {}", file_str);
-            } else {
-                eprintln!("Analyzing {}", file_str);
-            }
-            tracing::debug!(target: "sanctifier", "Scanning Rust source file: {}", file_str);
-            let violations = registry.run_all(&content);
-            let size_warnings = analyzer.analyze_ledger_size(&content).len();
-            let collisions = analyzer.scan_storage_collisions(&content).len();
-            Some((file_str, violations, size_warnings, collisions))
-        })
-        .collect();
+    let per_file_results: Vec<(String, Vec<sanctifier_core::RuleViolation>, usize, usize)> =
+        rs_files
+            .par_iter()
+            .filter_map(|file_path| {
+                let content = fs::read_to_string(file_path).ok()?;
+                let file_str = file_path.display().to_string();
+                // In JSON/SARIF log modes stderr must stay structured, so route the
+                // progress line through the tracing subscriber. In text mode print it
+                // directly so it is always visible regardless of the log level.
+                if args.format == "json" || args.format == "sarif" {
+                    tracing::info!(target: "sanctifier", "Analyzing {}", file_str);
+                } else {
+                    eprintln!("Analyzing {}", file_str);
+                }
+                tracing::debug!(target: "sanctifier", "Scanning Rust source file: {}", file_str);
+                let violations = registry.run_all(&content);
+                let size_warnings = analyzer.analyze_ledger_size(&content).len();
+                let collisions = analyzer.scan_storage_collisions(&content).len();
+                Some((file_str, violations, size_warnings, collisions))
+            })
+            .collect();
 
     let mut all_violations: Vec<(String, sanctifier_core::RuleViolation)> = Vec::new();
     let mut size_warnings_total: usize = 0;
