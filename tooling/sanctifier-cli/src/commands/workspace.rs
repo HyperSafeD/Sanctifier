@@ -254,7 +254,13 @@ pub fn exec(args: WorkspaceArgs) -> anyhow::Result<()> {
         let total_files = rs_files.len();
         let counter = Arc::new(AtomicUsize::new(0));
 
-        let results: Vec<_> = rs_files
+        // Tally per-file counts via a parallel fold/reduce instead of
+        // collecting every `FileAnalysisResult` (which owns several `Vec`s
+        // of findings each) into a `Vec` for the whole contract at once.
+        // For workspaces with many/large files that intermediate Vec was
+        // the dominant memory cost even though only aggregate counts are
+        // ever read back out of it — see #1419.
+        let tally: FindingTally = rs_files
             .par_iter()
             .map(|file_path| {
                 let idx = counter.fetch_add(1, Ordering::Relaxed) + 1;
@@ -263,20 +269,22 @@ pub fn exec(args: WorkspaceArgs) -> anyhow::Result<()> {
                 }
                 let content = match fs::read_to_string(file_path) {
                     Ok(c) => c,
-                    Err(_) => return Default::default(),
+                    Err(_) => return FindingTally::default(),
                 };
                 let file_name = file_path.display().to_string();
                 let analyzer = Arc::clone(&analyzer);
                 let vuln_db = Arc::clone(&vuln_db);
                 let file_name_clone = file_name.clone();
-                run_with_timeout(timeout_dur, move || {
+                let result = run_with_timeout(timeout_dur, move || {
                     analyze_single_file(&analyzer, &vuln_db, &content, &file_name_clone)
                 })
-                .unwrap_or_default()
+                .unwrap_or_default();
+                FindingTally::from_result(&result)
             })
-            .collect();
+            .fold(FindingTally::default, FindingTally::merge)
+            .reduce(FindingTally::default, FindingTally::merge);
 
-        let finding_count: usize = results.iter().map(count_findings).sum();
+        let finding_count = tally.finding_count;
         grand_total += finding_count;
         all_findings.push((contract.name.clone(), finding_count));
 
@@ -294,26 +302,20 @@ pub fn exec(args: WorkspaceArgs) -> anyhow::Result<()> {
             );
 
             // Print per-category summaries.
-            let auth: usize = results.iter().map(|r| r.auth_gaps.len()).sum();
-            let arith: usize = results.iter().map(|r| r.arithmetic_issues.len()).sum();
-            let panics: usize = results.iter().map(|r| r.panic_issues.len()).sum();
-            let unhandled: usize = results.iter().map(|r| r.unhandled_results.len()).sum();
-            let collisions: usize = results.iter().map(|r| r.collisions.len()).sum();
-
-            if auth > 0 {
-                println!("      auth gaps:        {}", auth);
+            if tally.auth > 0 {
+                println!("      auth gaps:        {}", tally.auth);
             }
-            if arith > 0 {
-                println!("      arithmetic:       {}", arith);
+            if tally.arith > 0 {
+                println!("      arithmetic:       {}", tally.arith);
             }
-            if panics > 0 {
-                println!("      panic/unwrap:     {}", panics);
+            if tally.panics > 0 {
+                println!("      panic/unwrap:     {}", tally.panics);
             }
-            if unhandled > 0 {
-                println!("      unhandled result: {}", unhandled);
+            if tally.unhandled > 0 {
+                println!("      unhandled result: {}", tally.unhandled);
             }
-            if collisions > 0 {
-                println!("      key collisions:   {}", collisions);
+            if tally.collisions > 0 {
+                println!("      key collisions:   {}", tally.collisions);
             }
         }
     }
@@ -359,6 +361,42 @@ fn count_findings(r: &crate::commands::analyze::FileAnalysisResult) -> usize {
         + r.truncation_bounds_issues.len()
         + r.vuln_matches.len()
         + r.timed_out as usize
+}
+
+/// Aggregate finding counts for one contract's file set. Used instead of
+/// keeping every file's full `FileAnalysisResult` (several owned `Vec`s of
+/// findings each) alive in memory at once — see #1419.
+#[derive(Default, Clone, Copy)]
+struct FindingTally {
+    finding_count: usize,
+    auth: usize,
+    arith: usize,
+    panics: usize,
+    unhandled: usize,
+    collisions: usize,
+}
+
+impl FindingTally {
+    fn from_result(r: &crate::commands::analyze::FileAnalysisResult) -> Self {
+        Self {
+            finding_count: count_findings(r),
+            auth: r.auth_gaps.len(),
+            arith: r.arithmetic_issues.len(),
+            panics: r.panic_issues.len(),
+            unhandled: r.unhandled_results.len(),
+            collisions: r.collisions.len(),
+        }
+    }
+
+    fn merge(mut self, other: Self) -> Self {
+        self.finding_count += other.finding_count;
+        self.auth += other.auth;
+        self.arith += other.arith;
+        self.panics += other.panics;
+        self.unhandled += other.unhandled;
+        self.collisions += other.collisions;
+        self
+    }
 }
 
 fn load_config_for(path: &Path) -> SanctifyConfig {
