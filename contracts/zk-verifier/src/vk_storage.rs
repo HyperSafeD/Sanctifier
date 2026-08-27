@@ -24,11 +24,6 @@
 
 use soroban_sdk::{contracttype, Bytes, Env};
 
-/// Minimum number of ledgers a VK entry must survive.
-const TTL_BUMP_THRESHOLD: u32 = 100_000;
-/// Target ledger count for TTL extension (~1 year at 5 s/ledger).
-const TTL_BUMP_TO: u32 = 6_307_200;
-
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
@@ -109,7 +104,7 @@ pub mod pure {
 }
 
 /// Construct a storage key for tracking approved addresses.
-pub fn rotation_approved_key(env: &Env, address: &soroban_sdk::Address) -> DataKey {
+pub fn rotation_approved_key(env: &Env, _address: &soroban_sdk::Address) -> DataKey {
     DataKey::RotationApproved(soroban_sdk::Bytes::from_slice(env, &[0u8; 0]))
 }
 
@@ -118,9 +113,21 @@ pub fn read_rotation_state(env: &Env) -> Option<RotationState> {
     let new_vk: Option<Bytes> = env.storage().persistent().get(&DataKey::PendingVk);
     new_vk.map(|vk| RotationState {
         new_vk: vk,
-        unlock_at: env.storage().persistent().get(&DataKey::RotationUnlockAt).unwrap_or(0),
-        approval_count: env.storage().persistent().get(&DataKey::RotationApprovalCount).unwrap_or(0),
-        threshold: env.storage().instance().get(&DataKey::Threshold).unwrap_or(0),
+        unlock_at: env
+            .storage()
+            .persistent()
+            .get(&DataKey::RotationUnlockAt)
+            .unwrap_or(0),
+        approval_count: env
+            .storage()
+            .persistent()
+            .get(&DataKey::RotationApprovalCount)
+            .unwrap_or(0),
+        threshold: env
+            .storage()
+            .instance()
+            .get(&DataKey::Threshold)
+            .unwrap_or(0),
         executed: false,
         cancelled: false,
     })
@@ -152,7 +159,14 @@ mod vk_rotation_proofs {
         kani::assume(!cancelled);
         kani::assume(now >= unlock_at);
 
-        let result = try_execute_rotation(approval_count, threshold, unlock_at, now, executed, cancelled);
+        let result = try_execute_rotation(
+            approval_count,
+            threshold,
+            unlock_at,
+            now,
+            executed,
+            cancelled,
+        );
         assert!(result.is_err(), "rotation must fail when quorum is not met");
     }
 
@@ -175,8 +189,18 @@ mod vk_rotation_proofs {
         kani::assume(!executed);
         kani::assume(!cancelled);
 
-        let result = try_execute_rotation(approval_count, threshold, unlock_at, now, executed, cancelled);
-        assert!(result.is_err(), "rotation must fail when timelock is still active");
+        let result = try_execute_rotation(
+            approval_count,
+            threshold,
+            unlock_at,
+            now,
+            executed,
+            cancelled,
+        );
+        assert!(
+            result.is_err(),
+            "rotation must fail when timelock is still active"
+        );
     }
 
     /// **Property 3**: Cancel always prevents a pending rotation from completing.
@@ -194,8 +218,18 @@ mod vk_rotation_proofs {
 
         kani::assume(executed || cancelled);
 
-        let result = try_execute_rotation(approval_count, threshold, unlock_at, now, executed, cancelled);
-        assert!(result.is_err(), "rotation must fail when already executed or cancelled");
+        let result = try_execute_rotation(
+            approval_count,
+            threshold,
+            unlock_at,
+            now,
+            executed,
+            cancelled,
+        );
+        assert!(
+            result.is_err(),
+            "rotation must fail when already executed or cancelled"
+        );
     }
 
     /// **Property 4**: `can_cancel` returns true iff the rotation is neither
@@ -233,6 +267,9 @@ mod vk_rotation_proofs {
         kani::assume(now >= unlock_at);
 
         let result = try_execute_rotation(approval_count, threshold, unlock_at, now, false, false);
-        assert!(result.is_ok(), "rotation must succeed when all conditions are met");
+        assert!(
+            result.is_ok(),
+            "rotation must succeed when all conditions are met"
+        );
     }
 }
