@@ -8,6 +8,7 @@ import { FindingsList } from "../components/FindingsList";
 import { ZkFindingsPanel } from "../components/ZkFindingsPanel";
 import { SeverityFilter } from "../components/SeverityFilter";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { CallGraphSkeleton } from "../components/CallGraphSkeleton";
 import { nextScanProgressPhase } from "../lib/scan-progress";
 import { getSettingsHeaders } from "../lib/settings";
 import { ScanProvider, useScan } from "./ScanContext";
@@ -24,6 +25,7 @@ const CallGraph = dynamic(() => import("../components/CallGraph").then((m) => m.
       <span>Loading call graph…</span>
     </div>
   ),
+  loading: () => <CallGraphSkeleton />,
 });
 
 function ScanPageContent() {
@@ -221,7 +223,7 @@ function ScanPageContent() {
             role="region"
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              <ErrorBoundary>
+              <ErrorBoundary compact>
                 <SanctityScore findings={findings} />
               </ErrorBoundary>
               <div className="space-y-6">
@@ -265,7 +267,7 @@ function ScanPageContent() {
                 <h2 className="text-2xl font-bold tracking-tight">Security Findings</h2>
                 <SeverityFilter selected={severityFilter} onChange={setSeverityFilter} />
               </div>
-              <ErrorBoundary>
+              <ErrorBoundary compact>
                 <ZkFindingsPanel findings={findings} />
                 <FindingsList findings={findings} severityFilter={severityFilter} />
               </ErrorBoundary>
@@ -273,7 +275,7 @@ function ScanPageContent() {
 
             <div className="space-y-6 pt-10 border-t border-zinc-200 dark:border-zinc-800">
               <h2 className="text-2xl font-bold tracking-tight">System Integrity Map</h2>
-              <ErrorBoundary>
+              <ErrorBoundary compact>
                 <CallGraph nodes={[]} edges={[]} /> {/* Call graph would need more data from API if desired */}
                 <p className="text-xs text-zinc-500 text-center italic mt-4">Note: Visualizing complex call structures requires multiple analysis passes.</p>
               </ErrorBoundary>

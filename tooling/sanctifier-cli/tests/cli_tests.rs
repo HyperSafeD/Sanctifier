@@ -1473,3 +1473,112 @@ fn test_documented_exit_codes() {
         .assert()
         .code(2);
 }
+
+// ── S001 (auth_gap) integration tests (issue #1455) ─────────────────────────
+//
+// Runs the CLI end-to-end against a mock workspace (a temp contract missing
+// `require_auth`) and asserts on the SARIF/JSON output specifically for the
+// S001 finding, rather than "some finding fired" generically the way
+// test_analyze_sarif_findings_are_in_results_array already does.
+
+/// A minimal Soroban contract whose only issue is a missing `require_auth`
+/// call before a state-changing storage write — the exact shape `auth_gap.rs`
+/// (rule name `"auth_gap"`, finding code S001, see finding_codes.rs) detects.
+fn write_auth_gap_only_fixture(dir: &std::path::Path) -> std::path::PathBuf {
+    let contract = dir.join("lib.rs");
+    fs::write(
+        &contract,
+        r#"#![no_std]
+use soroban_sdk::{contract, contractimpl, Env, Address, String};
+
+#[contract]
+pub struct AuthGapContract;
+
+#[contractimpl]
+impl AuthGapContract {
+    pub fn set_admin(env: Env, admin: Address) {
+        env.storage().instance().set(&String::from_slice(&env, "admin"), &admin);
+    } // Missing require_auth — this is the only issue in this fixture.
+}
+"#,
+    )
+    .unwrap();
+    contract
+}
+
+#[test]
+fn test_s001_auth_gap_appears_in_json_output() {
+    let dir = tempdir().unwrap();
+    let contract = write_auth_gap_only_fixture(dir.path());
+
+    let output = Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("analyze")
+        .arg(&contract)
+        .arg("--format")
+        .arg("json")
+        .env_remove("RUST_LOG")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "json output should exit 0");
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let json: Value = serde_json::from_str(&stdout).expect("json output should be valid JSON");
+    let violations = json["rule_violations"]
+        .as_array()
+        .expect("rule_violations must be an array");
+
+    let auth_gap_violation = violations
+        .iter()
+        .find(|v| v["rule_name"] == "auth_gap")
+        .expect("expected an auth_gap (S001) violation in rule_violations");
+    assert!(
+        auth_gap_violation["location"].is_string(),
+        "auth_gap violation must carry a location"
+    );
+
+    // finding_codes.rs's S001 entry (AUTH_GAP) must also be present in the
+    // error_codes catalog the json output ships alongside violations.
+    let error_codes = json["error_codes"]
+        .as_array()
+        .expect("error_codes must be an array");
+    assert!(
+        error_codes.iter().any(|c| c["code"] == "S001"),
+        "error_codes catalog must include S001"
+    );
+}
+
+#[test]
+fn test_s001_auth_gap_appears_in_sarif_output() {
+    let dir = tempdir().unwrap();
+    let contract = write_auth_gap_only_fixture(dir.path());
+
+    let output = Command::cargo_bin("sanctifier")
+        .unwrap()
+        .arg("analyze")
+        .arg(&contract)
+        .arg("--format")
+        .arg("sarif")
+        .env_remove("RUST_LOG")
+        .output()
+        .unwrap();
+
+    assert!(output.status.success(), "sarif output should exit 0");
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let json: Value = serde_json::from_str(&stdout).expect("sarif output should be valid JSON");
+    let results = json["runs"][0]["results"]
+        .as_array()
+        .expect("sarif results must be an array");
+
+    let auth_gap_result = results
+        .iter()
+        .find(|r| r["ruleId"] == "auth_gap")
+        .expect("expected a sarif result with ruleId 'auth_gap' (S001)");
+    assert!(
+        auth_gap_result["locations"][0]["physicalLocation"]["artifactLocation"]["uri"]
+            .is_string(),
+        "auth_gap sarif result must carry a physical location URI"
+    );
+}

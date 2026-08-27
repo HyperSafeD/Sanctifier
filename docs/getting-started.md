@@ -388,7 +388,90 @@ vulnerabilities, interpreted the findings, applied fixes, and confirmed a clean 
 
 ---
 
-## 9. Next Steps
+## 9. Troubleshooting
+
+Common errors while working through this guide, and how to resolve them.
+
+### `error: no such command: 'install'` or `cargo: command not found`
+
+Rust/Cargo isn't on your `PATH` yet. Re-run `source ~/.cargo/env` in your current shell (rustup adds
+this to your shell profile, but it only takes effect in *new* shells), or open a new terminal. Confirm
+with `cargo --version` before retrying.
+
+### `error[E0463]: can't find crate for 'core'` (or similar) when building a contract
+
+The `wasm32-unknown-unknown` target isn't installed. Run:
+
+```bash
+rustup target add wasm32-unknown-unknown
+```
+
+If you're on a newer Rust toolchain (1.82+) and still see this, some Soroban SDK versions require
+`wasm32v1-none` instead — check your `soroban-sdk` version's release notes and, if needed:
+
+```bash
+rustup target add wasm32v1-none
+```
+
+### `error: failed to run custom build command for 'soroban-sdk'` during `cargo install sanctifier-cli`
+
+This usually means your Rust toolchain is older than what `soroban-sdk` requires. Update Rust first:
+
+```bash
+rustup update stable
+```
+
+then retry the install. If it still fails, check the exact `soroban-sdk` version Sanctifier depends
+on (`cargo tree -p sanctifier-cli | grep soroban-sdk` after a partial install, or check
+[`Cargo.toml`](../Cargo.toml)) against your installed toolchain's supported range.
+
+### `sanctifier: command not found` after a successful `cargo install`
+
+`cargo install` places binaries in `~/.cargo/bin`, which needs to be on your `PATH`. This is normally
+set up by the rustup shell profile changes from step 1 — if you skipped that, add it manually:
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+and add the line to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) so it persists across sessions.
+
+### `No Soroban project found at "..."` when running `sanctifier analyze`
+
+Sanctifier expects to find a `Cargo.toml` with a Soroban contract crate (a dependency on
+`soroban-sdk`) at or under the given path. Double-check:
+
+- You're pointing at the contract's directory (or a parent directory containing one), not an
+  unrelated path.
+- The target `Cargo.toml` actually lists `soroban-sdk` as a dependency — a plain Rust crate without
+  it won't be recognized as a Soroban project.
+- If you meant to scan a single file, pass the file path directly (`sanctifier analyze
+  src/lib.rs`) rather than a directory, per the usage shown in step 3.
+
+### Findings look stale after fixing the reported issue
+
+Sanctifier re-reads the file from disk on every run, so a stale result almost always means the fix
+wasn't saved, or you're pointing the CLI at a different path than the one you edited (e.g. a
+build artifact or a copy under `target/`). Re-run with the exact file/directory path you edited and
+confirm the timestamp on the file matches your edit.
+
+### Z3/Kani formal-verification steps fail with a solver timeout
+
+The default solver timeout is tuned for typical contract sizes; a very large or arithmetically dense
+function can exceed it. Findings reported as timeouts (rather than a concrete violation) are not
+proof of a bug — they mean the solver couldn't decide either way within the time budget. See
+[`docs/kani-integration.md`](./kani-integration.md) for how to raise the timeout or scope a harness
+to a smaller pure function (the same "Core Logic Separation" pattern used throughout
+`contracts/kani-poc`).
+
+### Still stuck?
+
+Open an issue with your OS, `rustc --version`, `cargo --version`, and the exact command + output —
+see `CONTRIBUTING.md` for the issue template.
+
+---
+
+## 10. Next Steps
 
 - **Formal Verification** — See [`docs/kani-integration.md`](./kani-integration.md) to add model-checking with the Kani verifier.
 - **Runtime Guards** — See [`docs/runtime-guards-integration.md`](./runtime-guards-integration.md) to add runtime invariant wrappers in your existing Soroban contract.

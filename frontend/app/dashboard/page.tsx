@@ -24,6 +24,7 @@ import { SummaryChart } from "../components/SummaryChart";
 import { SanctityScore } from "../components/SanctityScore";
 import { ComparisonView } from "../components/ComparisonView";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { CallGraphSkeleton } from "../components/CallGraphSkeleton";
 import { useWorkspace } from "../providers/WorkspaceProvider";
 import { WorkspaceSidebar } from "../components/WorkspaceSidebar";
 import { DashboardHeader } from "../components/DashboardHeader";
@@ -32,11 +33,7 @@ import { saveScanRecord, getScanHistory, clearScanHistory, type ScanRecord } fro
 
 const CallGraph = dynamic(() => import("../components/CallGraph").then((m) => m.CallGraph), {
   ssr: false,
-  loading: () => (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-6 text-center text-zinc-500">
-      Loading call graph…
-    </div>
-  ),
+  loading: () => <CallGraphSkeleton />,
 });
 
 type Tab = "findings" | "callgraph" | "diff";
