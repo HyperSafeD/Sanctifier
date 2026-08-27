@@ -1,0 +1,167 @@
+name: Mainnet Health Monitor
+
+on:
+  schedule:
+    - cron: "30 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      contracts:
+        description: 'Optional: JSON array of {id, name, category, expected_admin} to monitor. Overrides LIVE_MAINNET.md / .deployment-manifest.json.'
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+  issues: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  monitor:
+    name: Check deployed mainnet contracts
+    runs-on: ubuntu-latest
+    env:
+      XDG_CONFIG_HOME: /tmp/stellar-xdg
+      MAINNET_MONITOR_CONTRACTS: ${{ github.event.inputs.contracts || '' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Stellar CLI
+        uses: stellar/stellar-cli@v23.0.1
+
+      - name: Register mainnet network + monitor identity
+        run: |
+          stellar network add mainnet \
+            --rpc-url https://mainnet.sorobanrpc.com \
+            --network-passphrase "Public Global Stellar Network ; September 2015"
+          stellar keys generate mainnet-monitor --network mainnet --overwrite
+          stellar keys public-key mainnet-monitor
+
+      - name: Run contract health checks
+        id: health
+        run: node .github/scripts/mainnet-monitor.js
+
+      - name: Open tracking issues for failures
+        if: steps.health.outputs.healthy != 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require("node:fs");
+            const failures = JSON.parse(fs.readFileSync("monitor/failures.json", "utf8"));
+
+            for (const failure of failures) {
+              const query = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open label:mainnet label:bug "${failure.id}"`;
+              const existing = await github.rest.search.issuesAndPullRequests({ q: query, per_page: 1 });
+              const title = `Mainnet health check failed: ${failure.name}`;
+              const body = [
+                "The scheduled mainnet health monitor could not verify a deployed contract.",
+                "",
+                `- Contract: ${failure.name}`,
+                `- Address: \`${failure.id}\``,
+                `- Health: ${failure.health}`,
+                `- Paused: ${failure.paused}`,
+                `- Checked at: ${failure.checkedAt}`,
+                `- Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                "",
+                "```text",
+                failure.output || "no diagnostics captured",
+                "```",
+                "",
+                failure.paused
+                  ? "## Triage\nA circuit breaker (`is_paused`) reported paused. Follow ROLLBACK_PROCEDURE.md immediately and confirm no guarded execution path is active."
+                  : "",
+              ].join("\n");
+
+              if (existing.data.items.length === 0) {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body,
+                  labels: ["mainnet", "bug"],
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.data.items[0].number,
+                  body,
+                });
+              }
+            }
+
+      - name: Send alert notification (health failure)
+        if: steps.health.outputs.healthy != 'true'
+        continue-on-error: true
+        env:
+          ALERT_WEBHOOK_URLS: ${{ secrets.ALERT_WEBHOOK_URLS }}
+          ALERT_WEBHOOK_SECRET: ${{ secrets.ALERT_WEBHOOK_SECRET }}
+        run: |
+          node .github/scripts/alert.js \
+            --event "mainnet.health.failed" \
+            --title "Mainnet health check failed" \
+            --message "One or more deployed mainnet contracts failed their scheduled health check. Tracking issues have been opened." \
+            --severity high \
+            --field "failed=${{ steps.health.outputs.failures }}/${{ steps.health.outputs.total }}" \
+            --field "degraded=${{ steps.health.outputs.degraded }}" \
+            --field "paused=${{ steps.health.outputs.paused }}" \
+            --field "trigger=mainnet-monitor" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Send alert notification (circuit breaker paused)
+        if: steps.health.outputs.paused == 'true'
+        continue-on-error: true
+        env:
+          ALERT_WEBHOOK_URLS: ${{ secrets.ALERT_WEBHOOK_URLS }}
+          ALERT_WEBHOOK_SECRET: ${{ secrets.ALERT_WEBHOOK_SECRET }}
+        run: |
+          node .github/scripts/alert.js \
+            --event "mainnet.breaker.paused" \
+            --title "Mainnet circuit breaker PAUSED" \
+            --message "At least one monitored mainnet contract reports is_paused=true (circuit breaker tripped). Treat as an incident — follow ROLLBACK_PROCEDURE.md and do NOT resume traffic before the pause is resolved." \
+            --severity critical \
+            --field "paused=${{ steps.health.outputs.paused }}" \
+            --field "trigger=mainnet-monitor" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Publish status badge JSON
+        if: always() && steps.health.outputs.total != ''
+        run: |
+          set -euo pipefail
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          worktree="$(mktemp -d)"
+          if git ls-remote --exit-code --heads origin monitor >/dev/null 2>&1; then
+            git fetch origin monitor
+            git worktree add "$worktree" origin/monitor
+          else
+            git worktree add --detach "$worktree"
+            git -C "$worktree" checkout --orphan monitor
+            git -C "$worktree" rm -rf . >/dev/null 2>&1 || true
+          fi
+
+          mkdir -p "$worktree/badges"
+          cp monitor/status.json "$worktree/badges/mainnet-monitor.json"
+
+          git -C "$worktree" add badges/mainnet-monitor.json
+          if git -C "$worktree" diff --cached --quiet; then
+            echo "Badge JSON already up to date."
+            exit 0
+          fi
+
+          git -C "$worktree" commit -m "chore: update mainnet monitor badge"
+          git -C "$worktree" push origin HEAD:monitor
+
+      - name: Report unhealthy contracts
+        if: steps.health.outputs.healthy != 'true'
+        continue-on-error: true
+        run: |
+          echo "::warning::One or more mainnet contracts failed their health check. See the opened GitHub issues and alerts for details."
+          exit 1
