@@ -197,6 +197,50 @@ Sanctifier will print findings for the three issues intentionally left in the co
 | Current directory | `cd my-contract && sanctifier analyze` |
 | JSON output (for CI) | `sanctifier analyze ./my-contract --format json` |
 
+### Machine-readable output
+
+For scripting or CI, run with `--format json` instead of the default human-readable
+terminal output:
+
+```bash
+sanctifier analyze ./my-contract --format json
+```
+
+```json
+{
+  "schema_version": "1.0.0",
+  "rule_violations": [
+    {
+      "file": "src/lib.rs",
+      "rule_name": "auth_gaps",
+      "severity": "Critical",
+      "message": "Function `increment` is modifying state without require_auth()",
+      "location": "src/lib.rs:increment",
+      "suggestion": "Call `user.require_auth()` before mutating storage."
+    },
+    {
+      "file": "src/lib.rs",
+      "rule_name": "panics",
+      "severity": "High",
+      "message": "panic! aborts the contract (src/lib.rs:reset)",
+      "location": "src/lib.rs:reset",
+      "suggestion": "Return a Result and propagate errors instead of panicking."
+    }
+  ],
+  "error_codes": ["S001", "S002", "S003", "..."],
+  "summary": {
+    "total_findings": 2,
+    "duration_ms": 84,
+    "version": "0.x.y"
+  }
+}
+```
+
+Pipe it through [`jq`](https://jqlang.org/) to filter by severity, e.g. `jq '.rule_violations[] | select(.severity == "Critical")'`.
+
+A [SARIF](https://sarifweb.azurewebsites.net/) variant is also available via `--format sarif`,
+for tools that ingest that format directly (e.g. GitHub code scanning's `upload-sarif` action).
+
 ---
 
 ## 5. Project Configuration (`.sanctify.toml`)
@@ -388,10 +432,139 @@ vulnerabilities, interpreted the findings, applied fixes, and confirmed a clean 
 
 ---
 
-## 9. Next Steps
+## 9. CI Integration
+
+`sanctifier analyze` exits `0` when the run is clean, `1` when findings triggered the
+active profile (fail the build on this), and `2` on an unrecoverable error such as a
+bad path or unparseable config — so a plain exit-code check is enough to gate a
+pipeline without parsing any output at all:
+
+```yaml
+# .github/workflows/sanctifier.yml
+name: Sanctifier
+
+on: [pull_request]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Sanctifier
+        run: cargo install sanctifier-cli --locked
+
+      - name: Run security scan
+        run: sanctifier analyze ./contracts --format json | tee sanctifier-report.json
+        # Exits 1 on findings, which fails this step (and the job) automatically.
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanctifier-report
+          path: sanctifier-report.json
+```
+
+If you'd rather warn instead of fail on findings during a migration period, capture the
+exit code explicitly:
+
+```bash
+sanctifier analyze ./contracts --format json > report.json; code=$?
+if [ "$code" -eq 2 ]; then
+  echo "Sanctifier itself errored — treat as a build failure." >&2
+  exit 1
+elif [ "$code" -eq 1 ]; then
+  echo "::warning::Sanctifier found issues — see report.json"
+fi
+```
+
+## 9. Troubleshooting
+
+Common errors while working through this guide, and how to resolve them.
+
+### `error: no such command: 'install'` or `cargo: command not found`
+
+Rust/Cargo isn't on your `PATH` yet. Re-run `source ~/.cargo/env` in your current shell (rustup adds
+this to your shell profile, but it only takes effect in *new* shells), or open a new terminal. Confirm
+with `cargo --version` before retrying.
+
+### `error[E0463]: can't find crate for 'core'` (or similar) when building a contract
+
+The `wasm32-unknown-unknown` target isn't installed. Run:
+
+```bash
+rustup target add wasm32-unknown-unknown
+```
+
+If you're on a newer Rust toolchain (1.82+) and still see this, some Soroban SDK versions require
+`wasm32v1-none` instead — check your `soroban-sdk` version's release notes and, if needed:
+
+```bash
+rustup target add wasm32v1-none
+```
+
+### `error: failed to run custom build command for 'soroban-sdk'` during `cargo install sanctifier-cli`
+
+This usually means your Rust toolchain is older than what `soroban-sdk` requires. Update Rust first:
+
+```bash
+rustup update stable
+```
+
+then retry the install. If it still fails, check the exact `soroban-sdk` version Sanctifier depends
+on (`cargo tree -p sanctifier-cli | grep soroban-sdk` after a partial install, or check
+[`Cargo.toml`](../Cargo.toml)) against your installed toolchain's supported range.
+
+### `sanctifier: command not found` after a successful `cargo install`
+
+`cargo install` places binaries in `~/.cargo/bin`, which needs to be on your `PATH`. This is normally
+set up by the rustup shell profile changes from step 1 — if you skipped that, add it manually:
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+and add the line to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) so it persists across sessions.
+
+### `No Soroban project found at "..."` when running `sanctifier analyze`
+
+Sanctifier expects to find a `Cargo.toml` with a Soroban contract crate (a dependency on
+`soroban-sdk`) at or under the given path. Double-check:
+
+- You're pointing at the contract's directory (or a parent directory containing one), not an
+  unrelated path.
+- The target `Cargo.toml` actually lists `soroban-sdk` as a dependency — a plain Rust crate without
+  it won't be recognized as a Soroban project.
+- If you meant to scan a single file, pass the file path directly (`sanctifier analyze
+  src/lib.rs`) rather than a directory, per the usage shown in step 3.
+
+### Findings look stale after fixing the reported issue
+
+Sanctifier re-reads the file from disk on every run, so a stale result almost always means the fix
+wasn't saved, or you're pointing the CLI at a different path than the one you edited (e.g. a
+build artifact or a copy under `target/`). Re-run with the exact file/directory path you edited and
+confirm the timestamp on the file matches your edit.
+
+### Z3/Kani formal-verification steps fail with a solver timeout
+
+The default solver timeout is tuned for typical contract sizes; a very large or arithmetically dense
+function can exceed it. Findings reported as timeouts (rather than a concrete violation) are not
+proof of a bug — they mean the solver couldn't decide either way within the time budget. See
+[`docs/kani-integration.md`](./kani-integration.md) for how to raise the timeout or scope a harness
+to a smaller pure function (the same "Core Logic Separation" pattern used throughout
+`contracts/kani-poc`).
+
+### Still stuck?
+
+Open an issue with your OS, `rustc --version`, `cargo --version`, and the exact command + output —
+see `CONTRIBUTING.md` for the issue template.
+
+---
+
+## 10. Next Steps
 
 - **Formal Verification** — See [`docs/kani-integration.md`](./kani-integration.md) to add model-checking with the Kani verifier.
 - **Runtime Guards** — See [`docs/runtime-guards-integration.md`](./runtime-guards-integration.md) to add runtime invariant wrappers in your existing Soroban contract.
 - **Video Tutorials** — See [`docs/formal-verification-video-series.md`](./formal-verification-video-series.md) for short walkthrough episodes on report reading and Kani proofs.
-- **CI Integration** — Use `--format json` and pipe the output to your pipeline's static analysis step to fail builds on new findings.
 - **Contributing** — Bug reports and new rule ideas are welcome. See `CONTRIBUTING.md` for guidelines.

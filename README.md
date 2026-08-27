@@ -23,9 +23,10 @@
 
 ---
 
-## Why Sanctifier exists
+## Why Sanctifier exists.
 
-When an EVM contract ships a bug, the community has a decade of tools — Slither, Mythril, Foundry, Certora — to catch it. Soroban shipped to mainnet in 2024 with almost none of that scaffolding. Every team writes the same review checklist from scratch. Every audit re-discovers the same five footguns.
+> [!NOTE]
+> When an EVM contract ships a bug, the community has a decade of tools — Slither, Mythril, Foundry, Certora — to catch it. Soroban shipped to mainnet in 2024 with almost none of that scaffolding. Every team writes the same review checklist from scratch. Every audit re-discovers the same five footguns.
 
 Sanctifier is the missing layer. **One engine, twelve canonical rules, three deployment surfaces.** Built specifically for Soroban's authorization model, storage TTL semantics, SEP-41 token interface, and gas/event quirks. Open source. Auditor-grade. Drop-in for CI.
 
@@ -56,7 +57,10 @@ Plus the community **vulnerability database** matches known CVE-style patterns (
 
 If your contract verifies ZK proofs on-chain, Sanctifier checks the ways those integrations keep breaking: nullifiers that are never recorded, public inputs that don't commit to the transaction, verifying keys with no ceremony provenance or trusted straight out of storage.
 
-**→ [docs/zk-roadmap.md](docs/zk-roadmap.md)** is the scope summary: which Z-rules have detectors today, which are documented but not yet wired, and what is deliberately deferred. Start there before reading the 62 individual issues. The full catalogue lives in [docs/rules/](docs/rules/), with the vulnerability classes and secure patterns explained in the [ZK Security Guide](docs/zk-security-guide.md).
+> [!IMPORTANT]
+> **→ [docs/zk-roadmap.md](docs/zk-roadmap.md)** is the scope summary: which Z-rules have detectors today, which are documented but not yet wired, and what is deliberately deferred. Start there before reading the 62 individual issues.
+>
+> The full catalogue lives in [docs/rules/](docs/rules/), with the vulnerability classes and secure patterns explained in the [ZK Security Guide](docs/zk-security-guide.md).
 
 ---
 
@@ -88,10 +92,12 @@ Same engine under all of them (it cross-compiles to WASM for the browser path), 
 
 ## 30-second quickstart
 
+> [!TIP]
+> **Skip Z3**: You can install without Z3 formal verification by appending `--no-default-features` to the cargo command.
+
 ```bash
 # 1. install
 cargo install sanctifier-cli
-# (skip Z3 with: cargo install sanctifier-cli --no-default-features)
 
 # 2. scan
 sanctifier analyze ./contracts
@@ -154,6 +160,9 @@ jobs:
 
 SARIF lands in GitHub code-scanning so reviewers see annotations inline on PRs.
 
+> [!TIP]
+> Ensure you have `security-events: write` permissions enabled in your GitHub Actions settings for SARIF uploads to succeed.
+
 ---
 
 ## Run the dashboard locally
@@ -174,31 +183,129 @@ npm run dev
 
 ## Install options
 
-| Method | Command |
-|--------|---------|
-| **crates.io** | `cargo install sanctifier-cli` |
-| **Binaries** | Direct downloads for [Linux (x86_64)](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64), [Linux (musl)](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64-musl), [macOS (Intel)](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-amd64), [macOS (Apple Silicon)](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-arm64), [Windows](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-windows-amd64.exe) |
+### Quick Install (Recommended)
 
-**Verifying binaries:** Each release includes a `SHA256SUMS` file and per-binary `.sha256` hashes.
+The fastest way to install Sanctifier is via cargo from crates.io:
 
 ```bash
-# Verify a downloaded binary
+cargo install sanctifier-cli
+```
+
+This installs the latest stable release with all features enabled, including Z3 formal verification.
+
+### Alternative Installation Methods
+
+| Method | Command | Notes |
+|--------|---------|-------|
+| **crates.io (latest)** | `cargo install sanctifier-cli` | Recommended for most users |
+| **crates.io (no Z3)** | `cargo install sanctifier-cli --no-default-features` | Lighter install, skips formal verification |
+| **From source** | `git clone https://github.com/HyperSafeD/Sanctifier && cd Sanctifier && make release` | Latest development version |
+| **GitHub Codespaces** | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/HyperSafeD/Sanctifier) | Pre-configured cloud environment |
+| **Docker** | `docker run --rm -v $PWD:/src ghcr.io/hypersafed/sanctifier analyze /src` | No local install needed |
+
+### Pre-built Binaries
+
+Direct downloads for your platform (no Rust toolchain required):
+
+| Platform | Download | Verification |
+|----------|----------|--------------|
+| **Linux (x86_64)** | [Download](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64) | [SHA256](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64.sha256) |
+| **Linux (musl)** | [Download](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64-musl) | [SHA256](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64-musl.sha256) |
+| **macOS (Intel)** | [Download](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-amd64) | [SHA256](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-amd64.sha256) |
+| **macOS (Apple Silicon)** | [Download](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-arm64) | [SHA256](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-arm64.sha256) |
+| **Windows** | [Download](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-windows-amd64.exe) | [SHA256](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-windows-amd64.exe.sha256) |
+
+**Verifying binaries:** Each release includes SHA256 checksums for integrity verification:
+
+```bash
+# Linux/macOS
+curl -LO https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64
+curl -LO https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64.sha256
 sha256sum -c sanctifier-linux-amd64.sha256
-```
-| **From source** | `git clone https://github.com/HyperSafeD/Sanctifier && cd Sanctifier && make release` |
-| **Codespaces** | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/HyperSafeD/Sanctifier) |
-| **Docker** | `docker run --rm -v $PWD:/src ghcr.io/hypersafed/sanctifier analyze /src` |
 
-**Prerequisites:** Rust 1.78+, plus `libz3-dev` and `clang`/`libclang-dev` for the Z3 formal-verification backend.
+# Windows (PowerShell)
+(Get-FileHash sanctifier-windows-amd64.exe).Hash -eq (Get-Content sanctifier-windows-amd64.exe.sha256)
+```
+
+### System Requirements
+
+**Minimum:**
+- Rust 1.78+ (if installing via cargo)
+- 2GB RAM
+- 500MB disk space
+
+**For full features (including Z3 formal verification):**
+
+| Platform | Required Packages |
+|----------|------------------|
+| **Debian/Ubuntu** | `sudo apt-get install libz3-dev clang libclang-dev build-essential pkg-config` |
+| **Fedora/RHEL** | `sudo dnf install z3-devel clang clang-devel` |
+| **Arch Linux** | `sudo pacman -S z3 clang` |
+| **macOS** | `brew install z3 llvm` |
+| **Windows** | Install [Z3](https://github.com/Z3Prover/z3/releases) and [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) |
+
+**Optional:**
+- `soroban-cli` for contract deployment features: `cargo install soroban-cli`
+- `wasm-pack` for WASM analysis: `cargo install wasm-pack`
+
+### Lightweight Installation (Skip Z3)
+
+If you don't need formal verification (rule S011), install without Z3 dependencies:
 
 ```bash
-# Debian/Ubuntu
-sudo apt-get install libz3-dev clang libclang-dev
-# macOS
-brew install z3 llvm
+cargo install sanctifier-cli --no-default-features
 ```
 
-Skip Z3 entirely with `cargo install sanctifier-cli --no-default-features` — every rule except `S011` still runs.
+This reduces installation time and removes the Z3 dependency requirement. All other rules (S001-S010, S012) remain fully functional.
+
+### Verifying Installation
+
+After installation, verify Sanctifier is working:
+
+```bash
+# Check version
+sanctifier --version
+
+# Run environment diagnostics
+sanctifier doctor
+
+# Test with a sample scan
+sanctifier analyze --help
+```
+
+### Updating Sanctifier
+
+Keep your installation up-to-date:
+
+```bash
+# Update via cargo
+cargo install sanctifier-cli --force
+
+# Or use built-in updater with integrity checks
+sanctifier update
+```
+
+### Troubleshooting Installation
+
+> [!WARNING]
+> **Common Issues and Fixes**
+>
+> 1. **"cargo: command not found"**
+>    - Install Rust via rustup: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+>    - Restart your terminal or run: `source ~/.cargo/env`
+>
+> 2. **"failed to compile z3-sys"**
+>    - Install Z3 development libraries (see System Requirements above)
+>    - Or install without Z3: `cargo install sanctifier-cli --no-default-features`
+>
+> 3. **"sanctifier: command not found" after installation**
+>    - Ensure `~/.cargo/bin` is in your PATH
+>    - Add to shell profile: `echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc`
+>
+> 4. **Windows: "VCRUNTIME140.dll not found"**
+>    - Install [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+>
+> For more detailed troubleshooting, see [`docs/getting-started.md#troubleshooting`](docs/getting-started.md#troubleshooting).
 
 ---
 
@@ -253,9 +360,11 @@ Every subcommand accepts `--format json` for machine consumption. Use `--format 
 }
 ```
 
-`--format sarif` produces a SARIF 2.1.0 document compatible with GitHub code-scanning. `--format ndjson` streams one object per finding so large scans can be processed incrementally.
-
 SARIF 2.1.0 output is canonical for GitHub code-scanning and any SAST aggregator.
+
+> [!NOTE]
+> `--format sarif` produces a SARIF 2.1.0 document compatible with GitHub code-scanning.
+> `--format ndjson` streams one object per finding so large scans can be processed incrementally.
 
 ---
 
@@ -282,7 +391,7 @@ Custom rules support full YAML DSL — see [docs/rule-authoring-guide.md](docs/r
 
 Sanctifier is shipping in waves. What's done, what's next, what's wishlist:
 
-**Shipped**
+### Shipped
 - 12 canonical analysis rules (S001–S012) with stable codes
 - CLI, GitHub Action, Web Dashboard, VS Code extension, WASM build
 - Off-chain anomaly detector for recorded runtime calls with Slack/Discord alerts
@@ -290,7 +399,7 @@ Sanctifier is shipping in waves. What's done, what's next, what's wishlist:
 - SARIF + JSON output, draft-07 schema, badge generator
 - Diff mode, watch mode, cargo-workspace scan, patcher
 
-**In flight** (see the [contrib-wave issues](https://github.com/HyperSafeD/Sanctifier/issues?q=contrib-wave+in%3Atitle))
+### In flight (see the [contrib-wave issues](https://github.com/HyperSafeD/Sanctifier/issues?q=contrib-wave+in%3Atitle))
 - Real-LLM provider for `/api/ai/explain` (currently stubbed)
 - Editor-agnostic `sanctifier lsp` for Neovim / Helix / Zed
 - Streaming `--ndjson` output for incremental piping
@@ -298,7 +407,7 @@ Sanctifier is shipping in waves. What's done, what's next, what's wishlist:
 - 20+ new engine rules (allowance race, TTL bumps, cross-contract `try_call`, taint through destructures, …)
 - ZK integration — `Z001..Z014` rule catalogue, circom/Noir parsing, shielded-contract fixtures, dashboard ZK panel. Scope and status: **[docs/zk-roadmap.md](docs/zk-roadmap.md)**
 
-**Wishlist**
+### Wishlist
 - Hosted REST API, Stellar Laboratory plugin, cargo-sanctify subcommand shim, anomaly-detection rules engine for recorded runtime calls
 
 ---
@@ -363,9 +472,10 @@ in a single terminal session.
 
 ## Contributing
 
-We're picking up momentum and we want the help. **~100 hand-curated [`[contrib-wave]`](https://github.com/HyperSafeD/Sanctifier/issues?q=contrib-wave+in%3Atitle) issues** are live, each one with a problem statement, acceptance criteria, file pointers, and difficulty hint. There's a `good first issue` for every skill level — bash, Rust, TypeScript, Next.js, GitHub Actions, doc-writing, contract authoring.
-
-Start with [CONTRIBUTING.md](CONTRIBUTING.md), then pick an issue and say hi.
+> [!TIP]
+> We're picking up momentum and we want the help. **~100 hand-curated [`[contrib-wave]`](https://github.com/HyperSafeD/Sanctifier/issues?q=contrib-wave+in%3Atitle) issues** are live, each one with a problem statement, acceptance criteria, file pointers, and difficulty hint.
+> 
+> There's a `good first issue` for every skill level — bash, Rust, TypeScript, Next.js, GitHub Actions, doc-writing, contract authoring. Start with [CONTRIBUTING.md](CONTRIBUTING.md), then pick an issue and say hi.
 
 ---
 

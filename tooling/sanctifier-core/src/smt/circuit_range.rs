@@ -38,6 +38,26 @@ pub use crate::smt::types::{CircuitRangeCheckResult, FlaggedSignal};
 const BN254_MODULUS: &str =
     "21888242871839275222246405745257275088548364400416034343698204186575808495617";
 
+/// Result of a circuit range-check verification.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CircuitRangeCheckResult {
+    /// Template name.
+    pub template_name: String,
+    /// Signals flagged as potentially under-constrained.
+    pub flagged_signals: Vec<FlaggedSignal>,
+}
+
+/// A signal that may be under-constrained.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlaggedSignal {
+    /// Signal name.
+    pub signal_name: String,
+    /// The SMT model (counterexample) when available.
+    pub counterexample: Option<String>,
+    /// Whether the solver timed out.
+    pub is_timeout: bool,
+}
+
 /// Verify that all signals in a circuit are range-constrained.
 ///
 /// Returns a list of [`CircuitRangeCheckResult`] — one per template with at

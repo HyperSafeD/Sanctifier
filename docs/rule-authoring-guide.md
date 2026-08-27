@@ -105,7 +105,7 @@ panic!("unreachable"); // sanctifier: ignore[no_panic_in_contractimpl]
 | `method_call`       | `method`, `receiver?`                              | Method calls (`obj.method(...)`)     |
 | `storage_operation` | `operation` (`get`/`set`/`remove`), `key_pattern?` | DataStore read/write patterns        |
 
-See [`custom-rules.example.yaml`](../custom-rules.example.yaml) for one example of each type.
+See [`custom-rules.example.yaml`](../custom-rules.example.yaml) for an example of each type.
 
 ---
 
@@ -214,7 +214,7 @@ in taint passes — taint silently disappears at the destructure boundary.
 
 ## 8. ZK Rules (Z-series) Namespace
 
-Sanctifier introduces a dedicated `Z001-Z0NN` numbering convention for Zero-Knowledge (ZK) specific vulnerability rules, functioning alongside the existing `S0xx` static-rule namespace.
+Sanctifier introduces a dedicated `Z001-Z0NN` numbering convention for Zero-Knowledge (ZK)-specific vulnerability rules, operating alongside the existing `S0xx` static-rule namespace.
 
 When authoring ZK rules:
 - **Namespace:** All ZK rules MUST use the `Z` prefix (e.g., `Z001`, `Z002`).

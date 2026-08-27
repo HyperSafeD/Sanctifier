@@ -10,6 +10,12 @@ use soroban_sdk::{
     contract, contracterror, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Vec,
 };
 use vk_storage::{read_rotation_state, DataKey};
+use groth16::{bind_public_inputs, verify, G1Point, G2Point, Proof, VerifyingKey};
+use nullifier_set::{NullifierKey, NullifierSet, NullifierState};
+use soroban_sdk::{
+    contract, contracterror, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Vec,
+};
+use vk_storage::{read_rotation_state, DataKey, RotationState};
 
 /// TTL thresholds (matching nullifier_set.rs).
 const TTL_BUMP_THRESHOLD: u32 = 100_000;

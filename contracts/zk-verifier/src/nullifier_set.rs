@@ -205,6 +205,15 @@ mod tests {
             let ns = NullifierSet::new();
             let nullifier = null(env, 0x05);
             ns.mark_spent(env, &ctx(env), &nullifier);
+            let key = NullifierKey {
+                context: ctx(env),
+                nullifier: nullifier.clone(),
+            };
+            env.storage()
+                .persistent()
+                .set::<NullifierKey, NullifierState>(&key, &NullifierState::Spent);
+            env.storage().persistent().remove(&key);
+            // Now the entry is absent — as if it had been evicted.
             ns.assert_unspent(env, &ctx(env), &nullifier);
         });
     }
