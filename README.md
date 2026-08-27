@@ -23,7 +23,7 @@
 
 ---
 
-## Why Sanctifier exists.
+## Why Sanctifier exists
 
 > [!NOTE]
 > When an EVM contract ships a bug, the community has a decade of tools — Slither, Mythril, Foundry, Certora — to catch it. Soroban shipped to mainnet in 2024 with almost none of that scaffolding. Every team writes the same review checklist from scratch. Every audit re-discovers the same five footguns.
