@@ -71,6 +71,28 @@ pub enum SmtBackend {
     Cvc5,
 }
 
+// ── Circuit range-check types (Z007 deep-verify) ──────────────────────────────
+
+/// Result of a circuit range-check verification.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CircuitRangeCheckResult {
+    /// Template name.
+    pub template_name: String,
+    /// Signals flagged as potentially under-constrained.
+    pub flagged_signals: Vec<FlaggedSignal>,
+}
+
+/// A signal that may be under-constrained.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlaggedSignal {
+    /// Signal name.
+    pub signal_name: String,
+    /// The SMT model (counterexample) when available.
+    pub counterexample: Option<String>,
+    /// Whether the solver timed out.
+    pub is_timeout: bool,
+}
+
 // ── Fixed-point proof types ───────────────────────────────────────────────────
 
 /// Input bounds for a standard fixed-point `a * b / d` proof.
