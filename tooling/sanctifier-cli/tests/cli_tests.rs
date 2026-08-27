@@ -1444,7 +1444,7 @@ fn test_documented_exit_codes() {
     let vulnerable_fixture = env::current_dir()
         .unwrap()
         .join("tests/fixtures/vulnerable_contract.rs");
-    
+
     // Code 0: SUCCESS (no findings)
     Command::cargo_bin("sanctifier")
         .unwrap()

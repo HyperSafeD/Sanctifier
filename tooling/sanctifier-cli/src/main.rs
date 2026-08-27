@@ -112,14 +112,6 @@ fn run() -> anyhow::Result<()> {
         commands::color::set_no_color(true);
     }
 
-    // Print network indicator banner
-    let network_badge = match cli.network.as_str() {
-        "mainnet" => format!("{}", commands::color::red_bold("[ MAINNET ]")),
-        "futurenet" => format!("{}", commands::color::yellow_bold("[ FUTURENET ]")),
-        _ => format!("{}", commands::color::green_bold("[ TESTNET ]")),
-    };
-    eprintln!("{} Sanctifier — {}", network_badge, commands::color::dimmed(&cli.network));
-
     // Initialize structured logging before dispatching
     let log_format = match &cli.command {
         Commands::Analyze(args) if args.format == "json" || args.format == "sarif" => {
@@ -129,6 +121,21 @@ fn run() -> anyhow::Result<()> {
     };
     if let Err(e) = logging::init(log_format) {
         eprintln!("Warning: failed to init logging: {e}");
+    }
+
+    // Print network indicator banner (suppressed in JSON log mode so stderr
+    // stays machine-parseable).
+    if log_format != logging::LogOutput::Json {
+        let network_badge = match cli.network.as_str() {
+            "mainnet" => commands::color::red_bold("[ MAINNET ]").to_string(),
+            "futurenet" => commands::color::yellow_bold("[ FUTURENET ]").to_string(),
+            _ => commands::color::green_bold("[ TESTNET ]").to_string(),
+        };
+        eprintln!(
+            "{} Sanctifier — {}",
+            network_badge,
+            commands::color::dimmed(&cli.network)
+        );
     }
 
     match cli.command {

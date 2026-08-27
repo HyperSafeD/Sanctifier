@@ -20,7 +20,7 @@ pub struct BenchmarkArgs {
     pub corpus: PathBuf,
 
     /// Number of analysis iterations per rule (must be ≥ 1)
-    #[arg(short = 'n', long, default_value_t = 3)]
+    #[arg(long, default_value_t = 3)]
     pub iterations: usize,
 
     /// Path to a baseline JSON file produced by a previous `--output` run.

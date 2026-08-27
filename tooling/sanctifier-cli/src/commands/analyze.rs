@@ -99,7 +99,7 @@ pub struct AnalyzeArgs {
     #[arg(long, value_enum, default_value_t = SeverityLevel::High)]
     pub min_severity: SeverityLevel,
     /// Disable incremental analysis cache
-    #[arg(short = 'n', long)]
+    #[arg(long)]
     pub no_cache: bool,
     /// Analysis profile preset — overrides --exit-code and --min-severity when set
     #[arg(long, value_enum)]
