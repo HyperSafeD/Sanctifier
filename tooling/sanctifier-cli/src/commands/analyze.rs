@@ -447,14 +447,24 @@ fn stream_ndjson(args: &AnalyzeArgs) -> anyhow::Result<bool> {
         path.clone()
     };
     let rs_files = collect_rs_files(&scan_root, &config.ignore_paths);
-    let registry = RuleRegistry::with_default_rules();
+    let registry = std::sync::Arc::new(RuleRegistry::with_default_rules());
     let stdout = std::io::stdout();
-    let mut total = 0usize;
+    let total = std::sync::atomic::AtomicUsize::new(0);
 
-    for file_path in &rs_files {
+    // Parallelized with rayon (issue #1472): each file's `registry.run_all`
+    // pass is independent, mirroring the same Arc<Registry>/Arc<Analyzer> +
+    // par_iter pattern the batch JSON/SARIF path above (`run_analysis`) and
+    // `workspace.rs` already use for this shape of per-file work. Output is
+    // still written one file's findings at a time — `Stdout::lock()` from
+    // multiple threads simply blocks until available, so each file's
+    // findings stay contiguous on the line, just not necessarily emitted in
+    // directory-walk order (every line already carries its own `file` field,
+    // so a streaming consumer isn't harmed by that reordering).
+    let write_error: std::sync::Mutex<Option<std::io::Error>> = std::sync::Mutex::new(None);
+    rs_files.par_iter().for_each(|file_path| {
         let content = match fs::read_to_string(file_path) {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(_) => return,
         };
         let file_str = file_path.display().to_string();
         let violations = registry.run_all(&content);
@@ -462,7 +472,7 @@ fn stream_ndjson(args: &AnalyzeArgs) -> anyhow::Result<bool> {
         // Lock stdout once per file so all findings from this file are contiguous.
         let mut out = stdout.lock();
         for v in violations {
-            total += 1;
+            total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let line = serde_json::json!({
                 "event": "finding",
                 "file": file_str,
@@ -472,10 +482,19 @@ fn stream_ndjson(args: &AnalyzeArgs) -> anyhow::Result<bool> {
                 "location": v.location,
                 "suggestion": v.suggestion,
             });
-            writeln!(out, "{}", line)?;
+            if let Err(e) = writeln!(out, "{}", line) {
+                *write_error.lock().unwrap() = Some(e);
+                return;
+            }
         }
-        out.flush()?;
+        if let Err(e) = out.flush() {
+            *write_error.lock().unwrap() = Some(e);
+        }
+    });
+    if let Some(e) = write_error.into_inner().unwrap() {
+        return Err(e.into());
     }
+    let total = total.load(std::sync::atomic::Ordering::Relaxed);
 
     let duration_ms = start.elapsed().as_millis() as u64;
     let mut out = stdout.lock();
