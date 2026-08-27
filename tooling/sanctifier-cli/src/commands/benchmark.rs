@@ -20,7 +20,12 @@ pub struct BenchmarkArgs {
     pub corpus: PathBuf,
 
     /// Number of analysis iterations per rule (must be ≥ 1)
-    #[arg(short = 'n', long, default_value_t = 3)]
+    //
+    // No short flag: `-n` collides with the global `--network` flag
+    // (main.rs's `Cli.network`, `global = true`) -- same bug as
+    // analyze.rs's `no_cache` field, see that file's comment for the full
+    // explanation of how this panics every non-release invocation.
+    #[arg(long, default_value_t = 3)]
     pub iterations: usize,
 
     /// Path to a baseline JSON file produced by a previous `--output` run.

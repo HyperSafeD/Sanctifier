@@ -99,7 +99,14 @@ pub struct AnalyzeArgs {
     #[arg(long, value_enum, default_value_t = SeverityLevel::High)]
     pub min_severity: SeverityLevel,
     /// Disable incremental analysis cache
-    #[arg(short = 'n', long)]
+    //
+    // No short flag: `-n` collides with the global `--network` flag
+    // (main.rs's `Cli.network`, `global = true`), which clap only catches
+    // via a debug_assert! that panics the very first time `analyze` runs in
+    // a non-release build -- i.e. every invocation under `cargo test`/
+    // `cargo run`. This made the entire `analyze` subcommand, and every
+    // integration test that exercises it, fail unconditionally.
+    #[arg(long)]
     pub no_cache: bool,
     /// Analysis profile preset — overrides --exit-code and --min-severity when set
     #[arg(long, value_enum)]
