@@ -216,7 +216,7 @@ async fn test_mainnet_concurrency_isolation_and_no_leak() {
 
     // 4. Final health check after heavy concurrent load
     let final_health = client
-        .get(&format!("{}/health", base_url))
+        .get(format!("{}/health", base_url))
         .send()
         .await
         .expect("Final health check failed");

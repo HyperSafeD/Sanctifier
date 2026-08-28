@@ -135,6 +135,21 @@ fn run() -> anyhow::Result<()> {
         eprintln!("Warning: failed to init logging: {e}");
     }
 
+    // Print network indicator banner (suppressed in JSON log mode so stderr
+    // stays machine-parseable).
+    if log_format != logging::LogOutput::Json {
+        let network_badge = match cli.network.as_str() {
+            "mainnet" => commands::color::red_bold("[ MAINNET ]").to_string(),
+            "futurenet" => commands::color::yellow_bold("[ FUTURENET ]").to_string(),
+            _ => commands::color::green_bold("[ TESTNET ]").to_string(),
+        };
+        eprintln!(
+            "{} Sanctifier — {}",
+            network_badge,
+            commands::color::dimmed(&cli.network)
+        );
+    }
+
     match cli.command {
         Commands::Analyze(args) => commands::analyze::exec(args),
         Commands::Init(args) => commands::init::exec(args, None),

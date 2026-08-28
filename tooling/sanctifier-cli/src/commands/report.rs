@@ -50,7 +50,7 @@ pub struct ReportArgs {
 
     /// Target network (testnet, futurenet, mainnet).
     /// Overrides SOROBAN_NETWORK env var. Default: testnet.
-    #[arg(short = 'n', long, default_value = "testnet")]
+    #[arg(long, default_value = "testnet")]
     pub network: String,
 }
 

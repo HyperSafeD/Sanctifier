@@ -4,6 +4,12 @@ pub mod groth16;
 pub mod nullifier_set;
 pub mod vk_storage;
 
+use groth16::{bind_public_inputs, verify, Proof, VerifyingKey};
+use nullifier_set::NullifierSet;
+use soroban_sdk::{
+    contract, contracterror, contractimpl, symbol_short, Address, Bytes, BytesN, Env, Vec,
+};
+use vk_storage::{read_rotation_state, DataKey};
 use groth16::{bind_public_inputs, verify, G1Point, G2Point, Proof, VerifyingKey};
 use nullifier_set::{NullifierKey, NullifierSet, NullifierState};
 use soroban_sdk::{
@@ -139,7 +145,7 @@ impl ZkVerifier {
             );
         }
 
-        verify(&vk, &proof, &[]).map_err(|_| VerifierError::InvalidProof)?;
+        verify(&vk, &proof, &public_inputs_ref).map_err(|_| VerifierError::InvalidProof)?;
 
         let ns = NullifierSet::new();
         ns.assert_unspent(&env, &context, &nullifier);

@@ -12,7 +12,7 @@
 //!    SMT assertions and checks whether each comparison-involved signal is
 //!    provably bounded.  See [`smt::circuit_range`].
 
-use crate::circom_parser::{CircomFile, SignalDirection};
+use crate::circom_parser::{CircomFile, CircomTemplate, Signal, SignalDirection};
 use crate::rules::{Rule, RuleViolation, Severity};
 
 pub struct Z007UnderConstrainedRule {
@@ -33,14 +33,9 @@ impl Z007UnderConstrainedRule {
         let mut violations = Vec::new();
 
         for template in &circuit.templates {
-            // Heuristic check: signals never referenced in a constraint.
+            // Heuristic: signals never referenced in a constraint.
             let unconstrained = crate::circom_parser::unconstrained_signals(template);
             for sig in &unconstrained {
-                let direction = match sig.direction {
-                    SignalDirection::Input => "input",
-                    SignalDirection::Output => "output",
-                    SignalDirection::Intermediate => "intermediate",
-                };
                 violations.push(
                     RuleViolation::new(
                         self.name(),
@@ -50,13 +45,42 @@ impl Z007UnderConstrainedRule {
                              constraint expression.  Without a range constraint, an attacker \
                              can supply a field-element value that wraps around the modulus, \
                              bypassing validation logic.",
-                            sig.name, direction, template.name
+                            sig.name,
+                            direction_str(sig.direction),
+                            template.name
                         ),
                         format!("{}::{}", template.name, sig.name),
                     )
                     .with_suggestion(
                         "Add a range-check component (e.g. Num2Bits(64), LessThan, RangeCheck) \
                          before using this signal in arithmetic or comparisons.  See \
+                         docs/rules/Z007.md for examples."
+                            .to_string(),
+                    ),
+                );
+            }
+
+            // Heuristic: signals used in comparisons without range-check
+            // components.
+            for sig in unrange_checked_comparison_signals(template) {
+                violations.push(
+                    RuleViolation::new(
+                        self.name(),
+                        Severity::High,
+                        format!(
+                            "Signal '{}' ({}) in template '{}' is used in a comparison but \
+                             the template declares no range-check component.  Without a range \
+                             constraint, an attacker can supply a field-element value that \
+                             wraps around the modulus and bypass the comparison.",
+                            sig.name,
+                            direction_str(sig.direction),
+                            template.name
+                        ),
+                        format!("{}::{}", template.name, sig.name),
+                    )
+                    .with_suggestion(
+                        "Add a range-check component (e.g. Num2Bits(64), LessThan, RangeCheck) \
+                         or an explicit bound before using this signal in a comparison.  See \
                          docs/rules/Z007.md for examples."
                             .to_string(),
                     ),
@@ -110,6 +134,52 @@ impl Default for Z007UnderConstrainedRule {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn direction_str(direction: SignalDirection) -> &'static str {
+    match direction {
+        SignalDirection::Input => "input",
+        SignalDirection::Output => "output",
+        SignalDirection::Intermediate => "intermediate",
+    }
+}
+
+/// Signals used in a comparison (`<` or `>`) where the template declares no
+/// range-check component (e.g. `Num2Bits`, `LessThan`, `GreaterThan`,
+/// `RangeCheck`).  Such signals are compared without an accompanying range
+/// constraint and can wrap around the field modulus.
+fn unrange_checked_comparison_signals(template: &CircomTemplate) -> Vec<&Signal> {
+    const RANGE_COMPONENTS: [&str; 5] = [
+        "Num2Bits",
+        "Num2Bits_strict",
+        "LessThan",
+        "GreaterThan",
+        "RangeCheck",
+    ];
+    let has_range_check = template.components.iter().any(|comp| {
+        RANGE_COMPONENTS
+            .iter()
+            .any(|range| comp.template_name.contains(range))
+    });
+    if has_range_check {
+        return vec![];
+    }
+
+    template
+        .signals
+        .iter()
+        .filter(|signal| {
+            template.constraints.iter().any(|constraint| {
+                let c = constraint.trim().trim_end_matches(';');
+                let expr = match c.split_once("<==") {
+                    Some((_, rhs)) => rhs,
+                    None => c,
+                };
+                let has_comparison = expr.contains('>') || expr.replace("===", "").contains('<');
+                has_comparison && expr.contains(&signal.name)
+            })
+        })
+        .collect()
 }
 
 impl Rule for Z007UnderConstrainedRule {

@@ -22,7 +22,7 @@
 
 mod backend;
 mod benchmark;
-mod circuit_range;
+pub mod circuit_range;
 mod invariants;
 mod types;
 

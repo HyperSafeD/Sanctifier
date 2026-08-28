@@ -24,11 +24,6 @@
 
 use soroban_sdk::{contracttype, Bytes, Env};
 
-/// Minimum number of ledgers a VK entry must survive.
-const TTL_BUMP_THRESHOLD: u32 = 100_000;
-/// Target ledger count for TTL extension (~1 year at 5 s/ledger).
-const TTL_BUMP_TO: u32 = 6_307_200;
-
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DataKey {
@@ -109,7 +104,7 @@ pub mod pure {
 }
 
 /// Construct a storage key for tracking approved addresses.
-pub fn rotation_approved_key(env: &Env, address: &soroban_sdk::Address) -> DataKey {
+pub fn rotation_approved_key(env: &Env, _address: &soroban_sdk::Address) -> DataKey {
     DataKey::RotationApproved(soroban_sdk::Bytes::from_slice(env, &[0u8; 0]))
 }
 

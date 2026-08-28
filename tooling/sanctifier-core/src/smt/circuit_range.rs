@@ -28,10 +28,11 @@
 //!
 //! This module is gated behind `#[cfg(feature = "smt")]`.
 
-use z3::ast::{Bool, Int};
+use z3::ast::{Ast, Int};
 use z3::{Config, Context, SatResult, Solver};
 
 use crate::circom_parser::CircomFile;
+pub use crate::smt::types::{CircuitRangeCheckResult, FlaggedSignal};
 
 /// BN254 (BabyJubJub) field modulus used by Circom 2.x.
 const BN254_MODULUS: &str =
@@ -83,10 +84,22 @@ fn analyze_template(
     template: &crate::circom_parser::CircomTemplate,
     timeout_ms: u64,
 ) -> Vec<FlaggedSignal> {
-    // Identify signals that appear in comparison operators — these are the
-    // signals whose range matters for security.
+    // Which signals appear in a comparison operator (`<` or `>`)?
+    // `===`/`<==` markers are assignment/equality, not range comparisons, so
+    // they are excluded before scanning the expression.
+    let in_comparison = |signal: &crate::circom_parser::Signal| {
+        template.constraints.iter().any(|constraint| {
+            let c = constraint.trim().trim_end_matches(';');
+            let expr = match c.split_once("<==") {
+                Some((_, rhs)) => rhs,
+                None => c,
+            };
+            let has_comparison = expr.contains('>') || expr.replace("===", "").contains('<');
+            has_comparison && expr.contains(&signal.name)
+        })
+    };
+
     let mut flagged = Vec::new();
-    let constraint_text: String = template.constraints.join(" ");
 
     for signal in &template.signals {
         // Only check signals that are already known to be constrained from
@@ -100,10 +113,7 @@ fn analyze_template(
             continue;
         }
 
-        // Does this signal appear in a comparison?
-        let in_comparison = constraint_text.contains(&signal.name);
-
-        if !in_comparison {
+        if !in_comparison(signal) {
             continue;
         }
 
@@ -220,7 +230,6 @@ fn encode_constraint(
         if let (Some(l), Some(r)) = (left_expr, right_expr) {
             solver.assert(&l._eq(&r));
         }
-        return;
     }
 }
 
@@ -242,7 +251,7 @@ fn parse_expression<'ctx>(
         let one = Int::from_u64(ctx, 1);
         let zero = Int::from_u64(ctx, 0);
         // (if a < b then 1 else 0)
-        return Some(zero.ite(&lt, &one));
+        return Some(lt.ite(&one, &zero));
     }
 
     // Check for comparison `>` — returns either 1 (true) or 0 (false).
@@ -254,7 +263,7 @@ fn parse_expression<'ctx>(
         let gt = l.gt(&r);
         let one = Int::from_u64(ctx, 1);
         let zero = Int::from_u64(ctx, 0);
-        return Some(zero.ite(&gt, &one));
+        return Some(gt.ite(&one, &zero));
     }
 
     // For simple expressions, try as a term (which handles +, -, *).
@@ -324,8 +333,8 @@ fn parse_primary<'ctx>(
     }
 
     // Negation (unary minus).
-    if primary.starts_with('-') {
-        let operand = parse_primary(ctx, primary[1..].trim(), signal_vars)?;
+    if let Some(rest) = primary.strip_prefix('-') {
+        let operand = parse_primary(ctx, rest.trim(), signal_vars)?;
         let zero = Int::from_u64(ctx, 0);
         return Some(Int::sub(ctx, &[&zero, &operand]));
     }
@@ -338,8 +347,8 @@ fn parse_primary<'ctx>(
     }
 
     // Numeric literal.
-    if let Ok(_) = primary.parse::<i64>() {
-        return Some(Int::from_str(ctx, primary).ok()?);
+    if primary.parse::<i64>().is_ok() {
+        return Int::from_str(ctx, primary);
     }
 
     // Unknown — skip.
@@ -352,7 +361,7 @@ fn find_operator_outside_parens(s: &str, op: char) -> Option<usize> {
     for (i, ch) in s.char_indices() {
         match ch {
             '(' => depth += 1,
-            ')' => depth -= 1,
+            ')' => depth = depth.saturating_sub(1),
             c if c == op && depth == 0 => return Some(i),
             _ => {}
         }

@@ -47,7 +47,7 @@ use std::{
     env, fs,
     io::Write,
     panic::{self, AssertUnwindSafe},
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::mpsc,
     thread,
     time::{Duration, Instant},
@@ -234,7 +234,7 @@ fn analyze_with_timeout(source: String) -> Result<Vec<RuleViolation>, String> {
 
 // ── Report writer ─────────────────────────────────────────────────────────────
 
-fn write_report(report: &ForkReport, workspace_root: &PathBuf) {
+fn write_report(report: &ForkReport, workspace_root: &Path) {
     let path = workspace_root.join(REPORT_OUTPUT);
     if let Some(parent) = path.parent() {
         let _ = fs::create_dir_all(parent);

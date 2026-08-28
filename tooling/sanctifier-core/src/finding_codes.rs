@@ -476,6 +476,15 @@ pub fn all_finding_codes() -> Vec<FindingCode> {
             remediation: "Hash the storage-loaded verifying key and assert it equals a reference hash committed at deployment before using it to verify any proof",
             doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules/Z005.md",
         },
+        FindingCode {
+            code: ZK_UNPROTECTED_VK_ROTATION,
+            category: "zk-access-control",
+            description: "A public function writes a verifying key to storage without a preceding require_auth/admin check, letting any caller replace the trusted verification parameters and forge the acceptance of invalid proofs",
+            title: "Unprotected Verifying-Key Rotation",
+            severity: FindingSeverity::Critical,
+            remediation: "Authenticate a privileged admin with require_auth (or require_auth_for_args) before writing the verifying key to storage, mirroring the S010 upgrade-admin guard",
+            doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules/Z010.md",
+        },
     ]
 }
 
@@ -563,6 +572,7 @@ mod tests {
         assert!(codes
             .iter()
             .any(|c| c.code == ZK_MISSING_VK_INTEGRITY_CHECK));
+        assert!(codes.iter().any(|c| c.code == ZK_UNPROTECTED_VK_ROTATION));
     }
 
     #[test]
