@@ -66,7 +66,7 @@ cargo install sanctifier-cli
 > source ~/.bashrc
 > ```
 
-Confirm the installation succeeded:
+Verify the installation succeeded:
 
 ```bash
 sanctifier --version
@@ -138,6 +138,10 @@ soroban-sdk = { version = "21", features = ["testutils"] }
 
 Replace `src/lib.rs` with this intentionally vulnerable contract — it has three findings
 for Sanctifier to catch:
+
+### Example Contract
+
+Here's a complete working example with clear security issues:
 
 ```rust
 #![no_std]
@@ -236,10 +240,17 @@ sanctifier analyze ./my-contract --format json
 }
 ```
 
-Pipe it through [`jq`](https://jqlang.org/) to filter by severity, e.g. `jq '.rule_violations[] | select(.severity == "Critical")'`.
+Filter the JSON output with [`jq`](https://jqlang.org/) to show only critical findings:
 
-A [SARIF](https://sarifweb.azurewebsites.net/) variant is also available via `--format sarif`,
-for tools that ingest that format directly (e.g. GitHub code scanning's `upload-sarif` action).
+```bash
+sanctifier analyze ./my-contract --format json | jq '.rule_violations[] | select(.severity == "Critical")'
+```
+
+A [SARIF](https://sarifweb.azurewebsites.net/) output format is also available for GitHub code scanning:
+
+```bash
+sanctifier analyze ./my-contract --format sarif
+```
 
 ---
 
@@ -479,7 +490,7 @@ elif [ "$code" -eq 1 ]; then
 fi
 ```
 
-## 9. Troubleshooting
+## 10. Troubleshooting
 
 Common errors while working through this guide, and how to resolve them.
 
@@ -562,7 +573,7 @@ see `CONTRIBUTING.md` for the issue template.
 
 ---
 
-## 10. Next Steps
+## 11. Next Steps
 
 - **Formal Verification** — See [`docs/kani-integration.md`](./kani-integration.md) to add model-checking with the Kani verifier.
 - **Runtime Guards** — See [`docs/runtime-guards-integration.md`](./runtime-guards-integration.md) to add runtime invariant wrappers in your existing Soroban contract.
