@@ -7,7 +7,7 @@
 <div align="center">
   <img src="branding/logo.png" width="220" alt="Sanctifier" />
 
-  # Sanctifier
+  # Sanctifier.
 
   ### Catch the bug before someone else cashes it.
 
