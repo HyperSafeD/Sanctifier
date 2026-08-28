@@ -3212,6 +3212,7 @@ dependencies = [
  "serde_yaml",
  "soroban-sdk",
  "syn 2.0.119",
+ "tempfile",
  "thiserror 1.0.69",
  "z3",
 ]
