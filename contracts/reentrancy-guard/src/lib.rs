@@ -5,13 +5,20 @@ Formal invariant for `ReentrancyGuard`
 
 - Invariant: at most one re-entrant call is possible; once the guard is locked,
   every subsequent nested call reverts until the current execution exits.
-- Mutex storage key: [`GUARD_KEY`] with the short-symbol value `RE_GRD`.
+- Mutex storage key: [`StorageKey::Guard`] using a type-safe contracttype enum.
 - Known limitation: the mutex only protects the current contract instance. It
   does not provide cross-contract coordination, so it cannot stop a separate
   contract from maintaining its own independent call path or lock state.
 */
 
-use soroban_sdk::{symbol_short, Env, Symbol};
+use soroban_sdk::{contracttype, Env};
+
+// ── Storage Keys ────────────────────────────────────────────────────────────────
+
+#[contracttype]
+pub enum StorageKey {
+    Guard,
+}
 
 // ── Pure logic (verified with Kani) ─────────────────────────────────────────────
 
@@ -53,8 +60,6 @@ pub fn exit_pure() -> GuardStatus {
 
 // ── Soroban Contract Integration ────────────────────────────────────────────────
 
-const GUARD_KEY: Symbol = symbol_short!("RE_GRD");
-
 pub struct ReentrancyGuard<'a> {
     env: &'a Env,
 }
@@ -67,7 +72,7 @@ impl<'a> ReentrancyGuard<'a> {
     /// Enter a reentrancy-protected section.
     /// Panics if reentrancy is detected.
     pub fn enter(&self) {
-        let status: u32 = self.env.storage().instance().get(&GUARD_KEY).unwrap_or(0);
+        let status: u32 = self.env.storage().instance().get(&StorageKey::Guard).unwrap_or(0);
         let current = GuardStatus::from_u32(status);
 
         match enter_pure(current) {
@@ -86,7 +91,7 @@ impl<'a> ReentrancyGuard<'a> {
                 self.env
                     .storage()
                     .instance()
-                    .set(&GUARD_KEY, &(new_status as u32));
+                    .set(&StorageKey::Guard, &(new_status as u32));
             }
             Err(msg) => panic!("{}", msg),
         }
@@ -104,7 +109,7 @@ impl<'a> ReentrancyGuard<'a> {
         self.env
             .storage()
             .instance()
-            .set(&GUARD_KEY, &(unlocked as u32));
+            .set(&StorageKey::Guard, &(unlocked as u32));
     }
 }
 

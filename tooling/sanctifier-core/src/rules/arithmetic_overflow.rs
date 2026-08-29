@@ -110,10 +110,11 @@ impl Rule for ArithmeticOverflowRule {
             .issues
             .into_iter()
             .map(|issue| {
+                let message = format_arithmetic_error(&issue.operation, &issue.function_name);
                 RuleViolation::new(
                     self.name(),
                     Severity::Warning,
-                    format!("Unchecked '{}' operation could overflow", issue.operation),
+                    message,
                     issue.location,
                 )
                 .with_suggestion(issue.suggestion)
@@ -211,6 +212,39 @@ impl ArithmeticOverflowRule {
         });
         
         violations.into_inner().unwrap()
+    }
+}
+
+/// Format arithmetic error with contextual information.
+///
+/// Produces clear, actionable error messages that identify the specific operation,
+/// its location, and potential risks in the context of financial smart contracts.
+fn format_arithmetic_error(operation: &str, function_name: &str) -> String {
+    match operation {
+        "+" | "+=" => format!(
+            "Unchecked addition in '{}': possible overflow of accumulated values",
+            function_name
+        ),
+        "-" | "-=" => format!(
+            "Unchecked subtraction in '{}': possible underflow causing incorrect balances",
+            function_name
+        ),
+        "*" | "*=" => format!(
+            "Unchecked multiplication in '{}': intermediate value overflow risk",
+            function_name
+        ),
+        "/" | "/=" => format!(
+            "Unchecked division in '{}': runtime panic risk from divide-by-zero",
+            function_name
+        ),
+        "%" | "%=" => format!(
+            "Unchecked modulo in '{}': runtime panic risk from modulo-by-zero",
+            function_name
+        ),
+        method => format!(
+            "Unchecked '{}' operation in '{}': no overflow/underflow guard",
+            method, function_name
+        ),
     }
 }
 
