@@ -1,0 +1,31 @@
+[package]
+name = "runtime-guard-wrapper-fuzz"
+version = "0.0.0"
+authors = ["Automatically generated"]
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+soroban-sdk = { version = "21.7.0", features = ["testutils"] }
+# Pin transitively via soroban-env-host's testutils: without this the
+# resolver picks ed25519-dalek 3.0.0, which is incompatible with the
+# rand_core/rand_chacha versions soroban-env-host 21.2.1 was built against
+# (see the pinned 2.2.0 in the workspace root `Cargo.lock`).
+ed25519-dalek = "=2.2.0"
+
+[dependencies.runtime-guard-wrapper]
+path = ".."
+
+# Prevent this from interfering with workspaces
+[workspace]
+members = ["."]
+
+[[bin]]
+name = "fuzz_execute_guarded"
+path = "fuzz_targets/fuzz_execute_guarded.rs"
+test = false
+doc = false

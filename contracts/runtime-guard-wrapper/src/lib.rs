@@ -291,18 +291,19 @@ impl RuntimeGuardWrapper {
         function_name: &Symbol,
         args: &Vec<Val>,
     ) -> Result<Val, RuntimeGuardError> {
-        // Optimized: Use compile-time constant matching instead of runtime lookup
-        let expected_args = match function_name.to_string().as_str() {
-            "ping" => 0,
-            "echo" => 1,
-            "sum" => 2,
-            _ => {
-                Self::record_guard_failure(env.clone(), Symbol::new(&env, "bad_fn"));
-                return Err(RuntimeGuardError::UnknownFunction);
-            }
+        // Optimized: Symbol comparison avoids allocating a `Symbol::to_string()`.
+        let expected_args: u32 = if *function_name == Symbol::new(&env, "ping") {
+            0
+        } else if *function_name == Symbol::new(&env, "echo") {
+            1
+        } else if *function_name == Symbol::new(&env, "sum") {
+            2
+        } else {
+            Self::record_guard_failure(env.clone(), Symbol::new(&env, "bad_fn"));
+            return Err(RuntimeGuardError::UnknownFunction);
         };
 
-        if args.len() != expected_args as usize {
+        if args.len() != expected_args {
             Self::record_guard_failure(env.clone(), Symbol::new(&env, "bad_args"));
             return Err(RuntimeGuardError::ArgumentCountMismatch);
         }
