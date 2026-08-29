@@ -96,11 +96,11 @@ Same engine under all of them (it cross-compiles to WASM for the browser path), 
 
 ## 30-second quickstart
 
-> [!TIP]
-> **Skip Z3**: You can install without Z3 formal verification by appending `--no-default-features` to the cargo command.
+> [!NOTE]
+> **No Z3 needed to install.** `sanctifier-cli` depends on `sanctifier-core` with default features off, so `cargo install` never compiles Z3 and needs no C toolchain. libz3 is only required when you build the workspace from source or depend on `sanctifier-core` with its default `smt` feature — see [Install options](#install-options).
 
 ```bash
-# 1. install
+# 1. install (Rust 1.78+)
 cargo install sanctifier-cli
 
 # 2. scan
@@ -171,9 +171,11 @@ SARIF lands in GitHub code-scanning so reviewers see annotations inline on PRs.
 
 ## Run the dashboard locally
 
+Requires **Node.js 20+** and **npm 10+** (enforced by `frontend/package.json` `engines`).
+
 ```bash
 cd frontend
-npm install
+npm ci          # use `npm install` if you are changing dependencies
 npm run dev
 # → http://localhost:3000
 ```
@@ -192,13 +194,18 @@ npm run dev
 
 ### Installation Methods
 
+Every channel below is published automatically from the release workflow on each tagged version.
+
 | Method | Command | Best for |
 |--------|---------|----------|
-| **Cargo (recommended)** | `cargo install sanctifier-cli` | Most users; includes Z3 verification |
-| **Cargo (no Z3)** | `cargo install sanctifier-cli --no-default-features` | Faster install; all rules except S011 work |
+| **Cargo (recommended)** | `cargo install sanctifier-cli` | Most users; needs Rust 1.78+, no Z3 or C toolchain |
+| **npm / npx** | `npx @hypersafed/sanctifier-cli analyze ./contracts` | macOS & Linux with no Rust toolchain; fetches the release binary on first run (Node 18+) |
+| **Homebrew** | `brew install HyperSafeD/sanctifier/sanctifier` | macOS and Linuxbrew |
+| **Scoop (Windows)** | `scoop install https://raw.githubusercontent.com/HyperSafeD/Sanctifier/main/scoop/sanctifier.json` | Windows, with auto-update on new releases |
+| **winget (Windows)** | `winget install HyperSafeD.Sanctifier` | Windows, system package manager |
 | **Docker** | `docker run --rm -v $PWD:/src ghcr.io/hypersafed/sanctifier analyze /src` | No local Rust needed |
 | **GitHub Codespaces** | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/HyperSafeD/Sanctifier) | Cloud IDE, pre-configured |
-| **From source** | `git clone https://github.com/HyperSafeD/Sanctifier && cd Sanctifier && make release` | Latest development version |
+| **From source** | `git clone https://github.com/HyperSafeD/Sanctifier && cd Sanctifier && make dev-setup && make release` | Latest development version; **needs libz3** (see below) |
 
 ### Pre-built Binaries
 
@@ -226,12 +233,14 @@ sha256sum -c sanctifier-linux-amd64.sha256
 
 ### System Requirements
 
-**Minimum:**
-- Rust 1.78+ (if installing via cargo)
+**To install and run the CLI:**
+- Rust 1.78+ (only when installing via cargo; the binary, Docker, npx, Homebrew, Scoop and winget channels need no toolchain)
 - 2GB RAM
 - 500MB disk space
 
-**For full features (including Z3 formal verification):**
+**To run the dashboard:** Node.js 20+ and npm 10+.
+
+**To build the workspace from source** (`make build` / `make release` / `cargo test --workspace`), `sanctifier-core` is compiled with its default `smt` feature, which links Z3:
 
 | Platform | Required Packages |
 |----------|------------------|
@@ -241,19 +250,28 @@ sha256sum -c sanctifier-linux-amd64.sha256
 | **macOS** | `brew install z3 llvm` |
 | **Windows** | Install [Z3](https://github.com/Z3Prover/z3/releases) and [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) |
 
+`make dev-setup` installs the Rust toolchain, the `wasm32-unknown-unknown` target, `wasm-pack`, `soroban-cli` and the Node dependencies for you — it does **not** install libz3, which is platform-specific.
+
 **Optional:**
 - `soroban-cli` for contract deployment features: `cargo install soroban-cli`
 - `wasm-pack` for WASM analysis: `cargo install wasm-pack`
 
-### Lightweight Installation (Skip Z3)
+### Building without Z3
 
-If you don't need formal verification (rule S011), install without Z3 dependencies:
+If you depend on `sanctifier-core` directly and don't need SMT-backed formal verification (rule S011), turn the default features off and re-enable only what you use:
 
-```bash
-cargo install sanctifier-cli --no-default-features
+```toml
+[dependencies]
+sanctifier-core = { version = "0.1", default-features = false, features = ["soroban", "parallel"] }
 ```
 
-This reduces installation time and removes the Z3 dependency requirement. All other rules (S001-S010, S012) remain fully functional.
+| Feature | Default | What it does |
+|---------|---------|--------------|
+| `smt` | on | Z3-backed formal verification (rule S011). Requires libz3 at compile time; drop it for wasm32 targets. |
+| `soroban` | on | Pulls in `soroban-sdk` for the runtime `SanctifiedGuard` trait. |
+| `parallel` | on | Rayon-backed batch APIs (e.g. `AuthGapRule::check_many`) that analyse many sources concurrently. Drop it for wasm32, which has no threads; the batch APIs stay available and run serially. |
+
+The shipped `sanctifier-cli` already builds with `default-features = false, features = ["parallel"]`, which is why installing it never pulls in Z3. All rules except S011 (S001–S010, S012, and the `Z` series) are fully functional without the `smt` feature.
 
 ### Verifying Installation
 
@@ -291,9 +309,10 @@ sanctifier update
 >    - Install Rust via rustup: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
 >    - Restart your terminal or run: `source ~/.cargo/env`
 >
-> 2. **"failed to compile z3-sys"**
+> 2. **"failed to compile z3-sys"** (building from source, or depending on `sanctifier-core` directly)
 >    - Install Z3 development libraries (see System Requirements above)
->    - Or install without Z3: `cargo install sanctifier-cli --no-default-features`
+>    - Or build `sanctifier-core` without the `smt` feature (see [Building without Z3](#building-without-z3))
+>    - Installing the CLI with `cargo install sanctifier-cli` never hits this — it does not build Z3
 >
 > 3. **"sanctifier: command not found" after installation**
 >    - Ensure `~/.cargo/bin` is in your PATH
