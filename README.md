@@ -36,6 +36,8 @@ Sanctifier is the missing layer. **One engine, twelve canonical rules, three dep
 
 Every finding has a stable code — `S001..S012` — so you can filter, suppress, and trend it across releases.
 
+### Core Security Rules (S001–S012)
+
 | Code | What it catches | Why it bites |
 |------|-----------------|--------------|
 | [`S001`](docs/rules/S001.md) | Missing `require_auth` on state-changing calls | Anyone can drain your contract |
@@ -51,7 +53,9 @@ Every finding has a stable code — `S001..S012` — so you can filter, suppress
 | [`S011`](docs/rules/S011.md) | Z3-disproved invariants | Mathematical guarantees you don't have |
 | [`S012`](docs/rules/S012.md) | SEP-41 token interface deviations | Wallets reject your token |
 
-Plus the community **vulnerability database** matches known CVE-style patterns (`SOL-2024-*`) against your AST — so a published exploit anywhere becomes a finding everywhere.
+### Vulnerability Database
+
+The community **vulnerability database** matches known CVE-style patterns (`SOL-2024-*`) against your AST — so a published exploit anywhere becomes a finding everywhere.
 
 ### Zero-knowledge contracts — the `Z001..Z014` series
 
@@ -183,25 +187,18 @@ npm run dev
 
 ## Install options
 
-### Quick Install (Recommended)
+> [!TIP]
+> **Quick start:** For most users, `cargo install sanctifier-cli` is all you need.
 
-The fastest way to install Sanctifier is via cargo from crates.io:
+### Installation Methods
 
-```bash
-cargo install sanctifier-cli
-```
-
-This installs the latest stable release with all features enabled, including Z3 formal verification.
-
-### Alternative Installation Methods
-
-| Method | Command | Notes |
-|--------|---------|-------|
-| **crates.io (latest)** | `cargo install sanctifier-cli` | Recommended for most users |
-| **crates.io (no Z3)** | `cargo install sanctifier-cli --no-default-features` | Lighter install, skips formal verification |
+| Method | Command | Best for |
+|--------|---------|----------|
+| **Cargo (recommended)** | `cargo install sanctifier-cli` | Most users; includes Z3 verification |
+| **Cargo (no Z3)** | `cargo install sanctifier-cli --no-default-features` | Faster install; all rules except S011 work |
+| **Docker** | `docker run --rm -v $PWD:/src ghcr.io/hypersafed/sanctifier analyze /src` | No local Rust needed |
+| **GitHub Codespaces** | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/HyperSafeD/Sanctifier) | Cloud IDE, pre-configured |
 | **From source** | `git clone https://github.com/HyperSafeD/Sanctifier && cd Sanctifier && make release` | Latest development version |
-| **GitHub Codespaces** | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/HyperSafeD/Sanctifier) | Pre-configured cloud environment |
-| **Docker** | `docker run --rm -v $PWD:/src ghcr.io/hypersafed/sanctifier analyze /src` | No local install needed |
 
 ### Pre-built Binaries
 

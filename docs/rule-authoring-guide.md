@@ -7,9 +7,9 @@ Sanctifier rule using the YAML rule format.
 
 ## Prerequisites
 
-- Sanctifier CLI installed (`cargo install sanctifier` or see [Getting Started](../getting-started.md))
-- A Soroban smart-contract project to lint
-- Basic familiarity with YAML
+- **Sanctifier CLI installed** — Install via `cargo install sanctifier-cli` (or see [Installation Options](../README.md#install-options))
+- **A Soroban smart-contract project** to lint
+- **Basic familiarity with YAML** syntax
 
 ---
 
