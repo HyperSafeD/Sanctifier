@@ -1,15 +1,4 @@
 #![no_std]
-use soroban_sdk::{contract, contractimpl, contracttype, Env, Symbol};
-
-/// Storage keys for this contract. A `contracttype` enum instead of raw
-/// `Symbol`s (issue #1466) so every storage slot is a distinct, compiler-
-/// checked variant -- a typo'd string key silently reading/writing the wrong
-/// slot is no longer possible, and adding a new key can't accidentally
-/// collide with an existing one.
-#[contracttype]
-#[derive(Clone)]
-pub enum DataKey {
-    Admin,
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Env, Symbol};
 
 /// Typed payload for the `admin_set` event (issue #1445), matching the
@@ -21,6 +10,8 @@ use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Env, Symbo
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AdminSetEvent {
     pub new_admin: Symbol,
+}
+
 /// Storage keys using contracttype enum to prevent collisions.
 ///
 /// Using an enum ensures:
@@ -81,18 +72,13 @@ impl VulnerableContract {
     // ❌ SECURITY FLAW: Missing authentication!
     // Anyone can call this and overwrite the admin.
     pub fn set_admin(env: Env, new_admin: Symbol) {
-
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
-        env.storage()
-            .instance()
-            .set(&symbol_short!("admin"), &new_admin);
+        env.storage().instance().set(&StorageKey::Admin, &new_admin);
         env.events().publish(
             (symbol_short!("admin_set"),),
             AdminSetEvent {
                 new_admin: new_admin.clone(),
             },
         );
-            .set(&StorageKey::Admin, &new_admin);
     }
 
     // ✅ Secure version with proper authentication
@@ -100,24 +86,18 @@ impl VulnerableContract {
         let _admin: Symbol = env
             .storage()
             .instance()
-            .get(&DataKey::Admin)
-            .expect("Admin not set");
-        // env.require_auth(&admin); // Assume we can verify this if it were an Address
-        env.storage().instance().set(&DataKey::Admin, &new_admin);
             .get(&StorageKey::Admin)
             .expect("Admin not set");
         // env.require_auth(&admin); // Assume we can verify this if it were an Address
-
         env.storage()
             .instance()
-            .set(&symbol_short!("admin"), &new_admin);
+            .set(&StorageKey::Admin, &new_admin);
         env.events().publish(
             (symbol_short!("admin_set"),),
             AdminSetEvent {
                 new_admin: new_admin.clone(),
             },
         );
-            .set(&StorageKey::Admin, &new_admin);
     }
 
     /// Get current admin (demonstrates key reuse safety)
@@ -151,22 +131,22 @@ impl VulnerableContract {
         let balance: u64 = env
             .storage()
             .instance()
-            .get(&symbol_short!("balance"))
+            .get(&StorageKey::Balance)
             .unwrap_or(0);
         env.storage()
             .instance()
-            .set(&symbol_short!("balance"), &credit_pure(balance, amount));
+            .set(&StorageKey::Balance, &credit_pure(balance, amount));
     }
 
     pub fn debit(env: Env, amount: u64) {
         let balance: u64 = env
             .storage()
             .instance()
-            .get(&symbol_short!("balance"))
+            .get(&StorageKey::Balance)
             .unwrap_or(0);
         env.storage()
             .instance()
-            .set(&symbol_short!("balance"), &debit_pure(balance, amount));
+            .set(&StorageKey::Balance, &debit_pure(balance, amount));
     }
 
     // ✅ Secure versions, backed by the checked arithmetic Kani proves safe.
@@ -174,24 +154,24 @@ impl VulnerableContract {
         let balance: u64 = env
             .storage()
             .instance()
-            .get(&symbol_short!("balance"))
+            .get(&StorageKey::Balance)
             .unwrap_or(0);
         let new_balance = credit_pure_checked(balance, amount).expect("balance overflow");
         env.storage()
             .instance()
-            .set(&symbol_short!("balance"), &new_balance);
+            .set(&StorageKey::Balance, &new_balance);
     }
 
     pub fn debit_secure(env: Env, amount: u64) {
         let balance: u64 = env
             .storage()
             .instance()
-            .get(&symbol_short!("balance"))
+            .get(&StorageKey::Balance)
             .unwrap_or(0);
         let new_balance = debit_pure_checked(balance, amount).expect("balance underflow");
         env.storage()
             .instance()
-            .set(&symbol_short!("balance"), &new_balance);
+            .set(&StorageKey::Balance, &new_balance);
     }
 }
 
