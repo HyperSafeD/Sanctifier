@@ -1,12 +1,10 @@
 "use client";
 
-import { useState, useCallback, useMemo, useTransition, useEffect } from "react";
+import { useCallback, useMemo, useTransition, useEffect } from "react";
 import dynamic from "next/dynamic";
-import type { Severity } from "../types";
 import { transformReport, extractCallGraph, normalizeReport } from "../lib/transform";
 import { normalizeFindingCodeQuery, validateFindingCodeQuery } from "../lib/finding-filters";
 import { validateContractBatch } from "../lib/upload-validation";
-import type { RejectedFile } from "../lib/upload-validation";
 import type { FileProgress } from "../components/DashboardHeader";
 import type { WorkspaceSummary, AnalysisReport, Finding } from "../types";
 import {
@@ -29,32 +27,26 @@ import { useWorkspace } from "../providers/WorkspaceProvider";
 import { WorkspaceSidebar } from "../components/WorkspaceSidebar";
 import { DashboardHeader } from "../components/DashboardHeader";
 import { getSettingsHeaders } from "../lib/settings";
-import { saveScanRecord, getScanHistory, clearScanHistory, type ScanRecord } from "../lib/scan-history";
+import { saveScanRecord, getScanHistory, clearScanHistory } from "../lib/scan-history";
+import { useDashboardActions, useDashboardState } from "../providers/DashboardProvider";
 
 const CallGraph = dynamic(() => import("../components/CallGraph").then((m) => m.CallGraph), {
   ssr: false,
   loading: () => <CallGraphSkeleton />,
 });
 
-type Tab = "findings" | "callgraph" | "diff";
+/** How long the rejected-file notice stays on screen before it clears. */
+const REJECTED_FILE_NOTICE_MS = 6000;
 
 export default function DashboardPage() {
   const { workspace, selectedContract, setWorkspace, updateContractReport } = useWorkspace();
-  const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
-  const [error, setError] = useState<string | null>(null);
-  const [jsonInput, setJsonInput] = useState("");
-  const [baselineJsonInput, setBaselineJsonInput] = useState("");
-  const [activeTab, setActiveTab] = useState<Tab>("findings");
-  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
-  const [isUploadingContract, setIsUploadingContract] = useState(false);
-  const [codeFilterInput, setCodeFilterInput] = useState("");
-  const [codeFilterError, setCodeFilterError] = useState<string | null>(null);
+  const {
+    severityFilter, error, jsonInput, baselineJsonInput, activeTab,
+    uploadStatus, isUploadingContract, codeFilterInput, codeFilterError,
+    sidebarOpen, batchProgress, rejectedFiles, trendRecords, sourceCache,
+  } = useDashboardState();
+  const actions = useDashboardActions();
   const [isPending, startTransition] = useTransition();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<Record<string, FileProgress>>({});
-  const [rejectedFiles, setRejectedFiles] = useState<RejectedFile[]>([]);
-  const [trendRecords, setTrendRecords] = useState<ScanRecord[]>([]);
-  const [sourceCache, setSourceCache] = useState<Record<string, string>>({});
 
   const currentReport = selectedContract?.report;
   const currentContractName = selectedContract?.name ?? "default";
@@ -62,8 +54,8 @@ export default function DashboardPage() {
   // Load trend data on mount and when workspace changes
   useEffect(() => {
     const wsName = workspace?.workspace ?? currentContractName;
-    getScanHistory(wsName).then(setTrendRecords).catch(() => {});
-  }, [workspace, currentContractName]);
+    getScanHistory(wsName).then(actions.setTrendRecords).catch(() => {});
+  }, [workspace, currentContractName, actions]);
 
   const { findings, nodes: callGraphNodes, edges: callGraphEdges } = useMemo(() => {
     if (!currentReport) {
@@ -116,24 +108,23 @@ export default function DashboardPage() {
       ...counts,
       total: findingsList.length,
     }).then(() => {
-      getScanHistory(wsName).then(setTrendRecords).catch(() => {});
+      getScanHistory(wsName).then(actions.setTrendRecords).catch(() => {});
     }).catch(() => {});
-  }, [workspace, currentContractName]);
+  }, [workspace, currentContractName, actions]);
 
   const parseReport = useCallback((text: string) => {
-    setError(null);
-    setUploadStatus(null);
+    actions.parseStarted();
     try {
       const parsed = parseJsonInput(text);
       applyReport(parsed);
       const report = normalizeReport(parsed);
       const findingsList = transformReport(report);
       persistScanRecord(findingsList);
-    } catch (e) {
-      setError("Invalid JSON");
+    } catch {
+      actions.parseFailed("Invalid JSON");
       setWorkspace(null);
     }
-  }, [applyReport, persistScanRecord, setWorkspace]);
+  }, [actions, applyReport, persistScanRecord, setWorkspace]);
 
   const loadReport = useCallback(() => {
     parseReport(jsonInput);
@@ -145,12 +136,12 @@ export default function DashboardPage() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      setJsonInput(text);
+      actions.setJsonInput(text);
       parseReport(text);
     };
     reader.readAsText(file);
     e.target.value = "";
-  }, [parseReport]);
+  }, [actions, parseReport]);
 
   const analyzeFile = useCallback(async (file: File): Promise<{ payload: unknown; source: string }> => {
     const formData = new FormData();
@@ -191,36 +182,29 @@ export default function DashboardPage() {
     const { valid, rejected } = validateContractBatch(files);
 
     if (rejected.length > 0) {
-      setRejectedFiles(rejected);
-      setTimeout(() => setRejectedFiles([]), 6000);
+      actions.rejectFiles(rejected);
+      setTimeout(() => actions.clearRejectedFiles(), REJECTED_FILE_NOTICE_MS);
     }
 
     if (valid.length === 0) return;
 
-    setError(null);
-    setIsUploadingContract(true);
-
     if (valid.length === 1) {
       const file = valid[0];
-      setBatchProgress({ [file.name]: "analyzing" });
-      setUploadStatus(`Analyzing ${file.name}…`);
+      actions.uploadStarted({ [file.name]: "analyzing" }, `Analyzing ${file.name}…`);
       try {
         const { payload, source } = await analyzeFile(file);
-        setSourceCache((prev) => ({ ...prev, [file.name]: source }));
-        setJsonInput(JSON.stringify(payload, null, 2));
+        actions.cacheSources({ [file.name]: source });
+        actions.setJsonInput(JSON.stringify(payload, null, 2));
         applyReport(payload, source);
         // Persist scan record for trend chart
         const report = normalizeReport(payload);
         const transformedFindings = transformReport(report);
         persistScanRecord(transformedFindings);
-        setBatchProgress({ [file.name]: "done" });
-        setUploadStatus(`Analysis report ready for ${file.name}.`);
+        actions.fileProgress(file.name, "done");
+        actions.uploadSucceeded(`Analysis report ready for ${file.name}.`);
       } catch (err) {
-        setBatchProgress({ [file.name]: "error" });
-        setUploadStatus(null);
-        setError(err instanceof Error ? err.message : "Contract analysis failed");
-      } finally {
-        setIsUploadingContract(false);
+        actions.fileProgress(file.name, "error");
+        actions.uploadFailed(err instanceof Error ? err.message : "Contract analysis failed");
       }
       return;
     }
@@ -228,8 +212,7 @@ export default function DashboardPage() {
     // Batch: create workspace skeleton, then analyze each file
     const initialProgress: Record<string, FileProgress> = {};
     for (const f of valid) initialProgress[f.name] = "pending";
-    setBatchProgress(initialProgress);
-    setUploadStatus(`Analyzing ${valid.length} files…`);
+    actions.uploadStarted(initialProgress, `Analyzing ${valid.length} files…`);
 
     const skeleton: WorkspaceSummary = {
       workspace: "batch-upload",
@@ -245,40 +228,38 @@ export default function DashboardPage() {
 
     await Promise.all(
       valid.map(async (file) => {
-        setBatchProgress((prev) => ({ ...prev, [file.name]: "analyzing" }));
+        actions.fileProgress(file.name, "analyzing");
         try {
           const { payload, source } = await analyzeFile(file);
           newSourceCache[file.name] = source;
           const report = normalizeReport(payload);
           updateContractReport(file.name, report);
-          setBatchProgress((prev) => ({ ...prev, [file.name]: "done" }));
+          actions.fileProgress(file.name, "done");
           doneCount++;
         } catch {
-          setBatchProgress((prev) => ({ ...prev, [file.name]: "error" }));
+          actions.fileProgress(file.name, "error");
           errorCount++;
         }
       })
     );
 
-    setSourceCache((prev) => ({ ...prev, ...newSourceCache }));
-    setIsUploadingContract(false);
-    setUploadStatus(
+    actions.cacheSources(newSourceCache);
+    actions.uploadSucceeded(
       `Batch complete: ${doneCount} analyzed${errorCount > 0 ? `, ${errorCount} failed` : ""}.`
     );
-  }, [analyzeFile, applyReport, setWorkspace, updateContractReport, persistScanRecord]);
+  }, [actions, analyzeFile, applyReport, setWorkspace, updateContractReport, persistScanRecord]);
 
   const handleClearHistory = useCallback(() => {
     const wsName = workspace?.workspace ?? currentContractName;
     clearScanHistory(wsName).then(() => {
-      setTrendRecords([]);
+      actions.setTrendRecords([]);
     }).catch(() => {});
-  }, [workspace, currentContractName]);
+  }, [workspace, currentContractName, actions]);
 
   const handleCodeFilterChange = useCallback((input: string) => {
     const normalized = normalizeFindingCodeQuery(input);
-    setCodeFilterInput(normalized);
-    setCodeFilterError(validateFindingCodeQuery(normalized));
-  }, []);
+    actions.setCodeFilter(normalized, validateFindingCodeQuery(normalized));
+  }, [actions]);
 
   const handleShareReport = async () => {
     const workspace = selectedContract?.report
@@ -287,7 +268,7 @@ export default function DashboardPage() {
     const data = workspace ?? currentReport;
     if (!data) return;
     if (isShareLinkTooLarge(data as Parameters<typeof copyShareLink>[0])) {
-      setError("Report is too large to share via URL. Export as PDF instead.");
+      actions.setError("Report is too large to share via URL. Export as PDF instead.");
       return;
     }
     await copyShareLink(data as Parameters<typeof copyShareLink>[0]);
@@ -302,7 +283,7 @@ export default function DashboardPage() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
         <DashboardHeader
           jsonInput={jsonInput}
-          setJsonInput={setJsonInput}
+          setJsonInput={actions.setJsonInput}
           loadReport={loadReport}
           handleFileUpload={handleFileUpload}
           onContractFiles={handleContractFiles}
@@ -321,7 +302,7 @@ export default function DashboardPage() {
         <div className="md:hidden">
           <button
             aria-label="Open workspace sidebar"
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => actions.setSidebarOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -334,7 +315,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex flex-col md:flex-row gap-8">
-          <WorkspaceSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+          <WorkspaceSidebar isOpen={sidebarOpen} onClose={() => actions.setSidebarOpen(false)} />
 
           <div className="flex-1 space-y-8">
             {hasData && (
@@ -354,7 +335,7 @@ export default function DashboardPage() {
 
                 <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-700 theme-high-contrast:border-white" role="tablist" aria-label="Analysis view tabs">
                   <button
-                    onClick={() => setActiveTab("findings")}
+                    onClick={() => actions.setActiveTab("findings")}
                     role="tab"
                     aria-selected={activeTab === "findings"}
                     aria-controls="findings-panel"
@@ -367,7 +348,7 @@ export default function DashboardPage() {
                     Findings
                   </button>
                   <button
-                    onClick={() => setActiveTab("callgraph")}
+                    onClick={() => actions.setActiveTab("callgraph")}
                     role="tab"
                     aria-selected={activeTab === "callgraph"}
                     aria-controls="callgraph-panel"
@@ -380,7 +361,7 @@ export default function DashboardPage() {
                     Call Graph
                   </button>
                   <button
-                    onClick={() => setActiveTab("diff")}
+                    onClick={() => actions.setActiveTab("diff")}
                     role="tab"
                     aria-selected={activeTab === "diff"}
                     aria-controls="diff-panel"
@@ -399,7 +380,7 @@ export default function DashboardPage() {
                     <section>
                       <h2 className="text-lg font-semibold mb-4">Filter Findings</h2>
                       <div className="space-y-4">
-                        <SeverityFilter selected={severityFilter} onChange={setSeverityFilter} />
+                        <SeverityFilter selected={severityFilter} onChange={actions.setSeverityFilter} />
                         <div className="max-w-xs">
                           <label htmlFor="finding-code-filter" className="mb-1 block text-sm font-medium">
                             Search by finding code
@@ -462,7 +443,7 @@ export default function DashboardPage() {
                           <textarea
                             id="baseline-json-input"
                             value={baselineJsonInput}
-                            onChange={(e) => setBaselineJsonInput(e.target.value)}
+                            onChange={(e) => actions.setBaselineJsonInput(e.target.value)}
                             placeholder='Paste baseline JSON report here...'
                             rows={4}
                             className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 font-mono text-xs outline-none transition focus-visible:ring-2 focus-visible:ring-zinc-400 dark:border-zinc-600 dark:bg-zinc-950"
