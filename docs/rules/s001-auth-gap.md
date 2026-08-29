@@ -97,6 +97,50 @@ argument) depends on the function's semantics.
 
 ---
 
+## Batch analysis (parallel)
+
+Whole-project scans should use the batch APIs rather than calling `check` in a loop. They fan the
+per-source parse-and-walk out across rayon's thread pool, one source file per task:
+
+```rust
+use sanctifier_core::rules::auth_gap::AuthGapRule;
+
+let rule = AuthGapRule::new();
+let sources: Vec<String> = read_all_contract_sources()?;
+
+// Index-aligned with `sources`, so results map back to the file they came from.
+let per_file = rule.check_many(&sources);
+for (path, violations) in paths.iter().zip(&per_file) {
+    for v in violations {
+        println!("{path}: {}", v.message);
+    }
+}
+
+// Same shape for auto-fix patches.
+let patches = rule.fix_many(&sources);
+```
+
+**Guarantees**
+
+| Property | Behaviour |
+|---|---|
+| Ordering | Results are index-aligned with the input, regardless of task completion order — reports stay reproducible |
+| Isolation | A parse failure, oversized source, or null-byte source only affects its own result slot |
+| Threshold | Batches smaller than `PARALLEL_SOURCE_THRESHOLD` (2) stay on the calling thread |
+| Equivalence | `check_many(&[s])[0] == check(s)` for every source |
+
+**Why per-source and not per-AST-node.** A parsed `syn::File` holds `proc_macro2::Span`s, which
+are neither `Send` nor `Sync`, so an AST cannot cross a thread boundary once built. Parsing inside
+the worker keeps every AST thread-local and leaves only the owned `RuleViolation` / `Patch` values
+to be collected.
+
+**Feature flag.** The batch APIs are always available. Concurrency comes from the `parallel`
+feature on `sanctifier-core`, which is on by default and enabled by `sanctifier-cli`. With the
+feature off — the wasm32 build, which has no threads — the same calls run serially and return
+identical results.
+
+---
+
 ## Suppression
 
 ```rust

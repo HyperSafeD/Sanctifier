@@ -1,7 +1,37 @@
+//! S001 — authentication gap detection.
+//!
+//! A public contract function that mutates storage or calls out to another
+//! contract without an authentication check is an auth gap. [`AuthGapRule`]
+//! reports one violation per offending function and can auto-fix it by
+//! inserting `env.require_auth()`.
+//!
+//! # Parallelism
+//!
+//! Whole-project scans call [`AuthGapRule::check_many`] /
+//! [`AuthGapRule::fix_many`], which fan the per-source parse-and-walk out
+//! across rayon's thread pool — one source file per task. Parallelism is
+//! deliberately drawn at the *source* boundary rather than at the AST-node
+//! boundary: a parsed [`syn::File`] holds `proc_macro2::Span`s, which are
+//! neither `Send` nor `Sync`, so an AST cannot cross a thread boundary once
+//! built. Parsing inside the worker keeps every AST thread-local and leaves
+//! only the owned [`RuleViolation`] / [`Patch`] values to be collected.
+//!
+//! The batch APIs exist whether or not the `parallel` feature is enabled;
+//! without it they run serially, which is what the wasm32 build uses.
+
 use crate::input_validation::{validate_no_null_bytes, validate_source_size};
 use crate::rules::{Patch, Rule, RuleViolation, Severity};
+#[cfg(feature = "parallel")]
+use rayon::prelude::*;
 use syn::spanned::Spanned;
 use syn::{parse_str, File, Item};
+
+/// Number of sources at or above which [`AuthGapRule::check_many`] and
+/// [`AuthGapRule::fix_many`] fan out across rayon's thread pool.
+///
+/// A single source has nothing to overlap with, so the batch APIs stay on the
+/// calling thread below this size and avoid the scheduling hand-off entirely.
+pub const PARALLEL_SOURCE_THRESHOLD: usize = 2;
 
 /// Rule that flags public functions modifying state without auth.
 pub struct AuthGapRule;
@@ -27,6 +57,72 @@ impl AuthGapRule {
     /// Create a new instance.
     pub fn new() -> Self {
         Self
+    }
+
+    /// Run [`Rule::check`] over many sources, one rayon task per source.
+    ///
+    /// The returned vector is index-aligned with `sources`, so callers can map
+    /// each inner `Vec<RuleViolation>` back to the file it came from. Ordering
+    /// is preserved regardless of the order in which the tasks finish, which
+    /// keeps reports reproducible across runs.
+    ///
+    /// Batches smaller than [`PARALLEL_SOURCE_THRESHOLD`] — and every batch
+    /// when the `parallel` feature is off — run serially.
+    ///
+    /// ```
+    /// use sanctifier_core::rules::auth_gap::AuthGapRule;
+    ///
+    /// let rule = AuthGapRule::new();
+    /// let sources = [
+    ///     "impl C { pub fn a(env: Env) { env.storage().instance().set(&k, &v); } }",
+    ///     "impl C { pub fn b(env: Env) { admin.require_auth(); env.storage().instance().set(&k, &v); } }",
+    /// ];
+    /// let per_file = rule.check_many(&sources);
+    /// assert_eq!(per_file.len(), 2);
+    /// assert!(!per_file[0].is_empty());
+    /// assert!(per_file[1].is_empty());
+    /// ```
+    pub fn check_many<S>(&self, sources: &[S]) -> Vec<Vec<RuleViolation>>
+    where
+        S: AsRef<str> + Sync,
+    {
+        self.map_sources(sources, |source| self.check(source))
+    }
+
+    /// Run [`Rule::fix`] over many sources, one rayon task per source.
+    ///
+    /// Index-aligned with `sources`, with the same threshold and ordering
+    /// guarantees as [`AuthGapRule::check_many`].
+    pub fn fix_many<S>(&self, sources: &[S]) -> Vec<Vec<Patch>>
+    where
+        S: AsRef<str> + Sync,
+    {
+        self.map_sources(sources, |source| self.fix(source))
+    }
+
+    /// Apply `run` to every source, in parallel when it is worth the hand-off.
+    #[cfg(feature = "parallel")]
+    fn map_sources<S, T, F>(&self, sources: &[S], run: F) -> Vec<T>
+    where
+        S: AsRef<str> + Sync,
+        T: Send,
+        F: Fn(&str) -> T + Sync + Send,
+    {
+        if sources.len() < PARALLEL_SOURCE_THRESHOLD {
+            return sources.iter().map(|s| run(s.as_ref())).collect();
+        }
+        sources.par_iter().map(|s| run(s.as_ref())).collect()
+    }
+
+    /// Serial fallback used when the `parallel` feature is disabled.
+    #[cfg(not(feature = "parallel"))]
+    fn map_sources<S, T, F>(&self, sources: &[S], run: F) -> Vec<T>
+    where
+        S: AsRef<str> + Sync,
+        T: Send,
+        F: Fn(&str) -> T + Sync + Send,
+    {
+        sources.iter().map(|s| run(s.as_ref())).collect()
     }
 }
 
@@ -476,6 +572,156 @@ mod tests {
             violations.is_empty(),
             "whitespace-only source must produce no findings"
         );
+    }
+
+    // ── Parallel batch APIs ───────────────────────────────────────────────────
+
+    /// Sources sized to cross [`PARALLEL_SOURCE_THRESHOLD`], alternating
+    /// between a flagged and a clean function so index alignment is testable.
+    fn batch_sources(count: usize) -> Vec<String> {
+        (0..count)
+            .map(|i| {
+                if i % 2 == 0 {
+                    format!(
+                        r#"
+impl Contract{i} {{
+    pub fn set_admin_{i}(env: Env, admin: Address) {{
+        env.storage().persistent().set(&symbol_short!("A"), &admin);
+    }}
+}}
+"#
+                    )
+                } else {
+                    format!(
+                        r#"
+impl Contract{i} {{
+    pub fn set_admin_{i}(env: Env, admin: Address) {{
+        admin.require_auth();
+        env.storage().persistent().set(&symbol_short!("A"), &admin);
+    }}
+}}
+"#
+                    )
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn check_many_matches_sequential_check_per_source() {
+        let rule = AuthGapRule::new();
+        let sources = batch_sources(16);
+
+        let batched = rule.check_many(&sources);
+        assert_eq!(
+            batched.len(),
+            sources.len(),
+            "one result slot per input source"
+        );
+
+        for (i, (source, violations)) in sources.iter().zip(&batched).enumerate() {
+            let sequential = rule.check(source);
+            assert_eq!(
+                sequential.len(),
+                violations.len(),
+                "source {i} must yield the same violation count in both modes"
+            );
+            for (seq, par) in sequential.iter().zip(violations) {
+                assert_eq!(seq.message, par.message, "source {i} message mismatch");
+                assert_eq!(seq.location, par.location, "source {i} location mismatch");
+            }
+        }
+    }
+
+    #[test]
+    fn check_many_preserves_input_order() {
+        let rule = AuthGapRule::new();
+        let sources = batch_sources(16);
+
+        let batched = rule.check_many(&sources);
+
+        for (i, violations) in batched.iter().enumerate() {
+            if i % 2 == 0 {
+                assert_eq!(violations.len(), 1, "source {i} must report its auth gap");
+                assert!(
+                    violations[0].message.contains(&format!("set_admin_{i}")),
+                    "result slot {i} holds another source's violation: {}",
+                    violations[0].message
+                );
+            } else {
+                assert!(
+                    violations.is_empty(),
+                    "source {i} calls require_auth and must stay clean"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn check_many_below_threshold_stays_correct() {
+        let rule = AuthGapRule::new();
+        let single = batch_sources(1);
+        assert!(single.len() < PARALLEL_SOURCE_THRESHOLD);
+
+        let batched = rule.check_many(&single);
+        assert_eq!(batched.len(), 1);
+        assert_eq!(batched[0].len(), rule.check(&single[0]).len());
+    }
+
+    #[test]
+    fn check_many_on_empty_batch_returns_empty() {
+        let rule = AuthGapRule::new();
+        let empty: [&str; 0] = [];
+        assert!(rule.check_many(&empty).is_empty());
+    }
+
+    #[test]
+    fn check_many_isolates_unparseable_sources() {
+        let rule = AuthGapRule::new();
+        let sources = vec![
+            "not valid rust {{{{".to_string(),
+            batch_sources(1).remove(0),
+            "\0".to_string(),
+        ];
+
+        let batched = rule.check_many(&sources);
+
+        assert!(
+            batched[0].is_empty(),
+            "a parse failure must not affect its neighbours"
+        );
+        assert_eq!(
+            batched[1].len(),
+            1,
+            "the valid source must still be checked"
+        );
+        assert_eq!(
+            batched[2].len(),
+            1,
+            "the null-byte source must still emit its guard violation"
+        );
+        assert_eq!(batched[2][0].severity, super::Severity::Error);
+    }
+
+    #[test]
+    fn fix_many_matches_sequential_fix_per_source() {
+        let rule = AuthGapRule::new();
+        let sources = batch_sources(8);
+
+        let batched = rule.fix_many(&sources);
+        assert_eq!(batched.len(), sources.len());
+
+        for (i, (source, patches)) in sources.iter().zip(&batched).enumerate() {
+            let sequential = rule.fix(source);
+            assert_eq!(
+                sequential.len(),
+                patches.len(),
+                "source {i} must yield the same patch count in both modes"
+            );
+            for (seq, par) in sequential.iter().zip(patches) {
+                assert_eq!(seq, par, "source {i} patch mismatch");
+            }
+        }
     }
 
     #[test]

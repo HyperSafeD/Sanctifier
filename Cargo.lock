@@ -3206,6 +3206,7 @@ dependencies = [
  "proc-macro2",
  "proptest",
  "quote",
+ "rayon",
  "regex",
  "serde",
  "serde_json",

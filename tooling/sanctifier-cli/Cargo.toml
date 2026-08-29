@@ -17,7 +17,7 @@ authors = ["Sanctifier Contributors <maintainers@hypersafed.com>"]
 clap = { version = "4.4", features = ["derive"] }
 clap_complete = "4.4"
 anyhow = "1.0"
-sanctifier-core = { version = "0.1.0", path = "../sanctifier-core", default-features = false }
+sanctifier-core = { version = "0.1.0", path = "../sanctifier-core", default-features = false, features = ["parallel"] }
 toml = "0.8"
 toml_edit = "0.22"
 tokio = { version = "1.0", features = ["full"] }
