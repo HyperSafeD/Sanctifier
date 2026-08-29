@@ -74,7 +74,7 @@ pub enum SmtBackend {
 // ── Circuit range-check types (Z007 deep-verify) ──────────────────────────────
 
 /// Result of a circuit range-check verification.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CircuitRangeCheckResult {
     /// Template name.
     pub template_name: String,
@@ -83,7 +83,7 @@ pub struct CircuitRangeCheckResult {
 }
 
 /// A signal that may be under-constrained.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FlaggedSignal {
     /// Signal name.
     pub signal_name: String,

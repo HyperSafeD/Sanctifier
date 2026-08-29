@@ -32,31 +32,11 @@ use z3::ast::{Ast, Int};
 use z3::{Config, Context, SatResult, Solver};
 
 use crate::circom_parser::CircomFile;
-pub use crate::smt::types::{CircuitRangeCheckResult, FlaggedSignal};
+use crate::smt::types::{CircuitRangeCheckResult, FlaggedSignal};
 
 /// BN254 (BabyJubJub) field modulus used by Circom 2.x.
 const BN254_MODULUS: &str =
     "21888242871839275222246405745257275088548364400416034343698204186575808495617";
-
-/// Result of a circuit range-check verification.
-#[derive(Debug, Clone, PartialEq)]
-pub struct CircuitRangeCheckResult {
-    /// Template name.
-    pub template_name: String,
-    /// Signals flagged as potentially under-constrained.
-    pub flagged_signals: Vec<FlaggedSignal>,
-}
-
-/// A signal that may be under-constrained.
-#[derive(Debug, Clone, PartialEq)]
-pub struct FlaggedSignal {
-    /// Signal name.
-    pub signal_name: String,
-    /// The SMT model (counterexample) when available.
-    pub counterexample: Option<String>,
-    /// Whether the solver timed out.
-    pub is_timeout: bool,
-}
 
 /// Verify that all signals in a circuit are range-constrained.
 ///
@@ -485,5 +465,33 @@ template OverflowCheck() {
         // For now, check that the analysis runs and produces consistent
         // results.
         let _ = results;
+    }
+
+    /// Regression test: verify that `CircuitRangeCheckResult` returned by
+    /// `verify_circuit_range_checks` is the same type as `crate::smt::types::CircuitRangeCheckResult`
+    /// (previously, duplicate struct definitions caused a type mismatch).
+    #[test]
+    fn circuit_range_result_is_types_module_type() {
+        let circuit = parse(VULNERABLE_CIRCUIT).unwrap();
+        let results = verify_circuit_range_checks(&circuit, 5000);
+        assert!(!results.is_empty());
+
+        // Verify the returned type is exactly `crate::smt::types::CircuitRangeCheckResult`
+        // by assigning it to a variable with that explicit type.
+        let _typed_results: Vec<crate::smt::types::CircuitRangeCheckResult> = results;
+    }
+
+    /// Regression test: verify `CircuitRangeCheckResult` and `FlaggedSignal`
+    /// implement `Serialize` (they live in `types.rs` with `#[derive(Serialize)]`).
+    #[test]
+    fn circuit_range_types_are_serializable() {
+        let circuit = parse(VULNERABLE_CIRCUIT).unwrap();
+        let results = verify_circuit_range_checks(&circuit, 5000);
+        assert!(!results.is_empty());
+
+        // Should serialize without error.
+        let json = serde_json::to_string(&results).expect("results should serialize");
+        assert!(json.contains("flagged_signals"));
+        assert!(json.contains("template_name"));
     }
 }

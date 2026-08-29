@@ -1,8 +1,6 @@
 use crate::rules::{Rule, RuleViolation, Severity};
 use crate::ArithmeticIssue;
-use rayon::prelude::*;
 use std::collections::HashSet;
-use std::sync::Mutex;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{parse_str, File};
@@ -153,16 +151,16 @@ impl ArithmeticOverflowRule {
     /// let violations = rule.check_parallel(&sources);
     /// ```
     pub fn check_parallel(&self, sources: &[&str]) -> Vec<RuleViolation> {
-        let violations = Mutex::new(Vec::new());
+        let mut violations = Vec::new();
         
-        sources.par_iter().for_each(|source| {
+        for source in sources {
             let file_violations = self.check(source);
             if !file_violations.is_empty() {
-                violations.lock().unwrap().extend(file_violations);
+                violations.extend(file_violations);
             }
-        });
+        }
         
-        violations.into_inner().unwrap()
+        violations
     }
     
     /// Check multiple files from paths in parallel.
@@ -190,9 +188,9 @@ impl ArithmeticOverflowRule {
     /// let violations = rule.check_files_parallel(&paths);
     /// ```
     pub fn check_files_parallel(&self, paths: &[&std::path::Path]) -> Vec<RuleViolation> {
-        let violations = Mutex::new(Vec::new());
+        let mut violations = Vec::new();
         
-        paths.par_iter().for_each(|path| {
+        for path in paths {
             if let Ok(source) = std::fs::read_to_string(path) {
                 let mut file_violations = self.check(&source);
                 
@@ -206,12 +204,12 @@ impl ArithmeticOverflowRule {
                 }
                 
                 if !file_violations.is_empty() {
-                    violations.lock().unwrap().extend(file_violations);
+                    violations.extend(file_violations);
                 }
             }
-        });
+        }
         
-        violations.into_inner().unwrap()
+        violations
     }
 }
 
@@ -811,5 +809,27 @@ mod tests {
             1,
             "arithmetic with a non-constant operand must still be flagged"
         );
+    }
+
+    /// Regression test: `check_parallel` works without rayon (was previously
+    /// using `par_iter()` which required the rayon crate as a dependency).
+    #[test]
+    fn test_check_parallel_compiles_and_returns_correct_results() {
+        let rule = ArithmeticOverflowRule::new();
+        let source_a = r#"
+            fn add(a: u64, b: u64) -> u64 {
+                a + b
+            }
+        "#;
+        let source_b = r#"
+            fn safe(a: u64) -> u64 {
+                a.checked_add(1).unwrap_or(0)
+            }
+        "#;
+        let sources = vec![source_a, source_b];
+        let violations = rule.check_parallel(&sources);
+        // source_a has one `+` violation; source_b has none.
+        assert_eq!(violations.len(), 1);
+        assert!(violations[0].location.contains("add:"));
     }
 }

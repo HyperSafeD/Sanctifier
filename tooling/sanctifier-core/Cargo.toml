@@ -38,6 +38,7 @@ criterion = "0.5.1"
 insta = { version = "1.40", features = ["json", "redactions"] }
 serde_json = "1.0"
 proptest = "1.4"
+tempfile = "3"
 
 [[bench]]
 name = "benchmark"
