@@ -12,13 +12,17 @@ categories = ["development-tools::testing", "cryptography::cryptocurrencies"]
 readme = "README.md"
 
 [features]
-default = ["smt", "soroban"]
+default = ["smt", "soroban", "parallel"]
 ## Enables the Z3-backed formal-verification pass. Requires libz3 at compile
 ## time. Disable with default-features = false when targeting wasm32.
 smt = ["dep:z3"]
 ## Enables soroban-sdk dependency (the SanctifiedGuard trait). Disable when
 ## targeting wasm32 to avoid duplicate panic_impl linker errors.
 soroban = ["dep:soroban-sdk"]
+## Enables the rayon-backed batch APIs (e.g. `AuthGapRule::check_many`) that
+## analyse many sources concurrently. Disable when targeting wasm32, which has
+## no thread support; the batch APIs stay available and simply run serially.
+parallel = ["dep:rayon"]
 
 [dependencies]
 soroban-sdk = { workspace = true, optional = true }
@@ -30,6 +34,7 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 thiserror = "1.0"
 regex = "1.10.3"
+rayon = { version = "1.10", optional = true }
 z3 = { version = "0.12.1", optional = true }
 chrono = { version = "0.4", features = ["serde"] }
 

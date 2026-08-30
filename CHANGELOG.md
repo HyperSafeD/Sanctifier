@@ -13,6 +13,29 @@ See [VERSIONING_POLICY.md](./VERSIONING_POLICY.md) for the detailed policy on wh
 - Bullet points start with `-` and describe user-facing changes
 - Reference issue/PR numbers where applicable
 
+## [Unreleased]
+
+### Added
+
+- `AuthGapRule::check_many` / `AuthGapRule::fix_many` — rayon-backed batch APIs that analyse many
+  sources concurrently, one task per source, with index-aligned results. Documented in
+  [`docs/rules/s001-auth-gap.md`](docs/rules/s001-auth-gap.md).
+- New `parallel` feature on `sanctifier-core` (default on, enabled by `sanctifier-cli`, off for
+  wasm32) gating the rayon dependency. The batch APIs remain available without it and run serially.
+- `DashboardProvider` — a `useReducer` + Context store for dashboard view state, replacing fourteen
+  page-level `useState` hooks in `frontend/app/dashboard/page.tsx`. State and actions are exposed
+  through separate contexts so dispatch-only consumers do not re-render on unrelated state changes.
+- Unit tests for `CallGraph` (23 cases covering empty/undefined input, the large-graph guard,
+  layout, label truncation, edge routing, and accessibility) and for `DashboardProvider` (20 cases).
+
+### Changed
+
+- README, `frontend/README.md` and `docs/PACKAGING_AND_INSTALL.md` installation guides corrected:
+  `sanctifier-cli` builds `sanctifier-core` with default features off, so installing it never
+  compiles Z3 and `--no-default-features` was a no-op on the CLI. libz3 is required only for
+  workspace-from-source builds. Added the npm/npx, Homebrew, Scoop and winget channels, the
+  Node.js 20+ / npm 10+ dashboard requirement, and a `sanctifier-core` feature-flag table.
+
 ## [v1.0.0-mainnet] - 2026-07-27
 
 ### Added
