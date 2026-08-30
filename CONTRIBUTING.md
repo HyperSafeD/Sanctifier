@@ -23,12 +23,15 @@ The fastest way to start contributing is using GitHub Codespaces, which provides
 The devcontainer will automatically install:
 
 - Rust toolchain
-- Z3 theorem prover
 - soroban-cli
 - wasm-pack
 - VS Code extensions (rust-analyzer, even-better-toml)
 
-After the container builds, all dependencies will be ready and `cargo build --workspace` will have completed.
+> **Note:** The devcontainer does **not** install Z3. `tooling/sanctifier-core`'s
+> default `smt` feature links against `libz3`, so `cargo build --workspace` will
+> fail with a linker error until you install it yourself — run the
+> Debian/Ubuntu command from [Z3 Theorem Prover](#prerequisites) below
+> (Codespaces run on Debian) before building.
 
 ## Local Development Setup
 
