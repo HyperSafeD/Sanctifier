@@ -53,10 +53,21 @@ soroban --version   # e.g. soroban 20.x.x
 
 ## 2. Installing Sanctifier
 
+### Installation Methods
+
+| Method | Command | Best for |
+|--------|---------|----------|
+| **Cargo (recommended)** | `cargo install sanctifier-cli --locked` | Most users; includes Z3 verification |
+| **Cargo (no Z3)** | `cargo install sanctifier-cli --locked --no-default-features` | Faster install; all rules except S011 work |
+| **Docker** | `docker run --rm -v $PWD:/src ghcr.io/hypersafed/sanctifier analyze /src` | No local Rust toolchain needed |
+| **Pre-built binary** | Download from [Releases](https://github.com/HyperSafeD/Sanctifier/releases/latest) | No Rust toolchain required |
+
+### Install with Cargo
+
 Install the Sanctifier CLI directly from crates.io:
 
 ```bash
-cargo install sanctifier-cli
+cargo install sanctifier-cli --locked
 ```
 
 > **Note:** Ensure `~/.cargo/bin` is on your `PATH`. If not, add it to your shell profile:
@@ -75,8 +86,53 @@ sanctifier --version
 Update to the latest Sanctifier binary at any time:
 
 ```bash
-cargo install sanctifier-cli --force
+cargo install sanctifier-cli --locked --force
 ```
+
+### Pre-built Binaries
+
+Direct downloads for your platform (no Rust toolchain required):
+
+| Platform | Download |
+|----------|----------|
+| **Linux (x86_64)** | [sanctifier-linux-amd64](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64) |
+| **Linux (musl)** | [sanctifier-linux-amd64-musl](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64-musl) |
+| **macOS (Intel)** | [sanctifier-macos-amd64](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-amd64) |
+| **macOS (Apple Silicon)** | [sanctifier-macos-arm64](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-arm64) |
+| **Windows** | [sanctifier-windows-amd64.exe](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-windows-amd64.exe) |
+
+**Verifying binaries:** Each release includes SHA256 checksums for integrity verification:
+
+```bash
+# Linux/macOS
+curl -LO https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64
+curl -LO https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64.sha256
+sha256sum -c sanctifier-linux-amd64.sha256
+
+# Windows (PowerShell)
+(Get-FileHash sanctifier-windows-amd64.exe).Hash -eq (Get-Content sanctifier-windows-amd64.exe.sha256)
+```
+
+### System Requirements
+
+**Minimum:**
+- Rust 1.78+ (if installing via cargo)
+- 2GB RAM
+- 500MB disk space
+
+**For full features (including Z3 formal verification):**
+
+| Platform | Required Packages |
+|----------|------------------|
+| **Debian/Ubuntu** | `sudo apt-get install libz3-dev clang libclang-dev build-essential pkg-config` |
+| **Fedora/RHEL** | `sudo dnf install z3-devel clang clang-devel` |
+| **Arch Linux** | `sudo pacman -S z3 clang` |
+| **macOS** | `brew install z3 llvm` |
+| **Windows** | Install [Z3](https://github.com/Z3Prover/z3/releases) and [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) |
+
+**Optional:**
+- `soroban-cli` for contract deployment features: `cargo install soroban-cli`
+- `wasm-pack` for WASM analysis: `cargo install wasm-pack`
 
 ### Shell Completions
 
@@ -133,7 +189,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-soroban-sdk = { version = "21", features = ["testutils"] }
+soroban-sdk = { version = "21.7.0", features = ["testutils"] }
 ```
 
 Replace `src/lib.rs` with this intentionally vulnerable contract — it has three findings
