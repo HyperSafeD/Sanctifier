@@ -37,7 +37,7 @@
   "devDependencies": {
     "license-checker": "^25.0.1",
     "@axe-core/playwright": "^4.13.0",
-    "@commitlint/cli": "^20.5.2",
+    "@commitlint/cli": "^20.5.3",
     "@commitlint/config-conventional": "^20.5.0",
     "@playwright/test": "^1.62.1",
     "@storybook/addon-a11y": "^8.6.14",
