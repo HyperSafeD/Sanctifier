@@ -56,7 +56,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "chromatic": "^11.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.3.1",
+    "eslint-config-next": "16.3.3",
     "happy-dom": "^17.4.4",
     "husky": "^9.1.7",
     "storybook": "^8.6.14",
