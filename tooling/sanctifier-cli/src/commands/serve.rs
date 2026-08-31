@@ -1,12 +1,12 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use sanctifier_core::{analysis_cache::AnalysisCache, Analyzer, SanctifyConfig};
+use futures_util::StreamExt;
+use sanctifier_core::{analysis_cache::AnalysisCache, RuleViolation, Analyzer, SanctifyConfig};
 use std::net::SocketAddr;
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
-use warp::{multipart::FormData, Filter, Rejection, Reply};
+use warp::{multipart::FormData, Buf, Filter, Rejection, Reply};
 
 #[derive(Args)]
 pub struct ServeArgs {
@@ -22,7 +22,7 @@ pub struct ServeArgs {
 #[derive(Clone)]
 struct AppState {
     analyzer: Arc<Analyzer>,
-    cache: Arc<AnalysisCache>,
+    cache: Arc<Mutex<AnalysisCache<Vec<RuleViolation>>>>,
 }
 
 pub fn exec(args: ServeArgs) -> Result<()> {
@@ -33,7 +33,7 @@ pub fn exec(args: ServeArgs) -> Result<()> {
 async fn serve_async(args: ServeArgs) -> Result<()> {
     let config = SanctifyConfig::default();
     let analyzer = Arc::new(Analyzer::new(config));
-    let cache = Arc::new(AnalysisCache::new());
+    let cache = Arc::new(Mutex::new(AnalysisCache::new(100)));
 
     let state = AppState { analyzer, cache };
 
@@ -74,15 +74,16 @@ async fn handle_analyze(
     
     let mut contract_source = None;
     for part in parts {
-        let part = part.map_err(|_| warp::reject::reject())?;
+        let mut part = part.map_err(|_| warp::reject::reject())?;
         if part.name() == "contract" {
-            let bytes = part
+            let mut bytes = part
                 .data()
                 .await
                 .ok_or_else(|| warp::reject::reject())?
                 .map_err(|_| warp::reject::reject())?;
+            let remaining = bytes.remaining();
             contract_source = Some(
-                String::from_utf8(bytes.to_vec())
+                String::from_utf8(bytes.copy_to_bytes(remaining).to_vec())
                     .map_err(|_| warp::reject::reject())?
             );
             break;
@@ -105,18 +106,20 @@ async fn handle_analyze(
 
     // Check cache
     let cache_key = format!("{:x}", md5::compute(&source));
-    if let Some(cached) = state.cache.get(&cache_key) {
-        return Ok(warp::reply::json(&cached));
+    if let Ok(mut cache) = state.cache.lock() {
+        if cache.is_cached(&cache_key, &source) {
+            let cached = cache.get_or_analyze(&cache_key, &source, Vec::new);
+            return Ok(warp::reply::json(&cached));
+        }
     }
 
     // Analyze
-    let findings = state
-        .analyzer
-        .analyze_file(&contract_path)
-        .map_err(|_| warp::reject::reject())?;
+    let findings = state.analyzer.run_rules(&source);
 
     // Cache result
-    state.cache.insert(cache_key, findings.clone());
+    if let Ok(mut cache) = state.cache.lock() {
+        cache.get_or_analyze(&cache_key, &source, || findings.clone());
+    }
 
     Ok(warp::reply::json(&findings))
 }

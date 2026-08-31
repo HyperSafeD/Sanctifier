@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Finding } from "../../../types";
 import { AI_EXPLAIN_PROVIDER } from "../../../lib/env";
+import { logger } from "../../../lib/logger";
 
 export async function POST(req: NextRequest) {
+  const requestId = req.headers.get("x-request-id") || `req-${Math.random().toString(36).substring(2, 11)}`;
+  logger.info("Received AI explanation request", {
+    request_id: requestId,
+    path: "/api/ai/explain",
+    method: "POST",
+  });
+
   if (!AI_EXPLAIN_PROVIDER && process.env.STUB_AI !== "1") {
+    logger.warn("AI provider not configured", { request_id: requestId });
     return NextResponse.json(
       { error: "AI provider not configured", set: ["AI_EXPLAIN_PROVIDER"] },
-      { status: 503 }
+      { status: 503, headers: { "x-request-id": requestId } }
     );
   }
 
@@ -14,7 +23,11 @@ export async function POST(req: NextRequest) {
     const { finding } = (await req.json()) as { finding: Finding };
 
     if (!finding) {
-      return NextResponse.json({ error: "Finding data is required" }, { status: 400 });
+      logger.warn("Missing finding parameter in AI explain request", { request_id: requestId });
+      return NextResponse.json(
+        { error: "Finding data is required" },
+        { status: 400, headers: { "x-request-id": requestId } }
+      );
     }
 
     // simulated delay
@@ -50,8 +63,19 @@ pub enum DataKey {
       fixCode: finding.suggestion ? `// Suggested Fix:\n// ${finding.suggestion}` : "// Review the logic at the specified location and add necessary checks.",
     };
 
-    return NextResponse.json(result);
-  } catch (_err) {
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    logger.info("Generated AI explanation successfully", {
+      request_id: requestId,
+      category: category,
+    });
+    return NextResponse.json(result, { headers: { "x-request-id": requestId } });
+  } catch (err) {
+    logger.error("AI explanation processing error", {
+      request_id: requestId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500, headers: { "x-request-id": requestId } }
+    );
   }
 }

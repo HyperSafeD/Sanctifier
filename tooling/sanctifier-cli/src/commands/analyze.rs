@@ -116,6 +116,9 @@ pub struct AnalyzeArgs {
     /// Analysis profile preset — overrides --exit-code and --min-severity when set
     #[arg(long, value_enum)]
     pub profile: Option<AnalysisProfile>,
+    /// Correlation request ID for structured logging and distributed tracing
+    #[arg(long, env = "SANCTIFIER_REQUEST_ID")]
+    pub request_id: Option<String>,
 }
 
 // ── Per-file result container ────────────────────────────────────────────────
@@ -192,8 +195,12 @@ pub fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
         anyhow::bail!("{:?} is not a valid Soroban project", path);
     }
 
-    info!(target: "sanctifier", path = %path.display(), "Valid Soroban project found");
-    info!(target: "sanctifier", path = %path.display(), "Analyzing contract");
+    let request_id = args.request_id.clone().unwrap_or_else(|| {
+        std::env::var("SANCTIFIER_REQUEST_ID").unwrap_or_else(|_| "req-cli-local".to_string())
+    });
+
+    info!(target: "sanctifier", request_id = %request_id, path = %path.display(), "Valid Soroban project found");
+    info!(target: "sanctifier", request_id = %request_id, path = %path.display(), "Analyzing contract");
 
     let mut config = load_config(&path);
     config.ledger_limit = args.limit;

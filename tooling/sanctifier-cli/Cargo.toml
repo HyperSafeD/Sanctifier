@@ -39,6 +39,8 @@ notify-debouncer-mini = "0.4.1"
 warp = "0.3"
 tempfile = "3.8"
 md5 = "0.7"
+futures-util = "0.3"
+
 
 [dev-dependencies]
 assert_cmd = "2.0"

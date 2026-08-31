@@ -70,7 +70,7 @@ pub const RAW_INVOKE_CONTRACT: &str = "S022";
 /// `#[test]` function that never references a `ContractClient`, bypassing the host-function boundary.
 pub const SHALLOW_TEST: &str = "S023";
 /// transfer_from-style function consumes 'from' balance without allowance check.
-pub const TRANSFER_FROM_NO_ALLOWANCE: &str = "S023";
+pub const TRANSFER_FROM_NO_ALLOWANCE: &str = "S024";
 
 /// A single finding-code entry with machine-readable code, category, and
 /// human-readable description.
@@ -207,6 +207,8 @@ pub fn all_finding_codes() -> Vec<FindingCode> {
             code: SHALLOW_TEST,
             category: "test_quality",
             description: "#[test] function never references a ContractClient, bypassing serialization and auth paths exercised by the Soroban host-function boundary",
+        },
+        FindingCode {
             code: TRANSFER_FROM_NO_ALLOWANCE,
             category: "token_safety",
             description: "transfer_from-style function moves 'from' balance without checking or decrementing the spender's allowance, allowing any caller to drain any account",

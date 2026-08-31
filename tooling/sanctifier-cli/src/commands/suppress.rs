@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Args;
 use std::fs;
 use std::path::PathBuf;
-use toml_edit::{value, Array, Document, Item, Table};
+use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table, Value};
 
 #[derive(Args)]
 pub struct SuppressArgs {
@@ -67,7 +67,7 @@ fn add_suppression(
     };
 
     let mut doc = content
-        .parse::<Document>()
+        .parse::<DocumentMut>()
         .context("Failed to parse .sanctify.toml")?;
 
     // Ensure [suppressions] table exists
@@ -81,20 +81,20 @@ fn add_suppression(
 
     // Get or create array for this code
     if !suppressions.contains_key(code) {
-        suppressions[code] = Item::Value(value(Array::new()));
+        suppressions[code] = value(Array::new());
     }
 
     let code_array = suppressions[code]
         .as_array_mut()
         .context("suppression entry must be an array")?;
 
-    // Create suppression entry
-    let mut entry = Table::new();
-    entry["file"] = value(file.display().to_string());
-    entry["line"] = value(line as i64);
-    entry["reason"] = value(reason);
+    // Create suppression entry as InlineTable
+    let mut entry = InlineTable::new();
+    entry.insert("file", file.display().to_string().into());
+    entry.insert("line", (line as i64).into());
+    entry.insert("reason", reason.into());
 
-    code_array.push(entry);
+    code_array.push(Value::InlineTable(entry));
 
     // Write back
     fs::write(config_path, doc.to_string())
@@ -113,7 +113,7 @@ fn list_suppressions(config_path: &PathBuf) -> Result<()> {
         .with_context(|| format!("Failed to read {}", config_path.display()))?;
 
     let doc = content
-        .parse::<Document>()
+        .parse::<DocumentMut>()
         .context("Failed to parse .sanctify.toml")?;
 
     let Some(suppressions) = doc.get("suppressions").and_then(|s| s.as_table()) else {
@@ -135,20 +135,19 @@ fn list_suppressions(config_path: &PathBuf) -> Result<()> {
         };
 
         for entry in array.iter() {
-            let Some(table) = entry.as_table() else {
-                continue;
-            };
-
-            let file = table
-                .get("file")
+            let file = entry
+                .as_inline_table()
+                .and_then(|t| t.get("file"))
                 .and_then(|f| f.as_str())
                 .unwrap_or("<unknown>");
-            let line = table
-                .get("line")
+            let line = entry
+                .as_inline_table()
+                .and_then(|t| t.get("line"))
                 .and_then(|l| l.as_integer())
                 .unwrap_or(0);
-            let reason = table
-                .get("reason")
+            let reason = entry
+                .as_inline_table()
+                .and_then(|t| t.get("reason"))
                 .and_then(|r| r.as_str())
                 .unwrap_or("<no reason>");
 

@@ -43,6 +43,8 @@ pub mod custom_yaml_rules;
 pub mod event_analysis;
 /// Canonical finding codes (`S000` – `S012`) emitted by every analysis pass.
 pub mod finding_codes;
+/// Resilient RPC Provider Failover Client module.
+pub mod rpc;
 /// Gas / instruction-cost estimation heuristics.
 pub mod gas_estimator;
 /// Gas report rendering and loop-warning formatting.
