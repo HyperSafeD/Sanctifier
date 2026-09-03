@@ -262,9 +262,15 @@ describe("ScanPage", () => {
       const fileInput = screen.getByLabelText("Choose a Soroban contract source file to scan");
       const runButton = screen.getByRole("button", { name: /Run Security Audit/i });
 
-      // Select file and start analysis
+      // Use delayed fetch so the loading state persists when we assert it
+      mockFetch.mockReturnValueOnce(
+        new Promise(resolve => setTimeout(() => resolve(createMockResponse([])), 5000))
+      );
+
+      // Select file and start analysis (don't await click so we can check mid-flight)
       await user.upload(fileInput, file);
-      await user.click(runButton);
+      user.click(runButton);
+      await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
 
       // Check that file input is disabled during analysis
       expect(fileInput).toBeDisabled();
@@ -283,7 +289,7 @@ describe("ScanPage", () => {
 
       // Test with different extension (should still work as browser handles accept attribute)
       const otherFile = createMockFile("contract.txt");
-      await user.upload(fileInput, otherFile, { applyAccept: false });
+      fireEvent.change(fileInput, { target: { files: [otherFile] } });
       expect(screen.getByText("contract.txt")).toBeInTheDocument();
     });
 
@@ -357,17 +363,21 @@ describe("ScanPage", () => {
       renderScanPage();
 
       const mockFindings = [createFinding(), createFinding()];
-      mockFetch.mockResolvedValueOnce(createMockResponse(mockFindings));
+      // Use a delayed promise so the loading state is visible before resolution
+      mockFetch.mockReturnValueOnce(
+        new Promise(resolve => setTimeout(() => resolve(createMockResponse(mockFindings)), 5000))
+      );
 
       const file = createMockFile();
       const fileInput = screen.getByLabelText("Choose a Soroban contract source file to scan");
       const runButton = screen.getByRole("button", { name: /Run Security Audit/i });
 
       await user.upload(fileInput, file);
-      await user.click(runButton);
+      // Click but don't await so we can check loading state
+      user.click(runButton);
+      await vi.waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(1));
 
       // Verify API call was made
-      expect(mockFetch).toHaveBeenCalledTimes(1);
       expect(mockFetch).toHaveBeenCalledWith(
         "/api/analyze",
         expect.objectContaining({
@@ -420,7 +430,10 @@ describe("ScanPage", () => {
       renderScanPage();
 
       const mockFindings = [createFinding()];
-      mockFetch.mockReturnValueOnce(new Promise(resolve => setTimeout(() => resolve(createMockResponse(mockFindings)), 5000)));
+      // Resolve at 1600ms — after Phase 1 (1500ms) fires, timer cleared before Phase 2 (3000ms)
+      mockFetch.mockReturnValueOnce(
+        new Promise(resolve => setTimeout(() => resolve(createMockResponse(mockFindings)), 1600))
+      );
 
       const file = createMockFile();
       const fileInput = screen.getByLabelText("Choose a Soroban contract source file to scan");
@@ -429,13 +442,9 @@ describe("ScanPage", () => {
       await user.upload(fileInput, file);
       await user.click(runButton);
 
-      // Start timer
+      // Advance past Phase 0 (immediate) and Phase 1 (t=1500ms), and past the fetch resolve (1600ms)
       act(() => {
-        vi.advanceTimersByTime(1500);
-      });
-
-      act(() => {
-        vi.advanceTimersByTime(5000);
+        vi.advanceTimersByTime(2000);
       });
 
       // Wait for analysis to complete
@@ -443,12 +452,12 @@ describe("ScanPage", () => {
         expect(screen.queryByText("Running Audit...")).not.toBeInTheDocument();
       });
 
-      // Advance timers further - should not trigger more logs after completion
+      // Advance timers further — clearInterval should prevent Phase 2 from firing
       act(() => {
         vi.advanceTimersByTime(3000);
       });
 
-      // Only the initial log should be present
+      // Phase 0 emitted immediately, Phase 1 at 1500ms, timer cleared before Phase 2
       const terminalLogs = screen.getByTestId("terminal-logs");
       expect(terminalLogs.textContent).toContain("Phase 0: Mock progress");
       expect(terminalLogs.textContent).not.toContain("Phase 2: Mock progress");
