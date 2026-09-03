@@ -12,6 +12,9 @@ interface ScanContextType {
   selectedFile: File | null;
   severityFilter: Severity | "all";
   
+  hasRunScan: boolean;
+  setHasRunScan: (hasRun: boolean) => void;
+  
   // Actions
   addLog: (text: string) => void;
   setLogs: (logs: string[]) => void;
@@ -32,6 +35,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
+  const [hasRunScan, setHasRunScan] = useState(false);
 
   const addLog = useCallback((text: string) => {
     setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${text}`]);
@@ -42,6 +46,7 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     setFindings([]);
     setError(null);
     setIsAnalyzing(false);
+    setHasRunScan(false);
   }, []);
 
   const value: ScanContextType = {
@@ -50,7 +55,8 @@ export function ScanProvider({ children }: { children: ReactNode }) {
     findings,
     error,
     selectedFile,
-    severityFilter,
+    hasRunScan,
+    setHasRunScan,
     addLog,
     setLogs,
     setIsAnalyzing,

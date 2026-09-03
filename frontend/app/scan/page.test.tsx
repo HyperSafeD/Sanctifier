@@ -9,6 +9,11 @@ import { createFinding, createFindingList } from "../../tests/fixtures";
 // Mock the dynamic import for CallGraph
 vi.mock("../components/CallGraph", () => ({
   default: () => <div data-testid="mock-call-graph">Call Graph Component</div>,
+  CallGraph: () => <div data-testid="mock-call-graph">Call Graph Component</div>,
+}));
+
+vi.mock("next/dynamic", () => ({
+  default: () => () => <div data-testid="mock-call-graph">Call Graph Component</div>,
 }));
 
 // Mock the child components that are used in the scan page
@@ -100,10 +105,12 @@ class MockFile extends Blob {
 global.File = MockFile as any;
 
 // Mock clipboard API
-Object.assign(navigator, {
-  clipboard: {
+Object.defineProperty(navigator, "clipboard", {
+  value: {
     writeText: vi.fn(),
   },
+  writable: true,
+  configurable: true,
 });
 
 // Mock window.alert
@@ -134,7 +141,14 @@ describe("ScanPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockFetch.mockReset();
-    vi.useFakeTimers();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    Object.defineProperty(navigator, "clipboard", {
+      value: {
+        writeText: vi.fn().mockResolvedValue(undefined),
+      },
+      writable: true,
+      configurable: true,
+    });
   });
 
   afterEach(() => {
@@ -269,7 +283,7 @@ describe("ScanPage", () => {
 
       // Test with different extension (should still work as browser handles accept attribute)
       const otherFile = createMockFile("contract.txt");
-      await user.upload(fileInput, otherFile);
+      await user.upload(fileInput, otherFile, { applyAccept: false });
       expect(screen.getByText("contract.txt")).toBeInTheDocument();
     });
 
@@ -376,7 +390,7 @@ describe("ScanPage", () => {
       renderScanPage();
 
       const mockFindings = [createFinding()];
-      mockFetch.mockResolvedValueOnce(createMockResponse(mockFindings));
+      mockFetch.mockReturnValueOnce(new Promise(resolve => setTimeout(() => resolve(createMockResponse(mockFindings)), 5000)));
 
       const file = createMockFile();
       const fileInput = screen.getByLabelText("Choose a Soroban contract source file to scan");
@@ -406,7 +420,7 @@ describe("ScanPage", () => {
       renderScanPage();
 
       const mockFindings = [createFinding()];
-      mockFetch.mockResolvedValueOnce(createMockResponse(mockFindings));
+      mockFetch.mockReturnValueOnce(new Promise(resolve => setTimeout(() => resolve(createMockResponse(mockFindings)), 5000)));
 
       const file = createMockFile();
       const fileInput = screen.getByLabelText("Choose a Soroban contract source file to scan");
@@ -418,6 +432,10 @@ describe("ScanPage", () => {
       // Start timer
       act(() => {
         vi.advanceTimersByTime(1500);
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(5000);
       });
 
       // Wait for analysis to complete
@@ -548,7 +566,7 @@ describe("ScanPage", () => {
       
       mockFetch
         .mockResolvedValueOnce(createMockResponse(mockFindings1))
-        .mockResolvedValueOnce(createMockResponse(mockFindings2));
+        .mockReturnValueOnce(new Promise(resolve => setTimeout(() => resolve(createMockResponse(mockFindings2)), 5000)));
 
       const file = createMockFile();
       const fileInput = screen.getByLabelText("Choose a Soroban contract source file to scan");
@@ -570,6 +588,10 @@ describe("ScanPage", () => {
       // During second analysis, previous findings should be cleared
       expect(screen.queryByTestId("findings-count")).not.toBeInTheDocument();
       
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
+
       await waitFor(() => {
         expect(runButton).toBeEnabled();
       });
@@ -908,6 +930,7 @@ describe("ScanPage", () => {
 
     it("handles share report functionality", async () => {
       const user = userEvent.setup();
+      vi.spyOn(navigator.clipboard, "writeText");
       renderScanPage();
 
       const mockFindings = [createFinding()];
@@ -1053,7 +1076,7 @@ describe("ScanPage", () => {
       
       mockFetch
         .mockResolvedValueOnce(createMockResponse(mockFindings1))
-        .mockResolvedValueOnce(createMockResponse(mockFindings2));
+        .mockReturnValueOnce(new Promise(resolve => setTimeout(() => resolve(createMockResponse(mockFindings2)), 5000)));
 
       const file = createMockFile();
       const fileInput = screen.getByLabelText("Choose a Soroban contract source file to scan");
@@ -1073,6 +1096,10 @@ describe("ScanPage", () => {
       // Results should disappear during analysis
       expect(screen.queryByText("Analysis Summary")).not.toBeInTheDocument();
       expect(screen.queryByText("Security Findings")).not.toBeInTheDocument();
+
+      act(() => {
+        vi.advanceTimersByTime(5000);
+      });
 
       // Wait for second analysis to complete
       await waitFor(() => {
@@ -1138,4 +1165,9 @@ describe("ScanPage", () => {
   });
 
   describe("Accessibility and ARIA attributes", () => {
+    it("renders page header", () => {
+      renderScanPage();
+      expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+    });
+  });
 });
