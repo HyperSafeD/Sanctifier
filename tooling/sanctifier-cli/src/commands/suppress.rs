@@ -40,7 +40,9 @@ pub fn exec(args: SuppressArgs) -> Result<()> {
     let code = args.code.context("Finding code is required")?;
     let file = args.file.context("--file is required")?;
     let line = args.line.context("--line is required")?;
-    let reason = args.reason.unwrap_or_else(|| "Manual suppression".to_string());
+    let reason = args
+        .reason
+        .unwrap_or_else(|| "Manual suppression".to_string());
 
     add_suppression(&args.config, &code, &file, line, &reason)?;
 
@@ -51,9 +53,9 @@ pub fn exec(args: SuppressArgs) -> Result<()> {
 }
 
 fn add_suppression(
-    config_path: &PathBuf,
+    config_path: &Path,
     code: &str,
-    file: &PathBuf,
+    file: &Path,
     line: u32,
     reason: &str,
 ) -> Result<()> {
@@ -103,7 +105,7 @@ fn add_suppression(
     Ok(())
 }
 
-fn list_suppressions(config_path: &PathBuf) -> Result<()> {
+fn list_suppressions(config_path: &Path) -> Result<()> {
     if !config_path.exists() {
         println!("No .sanctify.toml found. No suppressions configured.");
         return Ok(());

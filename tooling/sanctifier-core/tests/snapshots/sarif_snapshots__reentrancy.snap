@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "withdraw",
+    "message": "Function 'withdraw' writes to storage before calling invoke_contract at line 5 without a reentrancy guard",
+    "rule_name": "reentrancy",
+    "severity": "Error",
+    "suggestion": "Wrap the external call with a boolean instance-storage lock: set REENTRANCY_LOCK to true before the call and false after, panicking if already true."
+  }
+]

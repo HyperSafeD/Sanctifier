@@ -115,6 +115,104 @@ class ActionInputTests(unittest.TestCase):
             stderr.getvalue(),
         )
 
+    # ── SARIF upload correctness ──────────────────────────────────────────────
+
+    def test_rejects_sarif_output_without_sarif_extension_when_format_is_sarif(self) -> None:
+        from scripts.action_inputs import validate_inputs
+
+        with self.assertRaisesRegex(ValueError, r"\.sarif"):
+            validate_inputs(
+                path=".",
+                min_severity="high",
+                format="sarif",
+                upload_sarif="true",
+                sarif_output="results.json",
+                debug="false",
+            )
+
+    def test_accepts_sarif_output_without_sarif_extension_when_format_is_text(self) -> None:
+        from scripts.action_inputs import validate_inputs
+
+        got = validate_inputs(
+            path=".",
+            min_severity="high",
+            format="text",
+            upload_sarif="false",
+            sarif_output="results.txt",
+            debug="false",
+        )
+        self.assertEqual(got.sarif_output, "results.txt")
+
+    def test_accepts_sarif_output_without_sarif_extension_when_format_is_json(self) -> None:
+        from scripts.action_inputs import validate_inputs
+
+        got = validate_inputs(
+            path=".",
+            min_severity="high",
+            format="json",
+            upload_sarif="false",
+            sarif_output="results.json",
+            debug="false",
+        )
+        self.assertEqual(got.sarif_output, "results.json")
+
+    def test_rejects_absolute_sarif_output_path(self) -> None:
+        from scripts.action_inputs import validate_inputs
+
+        with self.assertRaisesRegex(ValueError, "must be relative"):
+            validate_inputs(
+                path=".",
+                min_severity="high",
+                format="sarif",
+                upload_sarif="true",
+                sarif_output="/tmp/results.sarif",
+                debug="false",
+            )
+
+    def test_rejects_sarif_output_with_path_traversal(self) -> None:
+        from scripts.action_inputs import validate_inputs
+
+        with self.assertRaisesRegex(ValueError, "path traversal"):
+            validate_inputs(
+                path=".",
+                min_severity="high",
+                format="sarif",
+                upload_sarif="true",
+                sarif_output="../results.sarif",
+                debug="false",
+            )
+
+    def test_main_emits_warning_when_upload_sarif_true_but_format_is_not_sarif(self) -> None:
+        from scripts.action_inputs import main
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output = pathlib.Path(tmp) / "env"
+            stderr = StringIO()
+            with patch(
+                "sys.argv",
+                [
+                    "action_inputs.py",
+                    "--path",
+                    ".",
+                    "--min-severity",
+                    "high",
+                    "--format",
+                    "json",
+                    "--upload-sarif",
+                    "true",
+                    "--sarif-output",
+                    "results.json",
+                    "--debug",
+                    "false",
+                    "--output",
+                    str(output),
+                ],
+            ), redirect_stderr(stderr):
+                exit_code = main()
+
+        self.assertEqual(exit_code, 0)
+        self.assertIn("::warning title=SARIF Upload Skipped::", stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

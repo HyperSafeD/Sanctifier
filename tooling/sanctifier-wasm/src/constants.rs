@@ -3,6 +3,7 @@
 //! All tuneable limits and namespace strings live here so they can be
 //! referenced by both the implementation modules and the test suite without
 //! coupling either to internal details of the other.
+#![allow(dead_code)]
 
 /// Analysis output schema version (independent of tool version).
 ///

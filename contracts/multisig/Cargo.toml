@@ -7,10 +7,11 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = { workspace = true, features = ["testutils"] }
+soroban-sdk = { workspace = true }
 security-disclaimers = { path = "../security-disclaimers" }
 
 [dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
 proptest = "1.4"
 
 [profile.release]

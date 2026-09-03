@@ -1,5 +1,26 @@
+#![allow(dead_code)]
+
+// #522 — Security hardening + threat model notes for webhook delivery.
+//
+// Threat model:
+//   T1 – Spoofed payloads: an attacker sends a crafted POST to the same endpoint.
+//        Mitigation: HMAC-SHA256 signature in `X-Sanctifier-Signature-256` header.
+//   T2 – Transient network failures cause missed notifications.
+//        Mitigation: exponential-backoff retry (3 attempts, base 1 s, cap 30 s).
+//   T3 – Slow or unresponsive endpoints block the analysis pipeline indefinitely.
+//        Mitigation: per-request timeout (10 s) enforced by reqwest.
+//   T4 – SSRF via attacker-controlled webhook URL (if URL is user-supplied config).
+//        Mitigation: URL scheme must be https (enforced by `validate_webhook_url`);
+//        private-range IPs are not blocked here — operators should apply egress rules.
+//   T5 – Secret leakage in logs.
+//        Mitigation: secret is never logged; only the HMAC hex digest is transmitted.
+
+use hmac::{Hmac, Mac};
 use serde::Serialize;
-use tracing::warn;
+use sha2::Sha256;
+use tracing::{info, warn};
+
+type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanWebhookSummary {
@@ -24,9 +45,51 @@ enum WebhookProvider {
     Custom,
 }
 
+/// Configuration for webhook delivery (#522).
+#[derive(Debug, Clone, Default)]
+pub struct WebhookConfig {
+    /// If set, every outgoing request includes an `X-Sanctifier-Signature-256`
+    /// header containing `sha256=<hmac-hex>` computed over the serialised body.
+    pub secret: Option<String>,
+    /// Maximum number of delivery attempts per URL (default: 3).
+    pub max_attempts: Option<u32>,
+}
+
+/// Validate that a webhook URL uses HTTPS (T4 mitigation).
+pub fn validate_webhook_url(url: &str) -> Result<(), String> {
+    if url.starts_with("https://") {
+        Ok(())
+    } else {
+        Err(format!(
+            "webhook URL '{}' must use HTTPS to prevent plaintext secret transmission",
+            url
+        ))
+    }
+}
+
+/// Compute an HMAC-SHA256 signature over `body` using `secret`.
+/// Returns the hex-encoded digest prefixed with `sha256=`.
+fn hmac_signature(secret: &str, body: &[u8]) -> String {
+    let mut mac =
+        HmacSha256::new_from_slice(secret.as_bytes()).expect("HMAC accepts any key length");
+    mac.update(body);
+    let result = mac.finalize();
+    let bytes = result.into_bytes();
+    format!("sha256={}", hex_encode(&bytes))
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{:02x}", b)).collect()
+}
+
+/// Deliver webhooks with optional HMAC signing and exponential-backoff retries.
+///
+/// Errors are accumulated and returned after all URLs are attempted, so a
+/// single failing endpoint does not abort delivery to the remaining ones.
 pub fn send_scan_completed_webhooks(
     urls: &[String],
     payload: &ScanWebhookPayload,
+    config: &WebhookConfig,
 ) -> anyhow::Result<()> {
     if urls.is_empty() {
         return Ok(());
@@ -36,26 +99,85 @@ pub fn send_scan_completed_webhooks(
         .timeout(std::time::Duration::from_secs(10))
         .build()?;
 
+    let max_attempts = config.max_attempts.unwrap_or(3);
+    let mut errors: Vec<String> = Vec::new();
+
     for url in urls {
         let body = provider_payload(url, payload);
-        let response = client.post(url).json(&body).send();
-        match response {
-            Ok(resp) if resp.status().is_success() => {}
-            Ok(resp) => {
-                warn!(
-                    target: "sanctifier",
-                    status = resp.status().as_u16(),
-                    url = %url,
-                    "Webhook delivery failed"
-                );
+        let body_bytes = serde_json::to_vec(&body)?;
+
+        let mut last_error: Option<String> = None;
+
+        for attempt in 1..=max_attempts {
+            let mut req = client
+                .post(url)
+                .header("Content-Type", "application/json")
+                .body(body_bytes.clone());
+
+            if let Some(ref secret) = config.secret {
+                let sig = hmac_signature(secret, &body_bytes);
+                req = req.header("X-Sanctifier-Signature-256", sig);
             }
-            Err(err) => {
-                warn!(target: "sanctifier", error = %err, url = %url, "Webhook delivery error");
+
+            match req.send() {
+                Ok(resp) if resp.status().is_success() => {
+                    if attempt > 1 {
+                        info!(
+                            target: "sanctifier",
+                            url = %url,
+                            attempt,
+                            "Webhook delivered after retry"
+                        );
+                    }
+                    last_error = None;
+                    break;
+                }
+                Ok(resp) => {
+                    let status = resp.status().as_u16();
+                    last_error = Some(format!("HTTP {}", status));
+                    warn!(
+                        target: "sanctifier",
+                        status,
+                        url = %url,
+                        attempt,
+                        max_attempts,
+                        "Webhook delivery failed, will retry"
+                    );
+                }
+                Err(err) => {
+                    last_error = Some(err.to_string());
+                    warn!(
+                        target: "sanctifier",
+                        error = %err,
+                        url = %url,
+                        attempt,
+                        max_attempts,
+                        "Webhook request error, will retry"
+                    );
+                }
             }
+
+            if attempt < max_attempts {
+                // Exponential backoff: 1s, 2s, 4s … capped at 30s.
+                let delay_secs = std::cmp::min(1u64 << (attempt - 1), 30);
+                std::thread::sleep(std::time::Duration::from_secs(delay_secs));
+            }
+        }
+
+        if let Some(err_msg) = last_error {
+            errors.push(format!("{url}: {err_msg}"));
         }
     }
 
-    Ok(())
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow::anyhow!(
+            "webhook delivery failed for {} endpoint(s):\n{}",
+            errors.len(),
+            errors.join("\n")
+        ))
+    }
 }
 
 fn provider_payload(url: &str, payload: &ScanWebhookPayload) -> serde_json::Value {
@@ -201,7 +323,7 @@ mod tests {
             .create();
 
         let url = format!("{}/discord?sanctifier_provider=discord", server.url());
-        send_scan_completed_webhooks(&[url], &payload).unwrap();
+        send_scan_completed_webhooks(&[url], &payload, &WebhookConfig::default()).unwrap();
 
         mock.assert();
     }
@@ -215,36 +337,12 @@ mod tests {
                 {
                     "color": "#f79009",
                     "fields": [
-                        {
-                            "title": "Project",
-                            "value": "contracts/my-token",
-                            "short": true
-                        },
-                        {
-                            "title": "Event",
-                            "value": "scan.completed",
-                            "short": true
-                        },
-                        {
-                            "title": "Total Findings",
-                            "value": "2",
-                            "short": true
-                        },
-                        {
-                            "title": "Critical",
-                            "value": "false",
-                            "short": true
-                        },
-                        {
-                            "title": "High",
-                            "value": "true",
-                            "short": true
-                        },
-                        {
-                            "title": "Timestamp",
-                            "value": "123",
-                            "short": true
-                        }
+                        { "title": "Project",        "value": "contracts/my-token", "short": true },
+                        { "title": "Event",          "value": "scan.completed",     "short": true },
+                        { "title": "Total Findings", "value": "2",                  "short": true },
+                        { "title": "Critical",       "value": "false",              "short": true },
+                        { "title": "High",           "value": "true",               "short": true },
+                        { "title": "Timestamp",      "value": "123",                "short": true }
                     ]
                 }
             ]
@@ -259,7 +357,7 @@ mod tests {
             .create();
 
         let url = format!("{}/slack?sanctifier_provider=slack", server.url());
-        send_scan_completed_webhooks(&[url], &payload).unwrap();
+        send_scan_completed_webhooks(&[url], &payload, &WebhookConfig::default()).unwrap();
 
         mock.assert();
     }
@@ -277,7 +375,7 @@ mod tests {
             format!("{}/notify", second.url()),
         ];
 
-        send_scan_completed_webhooks(&urls, &sample_payload()).unwrap();
+        send_scan_completed_webhooks(&urls, &sample_payload(), &WebhookConfig::default()).unwrap();
 
         first_mock.assert();
         second_mock.assert();
@@ -288,5 +386,79 @@ mod tests {
         let payload = provider_payload("https://example.com/webhook", &sample_payload());
         assert_eq!(payload["event"], "scan.completed");
         assert_eq!(payload["summary"]["total_findings"], 2);
+    }
+
+    #[test]
+    fn signed_request_includes_hmac_header() {
+        let secret = "test-secret-key";
+        let payload = sample_payload();
+        let body = provider_payload_for(WebhookProvider::Custom, &payload);
+        let body_bytes = serde_json::to_vec(&body).unwrap();
+        let expected_sig = hmac_signature(secret, &body_bytes);
+
+        let mut server = Server::new();
+        let mock = server
+            .mock("POST", "/signed")
+            .match_header("X-Sanctifier-Signature-256", expected_sig.as_str())
+            .with_status(200)
+            .create();
+
+        let url = format!("{}/signed", server.url());
+        let config = WebhookConfig {
+            secret: Some(secret.to_string()),
+            max_attempts: Some(1),
+        };
+        send_scan_completed_webhooks(&[url], &payload, &config).unwrap();
+        mock.assert();
+    }
+
+    #[test]
+    fn delivery_failure_after_retries_returns_error() {
+        let mut server = Server::new();
+        // Always return 500 — should exhaust retries
+        let mock = server
+            .mock("POST", "/fail")
+            .with_status(500)
+            .expect(1) // max_attempts = 1 to keep test fast
+            .create();
+
+        let url = format!("{}/fail", server.url());
+        let config = WebhookConfig {
+            secret: None,
+            max_attempts: Some(1),
+        };
+        let result = send_scan_completed_webhooks(&[url], &sample_payload(), &config);
+        assert!(result.is_err(), "should return Err after exhausted retries");
+        mock.assert();
+    }
+
+    #[test]
+    fn empty_url_list_returns_ok_without_requests() {
+        send_scan_completed_webhooks(&[], &sample_payload(), &WebhookConfig::default()).unwrap();
+    }
+
+    #[test]
+    fn validate_webhook_url_rejects_http() {
+        assert!(validate_webhook_url("http://hooks.slack.com/xxx").is_err());
+    }
+
+    #[test]
+    fn validate_webhook_url_accepts_https() {
+        assert!(validate_webhook_url("https://hooks.slack.com/xxx").is_ok());
+    }
+
+    #[test]
+    fn hmac_signature_is_deterministic() {
+        let sig1 = hmac_signature("secret", b"body");
+        let sig2 = hmac_signature("secret", b"body");
+        assert_eq!(sig1, sig2);
+        assert!(sig1.starts_with("sha256="));
+    }
+
+    #[test]
+    fn hmac_signature_differs_with_different_secrets() {
+        let sig1 = hmac_signature("secret-a", b"body");
+        let sig2 = hmac_signature("secret-b", b"body");
+        assert_ne!(sig1, sig2);
     }
 }

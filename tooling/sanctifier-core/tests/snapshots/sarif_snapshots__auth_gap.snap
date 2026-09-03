@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "withdraw",
+    "message": "Function 'withdraw' performs a privileged operation without authentication",
+    "rule_name": "auth_gap",
+    "severity": "Warning",
+    "suggestion": "Add require_auth() or require_auth_for_args() before storage operations or external contract calls"
+  }
+]

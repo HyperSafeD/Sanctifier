@@ -97,16 +97,16 @@ fn auth_gap_findings_are_deterministic() {
     let a = make_analyzer();
     let reference: Vec<_> = {
         let mut v = a.scan_auth_gaps(AUTH_GAP_SRC);
-        v.sort_by(|x, y| x.function_name.cmp(&y.function_name));
+        v.sort();
         v
     };
 
     for _ in 0..10 {
         let mut v = a.scan_auth_gaps(AUTH_GAP_SRC);
-        v.sort_by(|x, y| x.function_name.cmp(&y.function_name));
+        v.sort();
         assert_eq!(reference.len(), v.len());
         for (r, s) in reference.iter().zip(v.iter()) {
-            assert_eq!(r.function_name, s.function_name);
+            assert_eq!(r, s);
         }
     }
 }

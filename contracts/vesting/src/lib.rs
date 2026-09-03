@@ -1,4 +1,5 @@
 #![no_std]
+#![allow(clippy::too_many_arguments)]
 
 use soroban_sdk::{contract, contracterror, contractimpl, contracttype, token, Address, Env};
 

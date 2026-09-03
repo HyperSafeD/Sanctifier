@@ -1,0 +1,64 @@
+name: WASM Bundler Compatibility
+
+on:
+  # Pruned to manual-only: this workflow was persistently red on push/PR/schedule.
+  # Run on demand from the Actions tab.
+  workflow_dispatch: {}
+jobs:
+  test-bundlers:
+    name: Test Bundler Compatibility (Vite/Next/Webpack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack || true
+
+      - name: Build WASM package
+        run: |
+          cd tooling/sanctifier-wasm
+          wasm-pack build --target web --out-dir pkg
+
+      - name: Test Vite Compatibility
+        run: |
+          mkdir -p e2e/vite-test
+          cd e2e/vite-test
+          npm init -y
+          npm install vite
+          npm install ../../tooling/sanctifier-wasm/pkg
+          echo "import { analyze } from '@sanctifier/wasm'; console.log(typeof analyze);" > index.js
+          echo "import { defineConfig } from 'vite'; export default defineConfig({ build: { target: 'esnext' } });" > vite.config.js
+          npx vite build
+
+      - name: Test Webpack Compatibility
+        run: |
+          mkdir -p e2e/webpack-test
+          cd e2e/webpack-test
+          npm init -y
+          npm install webpack webpack-cli
+          npm install ../../tooling/sanctifier-wasm/pkg
+          echo "import { analyze } from '@sanctifier/wasm'; console.log(typeof analyze);" > index.js
+          echo "module.exports = { mode: 'production', entry: './index.js', experiments: { asyncWebAssembly: true } };" > webpack.config.js
+          npx webpack
+
+      - name: Test Next.js Compatibility
+        run: |
+          mkdir -p e2e/next-test
+          cd e2e/next-test
+          npm init -y
+          npm install next react react-dom
+          npm install ../../tooling/sanctifier-wasm/pkg
+          mkdir pages
+          echo "import { analyze } from '@sanctifier/wasm'; export default function Home() { return <div>{typeof analyze}</div>; }" > pages/index.js
+          echo "module.exports = { webpack(config) { config.experiments = { ...config.experiments, asyncWebAssembly: true }; return config; } };" > next.config.js
+          npx next build

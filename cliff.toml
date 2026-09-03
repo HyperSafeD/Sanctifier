@@ -1,0 +1,82 @@
+# git-cliff ~ changelog generator configuration
+# https://git-cliff.org/docs/configuration
+#
+# Aligned with .commitlintrc.json conventional-commit types:
+# feat, fix, docs, style, refactor, perf, test, chore, revert, ci
+
+[changelog]
+header = """
+# Changelog\n
+All notable changes to this project will be documented in this file.\n
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),\n
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).\n
+"""
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+
+### {{ group }}
+{% for commit in commits %}
+- {% if commit.scope %}*({{ commit.scope }})* {% endif %}\
+{% if commit.breaking %}[**breaking**] {% endif %}\
+{{ commit.message | upper_first }}{% if commit.id %} ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/HyperSafeD/Sanctifier/commit/{{ commit.id }})){% endif %}
+{% endfor %}
+{% endfor %}\n
+"""
+trim = true
+postprocessor = [
+  { pattern = "^\\[unreleased\\]", replace = "" },
+]
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+require_conventional = false
+split_commits = false
+
+# Commit type → changelog section mapping
+# Order controls the output order of groups
+commit_parsers = [
+  # Breaking changes always come first
+  { message = "^.*", body = "BREAKING CHANGE", group = "⚠️ Breaking Changes" },
+  # Feature additions
+  { message = "^feat", group = "### Added" },
+  # Security-scoped fixes (must come before generic fix)
+  { message = "^fix", scope = "^security", group = "### Security" },
+  # Bug fixes
+  { message = "^fix", group = "### Fixed" },
+  # Performance
+  { message = "^perf", group = "### Performance" },
+  # Refactoring
+  { message = "^refactor", group = "### Changed" },
+  # Documentation
+  { message = "^docs", group = "### Documentation" },
+  # Styling
+  { message = "^style", group = "### Styles" },
+  # Tests
+  { message = "^test", group = "### Tests" },
+  # CI/CD
+  { message = "^ci", group = "### CI/CD" },
+  # Reverts
+  { message = "^revert", group = "### Reverts" },
+  # Chores (build tooling, dependencies, etc.)
+  { message = "^chore", group = "### Miscellaneous" },
+  # Deprecations (conventional commit scope detection)
+  { message = ".*", scope = "^deprecat", group = "### Deprecated" },
+  # Removals
+  { message = ".*", scope = "^remov", group = "### Removed" },
+  # Security (general scope detection)
+  { message = ".*", scope = "^security", group = "### Security" },
+  # Catch-all for unconventional commits (when filter_unconventional = false)
+  { message = ".*", group = "### Other" },
+]
+
+filter_commits = false
+tag_pattern = "v[0-9]*"
+skip_tags = "v[0-9]+-[a-z]+"
+topo_order = false
+sort_commits = "oldest"

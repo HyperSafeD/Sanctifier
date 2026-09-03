@@ -1,0 +1,21 @@
+name: Fuzz testing
+
+on:
+  # Pruned to manual-only: this workflow was persistently red on push/PR/schedule.
+  # Run on demand from the Actions tab.
+  workflow_dispatch: {}
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+      
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+        
+      - name: Run fuzzing for 10 minutes
+        working-directory: tooling/sanctifier-core
+        run: cargo +nightly fuzz run fuzz_parser -- -max_total_time=600

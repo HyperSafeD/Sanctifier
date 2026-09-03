@@ -20,7 +20,12 @@ pub struct BenchmarkArgs {
     pub corpus: PathBuf,
 
     /// Number of analysis iterations per rule (must be ≥ 1)
-    #[arg(short = 'n', long, default_value_t = 3)]
+    //
+    // No short flag: `-n` collides with the global `--network` flag
+    // (main.rs's `Cli.network`, `global = true`) -- same bug as
+    // analyze.rs's `no_cache` field, see that file's comment for the full
+    // explanation of how this panics every non-release invocation.
+    #[arg(long, default_value_t = 3)]
     pub iterations: usize,
 
     /// Path to a baseline JSON file produced by a previous `--output` run.
@@ -31,6 +36,14 @@ pub struct BenchmarkArgs {
     /// Save the raw timing data as JSON to this path for future `--baseline` use.
     #[arg(short, long)]
     pub output: Option<PathBuf>,
+
+    /// Fail if any rule's p95 exceeds this budget in milliseconds.
+    #[arg(long)]
+    pub budget_ms: Option<f64>,
+
+    /// Opt-in to anonymous telemetry reporting for this benchmark run
+    #[arg(long)]
+    pub telemetry: bool,
 }
 
 /// Per-rule timing data stored in the JSON snapshot.
@@ -74,9 +87,7 @@ pub fn exec(args: BenchmarkArgs) -> anyhow::Result<()> {
         .collect::<Vec<_>>()
         .join("\n\n");
 
-    let config = SanctifyConfig::default();
-    let analyzer = Analyzer::new(config);
-    let rule_names: Vec<String> = analyzer
+    let rule_names: Vec<String> = sanctifier_core::rules::RuleRegistry::with_default_rules()
         .available_rules()
         .iter()
         .map(|s| s.to_string())
@@ -139,11 +150,37 @@ pub fn exec(args: BenchmarkArgs) -> anyhow::Result<()> {
             generated_at,
             corpus_path: args.corpus.display().to_string(),
             iterations,
-            rules: timings,
+            rules: timings.clone(),
         };
         let json = serde_json::to_string_pretty(&snapshot)?;
         fs::write(out_path, json)?;
         eprintln!("Saved benchmark snapshot to {}", out_path.display());
+    }
+
+    if args.telemetry {
+        let total_mean: f64 = timings.iter().map(|t| t.mean_ms).sum();
+        let payload = crate::telemetry::AnalysisTelemetry {
+            tool_version: crate::telemetry::sanitize_version(env!("CARGO_PKG_VERSION")),
+            duration_ms: total_mean.round() as u64,
+            rule_ids: timings.iter().map(|t| t.rule.clone()).collect(),
+        };
+        if let Err(e) = crate::telemetry::emit_analysis_telemetry(&payload) {
+            eprintln!("Warning: Failed to submit telemetry: {}", e);
+        }
+    }
+
+    if let Some(budget) = args.budget_ms {
+        let exceeded: Vec<_> = timings.iter().filter(|t| t.p95_ms > budget).collect();
+        if !exceeded.is_empty() {
+            eprintln!(
+                "\nError: The following rules exceeded the p95 budget of {:.2}ms:",
+                budget
+            );
+            for t in exceeded {
+                eprintln!("  - {}: {:.2}ms", t.rule, t.p95_ms);
+            }
+            std::process::exit(1);
+        }
     }
 
     Ok(())
@@ -220,7 +257,7 @@ fn mean(samples: &[f64]) -> f64 {
     samples.iter().sum::<f64>() / samples.len() as f64
 }
 
-fn percentile(samples: &mut Vec<f64>, pct: f64) -> f64 {
+fn percentile(samples: &mut [f64], pct: f64) -> f64 {
     if samples.is_empty() {
         return 0.0;
     }
@@ -278,14 +315,12 @@ mod tests {
 
     #[test]
     fn render_table_no_baseline() {
-        let timings = vec![
-            RuleTimings {
-                rule: "auth_gap".to_string(),
-                mean_ms: 1.23,
-                p95_ms: 2.34,
-                samples: vec![1.0, 1.23, 1.5],
-            },
-        ];
+        let timings = vec![RuleTimings {
+            rule: "auth_gap".to_string(),
+            mean_ms: 1.23,
+            p95_ms: 2.34,
+            samples: vec![1.0, 1.23, 1.5],
+        }];
         let table = render_table(&timings, &HashMap::new());
         assert!(table.contains("auth_gap"));
         assert!(table.contains("1.23"));

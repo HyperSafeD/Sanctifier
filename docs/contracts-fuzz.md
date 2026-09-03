@@ -31,7 +31,7 @@ Runs on `ubuntu-latest` under stable Rust.  Two steps:
 
 | Step | Command | Purpose |
 |------|---------|---------|
-| Bolero + e2e | `cargo test -p my-contract --tests` | Drives `src/fuzz.rs` and `tests/cross_contract_fuzz_e2e.rs` |
+| Bolero + e2e | `cargo test -p my-contract --lib --tests` | Drives the unit fuzz harness and `tests/cross_contract_fuzz_e2e.rs` |
 | Compile fuzz target | `cargo check --bin fuzz_cross_contract` (in `contracts/my-contract/fuzz`) | Guarantees the libFuzzer harness still builds |
 
 The smoke job keeps PR feedback under a couple of minutes while ensuring no
@@ -58,12 +58,15 @@ cargo bolero test <target> --corpus-dir <downloaded-corpus>
 cargo fuzz run fuzz_cross_contract <crash-input>
 ```
 
+The PR workflow also seeds a replay corpus from known-good and known-bad
+payloads and runs it for up to 10 minutes on every pull request.
+
 ## Local development
 
 Reproduce the smoke job:
 
 ```bash
-cargo test -p my-contract --tests
+cargo test -p my-contract --lib --tests
 ( cd contracts/my-contract/fuzz && cargo check --bin fuzz_cross_contract )
 ```
 

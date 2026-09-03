@@ -10,6 +10,7 @@ The automation includes:
 - **Continuous Validation**: Periodic health checks and metrics collection
 - **Artifact Management**: Deployment manifests and logs
 - **Frontend E2E (Playwright)**: Browser-level regression checks
+- **Node 24 migration**: GitHub Actions workflows use Node-24-compatible action majors and set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true`
 
 ## Prerequisites
 
@@ -104,6 +105,8 @@ gh secret set SOROBAN_ACCOUNT_ID --body "GXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
 
 5. Optionally repeat for SOROBAN_ACCOUNT_ID
 
+If you set `SOROBAN_ACCOUNT_ID`, the deployment script can check the live balance before deploy and fund the account from Friendbot on testnet or futurenet when needed.
+
 ### 2.3 Verify Secrets
 
 ```bash
@@ -172,6 +175,12 @@ The workflow file: `.github/workflows/soroban-deploy.yml`
 1. `build-and-deploy`: Build, deploy, validate
 2. `continuous-validation`: Run health checks
 3. `notification`: Generate reports
+
+The repository-wide workflow refresh also bumped the GitHub Action majors used by the CI family to the Node 24-compatible releases:
+
+- `actions/checkout@v6`
+- `actions/cache@v5`
+- `actions/setup-node@v6`
 
 ### 4.4 Artifact retention strategy (why + where to change)
 

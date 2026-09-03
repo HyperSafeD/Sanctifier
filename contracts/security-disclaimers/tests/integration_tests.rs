@@ -2,7 +2,10 @@
 //!
 //! These tests verify that security disclaimers work correctly in various scenarios.
 
-use security_disclaimers::{DisclaimerCategory, SecurityDisclaimer, SecurityLevel};
+use security_disclaimers::{
+    get_disclaimer, get_testing_requirements, requires_audit, validate_security_config,
+    DisclaimerCategory, SecurityLevel,
+};
 
 #[test]
 fn test_security_level_consistency() {
@@ -21,7 +24,7 @@ fn test_security_level_consistency() {
             DisclaimerCategory::Upgrade,
             DisclaimerCategory::Emergency,
         ] {
-            let disclaimer = SecurityDisclaimer::get_disclaimer(env.clone(), level, category);
+            let disclaimer = get_disclaimer(env.clone(), level, category).to_string();
 
             // All disclaimers should be non-empty
             assert!(
@@ -49,16 +52,14 @@ fn test_multi_contract_security_levels() {
     let env = soroban_sdk::Env::default();
 
     // Test different contracts with different security levels
-    let low_contract_disclaimer = SecurityDisclaimer::get_disclaimer(
-        env.clone(),
-        SecurityLevel::Low,
-        DisclaimerCategory::Audit,
-    );
-    let critical_contract_disclaimer = SecurityDisclaimer::get_disclaimer(
+    let low_contract_disclaimer =
+        get_disclaimer(env.clone(), SecurityLevel::Low, DisclaimerCategory::Audit).to_string();
+    let critical_contract_disclaimer = get_disclaimer(
         env.clone(),
         SecurityLevel::Critical,
         DisclaimerCategory::Audit,
-    );
+    )
+    .to_string();
 
     // Critical contract should have stronger warnings
     assert!(critical_contract_disclaimer.len() > low_contract_disclaimer.len());
@@ -71,26 +72,22 @@ fn test_disclaimer_content_validation() {
     let env = soroban_sdk::Env::default();
 
     // Test that disclaimer content is appropriate for each security level
-    let critical_disclaimer = SecurityDisclaimer::get_disclaimer(
+    let critical_disclaimer = get_disclaimer(
         env.clone(),
         SecurityLevel::Critical,
         DisclaimerCategory::Audit,
-    );
-    let high_disclaimer = SecurityDisclaimer::get_disclaimer(
-        env.clone(),
-        SecurityLevel::High,
-        DisclaimerCategory::Audit,
-    );
-    let medium_disclaimer = SecurityDisclaimer::get_disclaimer(
+    )
+    .to_string();
+    let high_disclaimer =
+        get_disclaimer(env.clone(), SecurityLevel::High, DisclaimerCategory::Audit).to_string();
+    let medium_disclaimer = get_disclaimer(
         env.clone(),
         SecurityLevel::Medium,
         DisclaimerCategory::Audit,
-    );
-    let low_disclaimer = SecurityDisclaimer::get_disclaimer(
-        env.clone(),
-        SecurityLevel::Low,
-        DisclaimerCategory::Audit,
-    );
+    )
+    .to_string();
+    let low_disclaimer =
+        get_disclaimer(env.clone(), SecurityLevel::Low, DisclaimerCategory::Audit).to_string();
 
     // Critical should mention formal verification
     assert!(critical_disclaimer.contains("Formal verification"));
@@ -112,25 +109,25 @@ fn test_security_configuration_validation() {
     let env = soroban_sdk::Env::default();
 
     // Test valid security configurations
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::Critical,
         true,
         true
     ));
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::High,
         true,
         false
     ));
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::Medium,
         false,
         false
     ));
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::Low,
         false,
@@ -138,31 +135,31 @@ fn test_security_configuration_validation() {
     ));
 
     // Test invalid security configurations
-    assert!(!SecurityDisclaimer::validate_security_config(
+    assert!(!validate_security_config(
         env.clone(),
         SecurityLevel::Critical,
         true,
         false
     ));
-    assert!(!SecurityDisclaimer::validate_security_config(
+    assert!(!validate_security_config(
         env.clone(),
         SecurityLevel::Critical,
         false,
         true
     ));
-    assert!(!SecurityDisclaimer::validate_security_config(
+    assert!(!validate_security_config(
         env.clone(),
         SecurityLevel::Critical,
         false,
         false
     ));
-    assert!(!SecurityDisclaimer::validate_security_config(
+    assert!(!validate_security_config(
         env.clone(),
         SecurityLevel::High,
         false,
         true
     ));
-    assert!(!SecurityDisclaimer::validate_security_config(
+    assert!(!validate_security_config(
         env.clone(),
         SecurityLevel::High,
         false,
@@ -175,36 +172,22 @@ fn test_audit_requirements() {
     let env = soroban_sdk::Env::default();
 
     // Critical and High levels require audits
-    assert!(SecurityDisclaimer::requires_audit(
-        env.clone(),
-        SecurityLevel::Critical
-    ));
-    assert!(SecurityDisclaimer::requires_audit(
-        env.clone(),
-        SecurityLevel::High
-    ));
+    assert!(requires_audit(env.clone(), SecurityLevel::Critical));
+    assert!(requires_audit(env.clone(), SecurityLevel::High));
 
     // Medium and Low levels don't require audits
-    assert!(!SecurityDisclaimer::requires_audit(
-        env.clone(),
-        SecurityLevel::Medium
-    ));
-    assert!(!SecurityDisclaimer::requires_audit(
-        env.clone(),
-        SecurityLevel::Low
-    ));
+    assert!(!requires_audit(env.clone(), SecurityLevel::Medium));
+    assert!(!requires_audit(env.clone(), SecurityLevel::Low));
 }
 
 #[test]
 fn test_testing_requirements() {
     let env = soroban_sdk::Env::default();
 
-    let critical_reqs =
-        SecurityDisclaimer::get_testing_requirements(env.clone(), SecurityLevel::Critical);
-    let high_reqs = SecurityDisclaimer::get_testing_requirements(env.clone(), SecurityLevel::High);
-    let medium_reqs =
-        SecurityDisclaimer::get_testing_requirements(env.clone(), SecurityLevel::Medium);
-    let low_reqs = SecurityDisclaimer::get_testing_requirements(env.clone(), SecurityLevel::Low);
+    let critical_reqs = get_testing_requirements(env.clone(), SecurityLevel::Critical).to_string();
+    let high_reqs = get_testing_requirements(env.clone(), SecurityLevel::High).to_string();
+    let medium_reqs = get_testing_requirements(env.clone(), SecurityLevel::Medium).to_string();
+    let low_reqs = get_testing_requirements(env.clone(), SecurityLevel::Low).to_string();
 
     // Critical should require formal verification
     assert!(critical_reqs.contains("Formal verification"));
@@ -242,5 +225,5 @@ fn test_contract_disclaimer_formatting() {
     assert!(disclaimer.contains("Professional audit"));
 
     // Should contain security warning
-    assert!(disclaimer.contains("SECURITY WARNING"));
+    assert!(disclaimer.contains("Security Warning"));
 }

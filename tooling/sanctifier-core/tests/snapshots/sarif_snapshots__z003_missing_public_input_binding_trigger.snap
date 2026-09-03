@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "withdraw_vulnerable",
+    "message": "Function 'withdraw_vulnerable' verifies a ZK proof but does not bind 'recipient' to the public inputs. A valid proof can be replayed with a different value for it, redirecting the operation.",
+    "rule_name": "missing_public_input_binding",
+    "severity": "Critical",
+    "suggestion": "Include 'recipient' in the public-input vector passed to the verifier so the circuit commits to this transaction's context. Hash non-field values (e.g. an Address) into a field element first, and use the same encoding the circuit expects."
+  }
+]

@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Mainnet Sign-Off Process
+    url: https://github.com/HyperSafeD/Sanctifier/blob/main/RELEASE_CHECKLIST.md
+    about: Read the mainnet sign-off requirements and release checklist.
   - name: Security Vulnerability
     url: https://github.com/HyperSafeD/Sanctifier/security/advisories/new
     about: Please use a private security advisory or email security@sanctifier.dev.
@@ -9,3 +12,4 @@ contact_links:
   - name: Contributing Guide
     url: https://github.com/HyperSafeD/Sanctifier/blob/main/CONTRIBUTING.md
     about: Read the contribution workflow, community expectations, and review checklist.
+

@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { AnalysisTerminal } from "../components/AnalysisTerminal";
 import { FindingsList } from "../components/FindingsList";
 import { Play, RotateCcw, Save, Share2, Sparkles, Terminal, Copy, Check, Trash2, X } from "lucide-react";
 import type { Finding } from "../types";
+import { getSettingsHeaders } from "../lib/settings";
 
 const DEFAULT_CODE = `use soroban_sdk::{contract, contractimpl, Env, Symbol};
 
@@ -123,6 +124,14 @@ interface SavedSnippet {
 }
 
 export default function PlaygroundPage() {
+  return (
+    <Suspense fallback={null}>
+      <PlaygroundPageInner />
+    </Suspense>
+  );
+}
+
+function PlaygroundPageInner() {
   const [code, setCode] = useState(DEFAULT_CODE);
   const [logs, setLogs] = useState<string[]>([]);
   const [findings, setFindings] = useState<Finding[]>([]);
@@ -221,6 +230,7 @@ export default function PlaygroundPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          ...getSettingsHeaders(),
         },
         body: JSON.stringify({ source: code }),
       });
@@ -346,6 +356,13 @@ export default function PlaygroundPage() {
             <p className="text-zinc-500 max-w-xl">
               Write, compile, and test Soroban smart contracts in real-time without local setup.
             </p>
+            <a
+              href="/playground/zk"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 dark:text-violet-400 hover:underline mt-1"
+            >
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="5" y="1" width="6" height="5" rx="1.5" stroke="currentColor" strokeWidth="1.5"/><path d="M3 7h10v8H3z" stroke="currentColor" strokeWidth="1.5" fill="none"/><circle cx="8" cy="11" r="1.25" fill="currentColor"/></svg>
+              Switch to ZK Playground →
+            </a>
           </div>
 
           <div className="flex items-center gap-3">

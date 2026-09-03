@@ -1,0 +1,7 @@
+# Normalize line endings to LF on checkout across all platforms.
+#
+# Without this, Windows runners check these files out with CRLF
+# (git core.autocrlf default), which then makes `prettier --check`
+# (default endOfLine: "lf") report spurious formatting differences
+# and fail `make lint` on windows-latest CI.
+* text=auto eol=lf

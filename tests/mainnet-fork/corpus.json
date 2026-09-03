@@ -1,0 +1,94 @@
+{
+  "_comment": "Curated corpus of publicly-available Soroban contracts deployed on Stellar mainnet. Each entry is read-only — the fork test never submits a transaction. Entries are sorted by contract category. Contract IDs refreshed and verified live on 2026-08-28 (now correctly 56-character mainnet strkeys).",
+  "schema_version": "1",
+  "corpus": [
+    {
+      "id": "token-xlm-wrap",
+      "name": "Stellar XLM Wrapped Token (WASM)",
+      "contract_id": "CAS3J7GYLGXMF6TDJBBYYSE3HQ6BBSMLNUQ34T6TZMYMW2EVH34XOWMA",
+      "network": "mainnet",
+      "category": "token",
+      "description": "Stellar Asset Contract (SAC) instance for the native XLM asset on Soroban mainnet (wrapped XLM).",
+      "source_url": "https://github.com/stellar/soroban-examples/tree/main/token",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "soroswap-router",
+      "name": "Soroswap AMM Router",
+      "contract_id": "CAG5LRYQ5JVEUI5TEID72EYOVX44TTUJT5BQR2J6J77FH65PCCFAJDDH",
+      "network": "mainnet",
+      "category": "amm",
+      "description": "Soroswap decentralised-exchange router — complex generic patterns, multi-hop swap paths.",
+      "source_url": "https://github.com/soroswap/core",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "soroswap-pair",
+      "name": "Soroswap Pair (Liquidity Pool)",
+      "contract_id": "CDZYG4RE75T4UFVUPP3V5LPBZ2GRGXZURP6LPUPADYRGWMTJXS2N5JXI",
+      "network": "mainnet",
+      "category": "amm",
+      "description": "Individual Soroswap liquidity-pair contract. Tests arithmetic patterns under AMM invariant code.",
+      "source_url": "https://github.com/soroswap/core",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "blend-pool-factory",
+      "name": "Blend Protocol Pool Factory",
+      "contract_id": "CDSYOAVXFY7SM5S64IZPPPYB4GVGGLMQVFREPSQQEZVIWXX5R23G4QSU",
+      "network": "mainnet",
+      "category": "lending",
+      "description": "Blend lending-protocol pool factory. Large codebase with complex generics and upgrade paths.",
+      "source_url": "https://github.com/blend-capital/blend-contracts",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "blend-backstop",
+      "name": "Blend Protocol Backstop",
+      "contract_id": "CAQQR5SWBXKIGZKPBZDH3KM5GQ5GUTPKB7JAFCINLZBC5WXPJKRG3IM7",
+      "network": "mainnet",
+      "category": "lending",
+      "description": "Blend backstop contract — critical risk-management logic with complex time-weighted accounting.",
+      "source_url": "https://github.com/blend-capital/blend-contracts",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "aqua-amm-constant-product",
+      "name": "Aqua Constant-Product AMM",
+      "contract_id": "CBQDHNBFBZYE4MKPWBSJOPIYLW4SFSXAXUTSXJN76GNKYVYPCKWC6QUK",
+      "network": "mainnet",
+      "category": "amm",
+      "description": "Aqua Protocol AMM router managing constant-product pools. Tests invariant arithmetic patterns at scale.",
+      "source_url": "https://github.com/AquaProtocol/aqua-dex",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "phoenix-multihop",
+      "name": "Phoenix Protocol Multi-hop Router",
+      "contract_id": "CBYPOQWXHFYWWXUYYUDQOCV245BSGEGLGJAHYKB3OLXIGXYNFIHJCHD2",
+      "network": "mainnet",
+      "category": "dex",
+      "description": "Multi-protocol multi-hop routing contract (execute_route across Phoenix, Soroswap and Aquarius pools).",
+      "source_url": "https://github.com/Phoenix-Protocol-Group/phoenix-contracts",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    },
+    {
+      "id": "comet-pool",
+      "name": "Comet Weighted AMM Pool",
+      "contract_id": "CAS3FL6TLZKDGGSISDBWGGPXT3NRR4DYTZD7YOD3HMYO6LTJUVGRVEAM",
+      "network": "mainnet",
+      "category": "amm",
+      "description": "Comet Protocol Balancer-style weighted AMM pool (BLND:USDC 80:20 LP). Tests complex fixed-point math patterns.",
+      "source_url": "https://github.com/CometDEX/comet-contracts-v1",
+      "expected_findings": [],
+      "skip_if_unreachable": true
+    }
+  ]
+}

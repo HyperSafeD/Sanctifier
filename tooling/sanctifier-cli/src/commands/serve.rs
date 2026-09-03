@@ -21,6 +21,8 @@ pub struct ServeArgs {
 
 #[derive(Clone)]
 struct AppState {
+    #[allow(dead_code)]
+    registry: Arc<RuleRegistry>,
     analyzer: Arc<Analyzer>,
     cache: Arc<Mutex<AnalysisCache<Vec<RuleViolation>>>>,
 }
@@ -31,26 +33,30 @@ pub fn exec(args: ServeArgs) -> Result<()> {
 }
 
 async fn serve_async(args: ServeArgs) -> Result<()> {
+    let registry = Arc::new(RuleRegistry::with_default_rules());
     let config = SanctifyConfig::default();
     let analyzer = Arc::new(Analyzer::new(config));
     let cache = Arc::new(Mutex::new(AnalysisCache::new(100)));
 
-    let state = AppState { analyzer, cache };
+    let state = AppState {
+        registry,
+        analyzer,
+        cache,
+    };
 
     let addr: SocketAddr = format!("{}:{}", args.bind, args.port)
         .parse()
         .context("Invalid bind address")?;
 
-    println!("🚀 Sanctifier HTTP server starting on http://{}", addr);
-    println!("   POST /analyze - Analyze contract source");
-    println!("   GET /health - Health check");
-    println!();
+    println!("Sanctifier HTTP server starting on http://{}", addr);
+    println!("   POST /analyze (body: raw Rust source) — returns NDJSON findings");
+    println!("   GET  /health");
 
     let state_filter = warp::any().map(move || state.clone());
 
     let analyze_route = warp::post()
         .and(warp::path("analyze"))
-        .and(warp::multipart::form().max_length(5 * 1024 * 1024)) // 5MB limit
+        .and(warp::body::json())
         .and(state_filter.clone())
         .and_then(handle_analyze);
 
@@ -66,7 +72,7 @@ async fn serve_async(args: ServeArgs) -> Result<()> {
 }
 
 async fn handle_analyze(
-    form: FormData,
+    body: serde_json::Value,
     state: AppState,
 ) -> Result<impl Reply, Rejection> {
     // Extract contract source from multipart form
@@ -95,7 +101,7 @@ async fn handle_analyze(
     // Write to temp file
     let temp_dir = tempfile::tempdir().map_err(|_| warp::reject::reject())?;
     let contract_path = temp_dir.path().join("contract.rs");
-    
+
     let mut file = fs::File::create(&contract_path)
         .await
         .map_err(|_| warp::reject::reject())?;
@@ -124,7 +130,7 @@ async fn handle_analyze(
     Ok(warp::reply::json(&findings))
 }
 
-async fn handle_rejection(err: Rejection) -> Result<impl Reply, Rejection> {
+async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {
     if err.is_not_found() {
         Ok(warp::reply::with_status(
             warp::reply::json(&serde_json::json!({"error": "Not found"})),

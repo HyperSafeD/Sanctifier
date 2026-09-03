@@ -18,9 +18,7 @@
     "schema_version": {
       "type": "string",
       "description": "Semantic version of this JSON schema (e.g. \"1.0.0\"). Incremented independently of the tool version whenever the output shape changes.",
-      "examples": [
-        "1.1.0"
-      ]
+      "examples": ["1.1.0"]
     },
     "metadata": {
       "type": "object",
@@ -32,23 +30,20 @@
         "format",
         "timeout_secs",
         "cached_files",
-        "total_files"
+        "total_files",
+        "network"
       ],
       "additionalProperties": false,
       "properties": {
         "version": {
           "type": "string",
           "description": "Sanctifier CLI version (semver).",
-          "examples": [
-            "0.1.0"
-          ]
+          "examples": ["0.1.0"]
         },
         "timestamp": {
           "type": "string",
           "description": "ISO-8601 UTC timestamp when the scan was started.",
-          "examples": [
-            "2026-03-25T10:00:00Z"
-          ]
+          "examples": ["2026-03-25T10:00:00Z"]
         },
         "project_path": {
           "type": "string",
@@ -73,6 +68,11 @@
           "type": "integer",
           "minimum": 0,
           "description": "Total number of Rust files found in the project."
+        },
+        "network": {
+          "type": "string",
+          "description": "Target network for this analysis run (e.g. testnet, futurenet, mainnet). Inferred from SOROBAN_NETWORK env var or CLI --network flag.",
+          "examples": ["testnet", "mainnet"]
         }
       }
     },
@@ -424,21 +424,14 @@
           "type": "string"
         },
         "function_expr": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         }
       }
     },
     "FindingCode": {
       "type": "object",
       "description": "A single entry in the Sanctifier finding-code catalogue.",
-      "required": [
-        "code",
-        "category",
-        "description"
-      ],
+      "required": ["code", "category", "description"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -459,12 +452,7 @@
     "StorageCollisionIssue": {
       "type": "object",
       "description": "Potential storage key collision (raw struct, no code tag).",
-      "required": [
-        "key_value",
-        "key_type",
-        "location",
-        "message"
-      ],
+      "required": ["key_value", "key_type", "location", "message"],
       "additionalProperties": false,
       "properties": {
         "key_value": {
@@ -487,12 +475,7 @@
     "SizeWarning": {
       "type": "object",
       "description": "Ledger entry size exceeds or approaches the configured limit (raw struct).",
-      "required": [
-        "struct_name",
-        "estimated_size",
-        "limit",
-        "level"
-      ],
+      "required": ["struct_name", "estimated_size", "limit", "level"],
       "additionalProperties": false,
       "properties": {
         "struct_name": {
@@ -511,10 +494,7 @@
         },
         "level": {
           "type": "string",
-          "enum": [
-            "ExceedsLimit",
-            "ApproachingLimit"
-          ],
+          "enum": ["ExceedsLimit", "ApproachingLimit"],
           "description": "Whether the size exceeds or merely approaches the limit."
         }
       }
@@ -522,20 +502,12 @@
     "UnsafePattern": {
       "type": "object",
       "description": "Unsafe pattern (panic!, unwrap, expect) detected by the visitor (raw struct).",
-      "required": [
-        "pattern_type",
-        "line",
-        "snippet"
-      ],
+      "required": ["pattern_type", "line", "snippet"],
       "additionalProperties": false,
       "properties": {
         "pattern_type": {
           "type": "string",
-          "enum": [
-            "Panic",
-            "Unwrap",
-            "Expect"
-          ],
+          "enum": ["Panic", "Unwrap", "Expect"],
           "description": "The kind of unsafe pattern."
         },
         "line": {
@@ -552,11 +524,7 @@
     "PanicIssue": {
       "type": "object",
       "description": "panic!/unwrap/expect found inside a contract function (raw struct).",
-      "required": [
-        "function_name",
-        "issue_type",
-        "location"
-      ],
+      "required": ["function_name", "issue_type", "location"],
       "additionalProperties": false,
       "properties": {
         "function_name": {
@@ -574,12 +542,7 @@
     "ArithmeticIssue": {
       "type": "object",
       "description": "Unchecked arithmetic operation (raw struct).",
-      "required": [
-        "function_name",
-        "operation",
-        "suggestion",
-        "location"
-      ],
+      "required": ["function_name", "operation", "suggestion", "location"],
       "additionalProperties": false,
       "properties": {
         "function_name": {
@@ -600,12 +563,7 @@
     "CustomRuleMatch": {
       "type": "object",
       "description": "Match produced by a user-defined regex rule (raw struct).",
-      "required": [
-        "rule_name",
-        "line",
-        "snippet",
-        "severity"
-      ],
+      "required": ["rule_name", "line", "snippet", "severity"],
       "additionalProperties": false,
       "properties": {
         "rule_name": {
@@ -620,11 +578,7 @@
         },
         "severity": {
           "type": "string",
-          "enum": [
-            "info",
-            "warning",
-            "error"
-          ],
+          "enum": ["info", "warning", "error"],
           "description": "Severity inherited from the custom rule."
         }
       }
@@ -649,10 +603,7 @@
         },
         "issue_type": {
           "type": "string",
-          "enum": [
-            "InconsistentSchema",
-            "OptimizableTopic"
-          ]
+          "enum": ["InconsistentSchema", "OptimizableTopic"]
         },
         "message": {
           "type": "string"
@@ -665,12 +616,7 @@
     "UnhandledResultIssue": {
       "type": "object",
       "description": "Result return value that is silently discarded (raw struct).",
-      "required": [
-        "function_name",
-        "call_expression",
-        "message",
-        "location"
-      ],
+      "required": ["function_name", "call_expression", "message", "location"],
       "additionalProperties": false,
       "properties": {
         "function_name": {
@@ -690,12 +636,7 @@
     "UpgradeFinding": {
       "type": "object",
       "description": "A single finding within an upgrade-safety report.",
-      "required": [
-        "category",
-        "location",
-        "message",
-        "suggestion"
-      ],
+      "required": ["category", "location", "message", "suggestion"],
       "additionalProperties": false,
       "properties": {
         "category": {
@@ -709,10 +650,7 @@
           ]
         },
         "function_name": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "description": "Name of the related function, if applicable."
         },
         "location": {
@@ -773,11 +711,7 @@
     "SmtInvariantIssue": {
       "type": "object",
       "description": "Invariant violation proved by the Z3 SMT solver (raw struct).",
-      "required": [
-        "function_name",
-        "description",
-        "location"
-      ],
+      "required": ["function_name", "description", "location"],
       "additionalProperties": false,
       "properties": {
         "function_name": {
@@ -878,13 +812,7 @@
     "FindingStorageCollision": {
       "type": "object",
       "description": "S005 \u2014 potential storage key collision.",
-      "required": [
-        "code",
-        "key_value",
-        "key_type",
-        "location",
-        "message"
-      ],
+      "required": ["code", "key_value", "key_type", "location", "message"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -911,13 +839,7 @@
     "FindingLedgerSize": {
       "type": "object",
       "description": "S004 \u2014 ledger entry size exceeds or approaches limit.",
-      "required": [
-        "code",
-        "struct_name",
-        "estimated_size",
-        "limit",
-        "level"
-      ],
+      "required": ["code", "struct_name", "estimated_size", "limit", "level"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -937,10 +859,7 @@
         },
         "level": {
           "type": "string",
-          "enum": [
-            "ExceedsLimit",
-            "ApproachingLimit"
-          ]
+          "enum": ["ExceedsLimit", "ApproachingLimit"]
         },
         "source_provenance": {
           "$ref": "#/definitions/SourceProvenance"
@@ -950,12 +869,7 @@
     "FindingUnsafePattern": {
       "type": "object",
       "description": "S006 \u2014 unsafe language or runtime pattern.",
-      "required": [
-        "code",
-        "pattern_type",
-        "line",
-        "snippet"
-      ],
+      "required": ["code", "pattern_type", "line", "snippet"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -964,11 +878,7 @@
         },
         "pattern_type": {
           "type": "string",
-          "enum": [
-            "Panic",
-            "Unwrap",
-            "Expect"
-          ]
+          "enum": ["Panic", "Unwrap", "Expect"]
         },
         "line": {
           "type": "integer",
@@ -985,10 +895,7 @@
     "FindingAuthGap": {
       "type": "object",
       "description": "S001 \u2014 missing authentication guard in a privileged function.",
-      "required": [
-        "code",
-        "function"
-      ],
+      "required": ["code", "function"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -1007,12 +914,7 @@
     "FindingPanic": {
       "type": "object",
       "description": "S002 \u2014 panic!/unwrap/expect usage.",
-      "required": [
-        "code",
-        "function_name",
-        "issue_type",
-        "location"
-      ],
+      "required": ["code", "function_name", "issue_type", "location"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -1069,13 +971,7 @@
     "FindingCustomRule": {
       "type": "object",
       "description": "S007 \u2014 user-defined custom rule matched contract source.",
-      "required": [
-        "code",
-        "rule_name",
-        "line",
-        "snippet",
-        "severity"
-      ],
+      "required": ["code", "rule_name", "line", "snippet", "severity"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -1094,11 +990,7 @@
         },
         "severity": {
           "type": "string",
-          "enum": [
-            "info",
-            "warning",
-            "error"
-          ]
+          "enum": ["info", "warning", "error"]
         },
         "source_provenance": {
           "$ref": "#/definitions/SourceProvenance"
@@ -1108,13 +1000,7 @@
     "FindingEventIssue": {
       "type": "object",
       "description": "S008 \u2014 inconsistent event schema or sub-optimal topic.",
-      "required": [
-        "code",
-        "event_name",
-        "issue_type",
-        "location",
-        "message"
-      ],
+      "required": ["code", "event_name", "issue_type", "location", "message"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -1126,10 +1012,7 @@
         },
         "issue_type": {
           "type": "string",
-          "enum": [
-            "InconsistentSchema",
-            "OptimizableTopic"
-          ]
+          "enum": ["InconsistentSchema", "OptimizableTopic"]
         },
         "location": {
           "type": "string"
@@ -1178,13 +1061,7 @@
     "FindingUpgradeRisk": {
       "type": "object",
       "description": "S010 \u2014 security risk in contract upgrade or admin mechanisms.",
-      "required": [
-        "code",
-        "category",
-        "location",
-        "message",
-        "suggestion"
-      ],
+      "required": ["code", "category", "location", "message", "suggestion"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -1202,10 +1079,7 @@
           ]
         },
         "function_name": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "location": {
           "type": "string"
@@ -1224,12 +1098,7 @@
     "FindingSmtIssue": {
       "type": "object",
       "description": "S011 \u2014 Z3 proved a mathematical invariant violation.",
-      "required": [
-        "code",
-        "function_name",
-        "description",
-        "location"
-      ],
+      "required": ["code", "function_name", "description", "location"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -1288,10 +1157,7 @@
           "type": "string"
         },
         "actual_signature": {
-          "type": [
-            "string",
-            "null"
-          ]
+          "type": ["string", "null"]
         },
         "source_provenance": {
           "$ref": "#/definitions/SourceProvenance"
@@ -1301,11 +1167,7 @@
     "FindingTimeout": {
       "type": "object",
       "description": "S000 \u2014 per-file analysis timeout.",
-      "required": [
-        "code",
-        "file",
-        "message"
-      ],
+      "required": ["code", "file", "message"],
       "additionalProperties": false,
       "properties": {
         "code": {
@@ -1327,17 +1189,11 @@
     "SourceProvenance": {
       "type": "object",
       "description": "Sentry-style provenance that pins a finding to a specific git revision and provides a reformat-stable identifier.",
-      "required": [
-        "line",
-        "stable_id"
-      ],
+      "required": ["line", "stable_id"],
       "additionalProperties": false,
       "properties": {
         "git_blob_sha": {
-          "type": [
-            "string",
-            "null"
-          ],
+          "type": ["string", "null"],
           "description": "SHA-1 blob hash of the analysed source file (git hash-object output). Null when git metadata is unavailable."
         },
         "line": {

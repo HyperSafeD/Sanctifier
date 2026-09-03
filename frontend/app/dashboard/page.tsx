@@ -1,14 +1,12 @@
 "use client";
 
-import { useState, useCallback, useMemo, useTransition } from "react";
+import { useCallback, useMemo, useTransition, useEffect } from "react";
 import dynamic from "next/dynamic";
-import type { Severity } from "../types";
 import { transformReport, extractCallGraph, normalizeReport } from "../lib/transform";
 import { normalizeFindingCodeQuery, validateFindingCodeQuery } from "../lib/finding-filters";
 import { validateContractBatch } from "../lib/upload-validation";
-import type { RejectedFile } from "../lib/upload-validation";
 import type { FileProgress } from "../components/DashboardHeader";
-import type { WorkspaceSummary } from "../types";
+import type { WorkspaceSummary, AnalysisReport, Finding } from "../types";
 import {
   createWorkspaceFromSingleReport,
   extractErrorMessage,
@@ -17,42 +15,47 @@ import {
   SAMPLE_JSON,
 } from "../lib/report-ingestion";
 import { exportToPdf } from "../lib/export-pdf";
+import { copyShareLink, isShareLinkTooLarge } from "../lib/share-link";
 import { SeverityFilter } from "../components/SeverityFilter";
 import { FindingsList } from "../components/FindingsList";
 import { SummaryChart } from "../components/SummaryChart";
 import { SanctityScore } from "../components/SanctityScore";
+import { ComparisonView } from "../components/ComparisonView";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { CallGraphSkeleton } from "../components/CallGraphSkeleton";
 import { useWorkspace } from "../providers/WorkspaceProvider";
 import { WorkspaceSidebar } from "../components/WorkspaceSidebar";
 import { DashboardHeader } from "../components/DashboardHeader";
+import { getSettingsHeaders } from "../lib/settings";
+import { saveScanRecord, getScanHistory, clearScanHistory } from "../lib/scan-history";
+import { useDashboardActions, useDashboardState } from "../providers/DashboardProvider";
 
 const CallGraph = dynamic(() => import("../components/CallGraph").then((m) => m.CallGraph), {
   ssr: false,
-  loading: () => (
-    <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-6 text-center text-zinc-500">
-      Loading call graph…
-    </div>
-  ),
+  loading: () => <CallGraphSkeleton />,
 });
 
-type Tab = "findings" | "callgraph";
+/** How long the rejected-file notice stays on screen before it clears. */
+const REJECTED_FILE_NOTICE_MS = 6000;
 
 export default function DashboardPage() {
-  const { selectedContract, setWorkspace, updateContractReport } = useWorkspace();
-  const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
-  const [error, setError] = useState<string | null>(null);
-  const [jsonInput, setJsonInput] = useState("");
-  const [activeTab, setActiveTab] = useState<Tab>("findings");
-  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
-  const [isUploadingContract, setIsUploadingContract] = useState(false);
-  const [codeFilterInput, setCodeFilterInput] = useState("");
-  const [codeFilterError, setCodeFilterError] = useState<string | null>(null);
+  const { workspace, selectedContract, setWorkspace, updateContractReport } = useWorkspace();
+  const {
+    severityFilter, error, jsonInput, baselineJsonInput, activeTab,
+    uploadStatus, isUploadingContract, codeFilterInput, codeFilterError,
+    sidebarOpen, batchProgress, rejectedFiles, trendRecords, sourceCache,
+  } = useDashboardState();
+  const actions = useDashboardActions();
   const [isPending, startTransition] = useTransition();
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<Record<string, FileProgress>>({});
-  const [rejectedFiles, setRejectedFiles] = useState<RejectedFile[]>([]);
 
   const currentReport = selectedContract?.report;
+  const currentContractName = selectedContract?.name ?? "default";
+
+  // Load trend data on mount and when workspace changes
+  useEffect(() => {
+    const wsName = workspace?.workspace ?? currentContractName;
+    getScanHistory(wsName).then(actions.setTrendRecords).catch(() => {});
+  }, [workspace, currentContractName, actions]);
 
   const { findings, nodes: callGraphNodes, edges: callGraphEdges } = useMemo(() => {
     if (!currentReport) {
@@ -69,26 +72,59 @@ export default function DashboardPage() {
     };
   }, [currentReport]);
 
-  const applyReport = useCallback((rawReport: unknown) => {
+  const baselineReport: AnalysisReport | null = useMemo(() => {
+    if (!baselineJsonInput.trim()) return null;
+    try {
+      const parsed = JSON.parse(baselineJsonInput);
+      return normalizeReport(parsed);
+    } catch {
+      return null;
+    }
+  }, [baselineJsonInput]);
+
+  const applyReport = useCallback((rawReport: unknown, source?: string) => {
     startTransition(() => {
       if (isWorkspaceSummary(rawReport)) {
         setWorkspace(rawReport);
       } else {
-        setWorkspace(createWorkspaceFromSingleReport(rawReport));
+        const ws = createWorkspaceFromSingleReport(rawReport);
+        if (source && ws.contracts.length > 0) {
+          ws.contracts[0].source = source;
+        }
+        setWorkspace(ws);
       }
     });
   }, [setWorkspace]);
 
+  const persistScanRecord = useCallback((findingsList: Finding[]) => {
+    const wsName = workspace?.workspace ?? currentContractName;
+    const counts = { critical: 0, high: 0, medium: 0, low: 0 };
+    findingsList.forEach((f) => {
+      if (counts[f.severity] !== undefined) counts[f.severity]++;
+    });
+    saveScanRecord({
+      workspace: wsName,
+      timestamp: Date.now(),
+      ...counts,
+      total: findingsList.length,
+    }).then(() => {
+      getScanHistory(wsName).then(actions.setTrendRecords).catch(() => {});
+    }).catch(() => {});
+  }, [workspace, currentContractName, actions]);
+
   const parseReport = useCallback((text: string) => {
-    setError(null);
-    setUploadStatus(null);
+    actions.parseStarted();
     try {
-      applyReport(parseJsonInput(text));
-    } catch (e) {
-      setError("Invalid JSON");
+      const parsed = parseJsonInput(text);
+      applyReport(parsed);
+      const report = normalizeReport(parsed);
+      const findingsList = transformReport(report);
+      persistScanRecord(findingsList);
+    } catch {
+      actions.parseFailed("Invalid JSON");
       setWorkspace(null);
     }
-  }, [applyReport, setWorkspace]);
+  }, [actions, applyReport, persistScanRecord, setWorkspace]);
 
   const loadReport = useCallback(() => {
     parseReport(jsonInput);
@@ -100,55 +136,75 @@ export default function DashboardPage() {
     const reader = new FileReader();
     reader.onload = (ev) => {
       const text = ev.target?.result as string;
-      setJsonInput(text);
+      actions.setJsonInput(text);
       parseReport(text);
     };
     reader.readAsText(file);
     e.target.value = "";
-  }, [parseReport]);
+  }, [actions, parseReport]);
 
-  const analyzeFile = useCallback(async (file: File): Promise<unknown> => {
+  const analyzeFile = useCallback(async (file: File): Promise<{ payload: unknown; source: string }> => {
     const formData = new FormData();
     formData.append("contract", file);
-    const response = await fetch("/api/analyze", { method: "POST", body: formData });
+    const settingsHeaders = getSettingsHeaders();
+    const response = await fetch("/api/analyze", {
+      method: "POST",
+      body: formData,
+      headers: settingsHeaders as Record<string, string>,
+    });
     const rawBody = await response.text();
     let payload: unknown = null;
     if (rawBody) {
       try { payload = JSON.parse(rawBody); } catch { payload = rawBody; }
     }
     if (!response.ok) throw new Error(extractErrorMessage(payload, "Contract analysis failed"));
-    return payload;
+    // Read the source from the File object
+    const source = await file.text();
+    return { payload, source };
   }, []);
+
+  const getSourceForFinding = useCallback((finding: Finding): string | undefined => {
+    const contractName = workspace?.contracts.find(
+      (c) => c.source && (finding.location.includes(c.name) || finding.location === c.name)
+    )?.name;
+    if (contractName && sourceCache[contractName]) {
+      return sourceCache[contractName];
+    }
+    // Fall back to selected contract's source
+    return selectedContract?.source;
+  }, [workspace, selectedContract, sourceCache]);
+
+  const getFileNameForFinding = useCallback((finding: Finding): string | undefined => {
+    return selectedContract?.name ?? "contract.rs";
+  }, [selectedContract]);
 
   const handleContractFiles = useCallback(async (files: File[]) => {
     const { valid, rejected } = validateContractBatch(files);
 
     if (rejected.length > 0) {
-      setRejectedFiles(rejected);
-      setTimeout(() => setRejectedFiles([]), 6000);
+      actions.rejectFiles(rejected);
+      setTimeout(() => actions.clearRejectedFiles(), REJECTED_FILE_NOTICE_MS);
     }
 
     if (valid.length === 0) return;
 
-    setError(null);
-    setIsUploadingContract(true);
-
     if (valid.length === 1) {
       const file = valid[0];
-      setBatchProgress({ [file.name]: "analyzing" });
-      setUploadStatus(`Analyzing ${file.name}…`);
+      actions.uploadStarted({ [file.name]: "analyzing" }, `Analyzing ${file.name}…`);
       try {
-        const payload = await analyzeFile(file);
-        setJsonInput(JSON.stringify(payload, null, 2));
-        applyReport(payload);
-        setBatchProgress({ [file.name]: "done" });
-        setUploadStatus(`Analysis report ready for ${file.name}.`);
+        const { payload, source } = await analyzeFile(file);
+        actions.cacheSources({ [file.name]: source });
+        actions.setJsonInput(JSON.stringify(payload, null, 2));
+        applyReport(payload, source);
+        // Persist scan record for trend chart
+        const report = normalizeReport(payload);
+        const transformedFindings = transformReport(report);
+        persistScanRecord(transformedFindings);
+        actions.fileProgress(file.name, "done");
+        actions.uploadSucceeded(`Analysis report ready for ${file.name}.`);
       } catch (err) {
-        setBatchProgress({ [file.name]: "error" });
-        setUploadStatus(null);
-        setError(err instanceof Error ? err.message : "Contract analysis failed");
-      } finally {
-        setIsUploadingContract(false);
+        actions.fileProgress(file.name, "error");
+        actions.uploadFailed(err instanceof Error ? err.message : "Contract analysis failed");
       }
       return;
     }
@@ -156,12 +212,11 @@ export default function DashboardPage() {
     // Batch: create workspace skeleton, then analyze each file
     const initialProgress: Record<string, FileProgress> = {};
     for (const f of valid) initialProgress[f.name] = "pending";
-    setBatchProgress(initialProgress);
-    setUploadStatus(`Analyzing ${valid.length} files…`);
+    actions.uploadStarted(initialProgress, `Analyzing ${valid.length} files…`);
 
     const skeleton: WorkspaceSummary = {
       workspace: "batch-upload",
-      contracts: valid.map((f) => ({ name: f.name, total_findings: 0 })),
+      contracts: valid.map((f) => ({ name: f.name, total_findings: 0, source: "" })),
       shared_libs: [],
       grand_total_findings: 0,
     };
@@ -169,34 +224,55 @@ export default function DashboardPage() {
 
     let doneCount = 0;
     let errorCount = 0;
+    const newSourceCache: Record<string, string> = {};
 
     await Promise.all(
       valid.map(async (file) => {
-        setBatchProgress((prev) => ({ ...prev, [file.name]: "analyzing" }));
+        actions.fileProgress(file.name, "analyzing");
         try {
-          const payload = await analyzeFile(file);
+          const { payload, source } = await analyzeFile(file);
+          newSourceCache[file.name] = source;
           const report = normalizeReport(payload);
           updateContractReport(file.name, report);
-          setBatchProgress((prev) => ({ ...prev, [file.name]: "done" }));
+          actions.fileProgress(file.name, "done");
           doneCount++;
         } catch {
-          setBatchProgress((prev) => ({ ...prev, [file.name]: "error" }));
+          actions.fileProgress(file.name, "error");
           errorCount++;
         }
       })
     );
 
-    setIsUploadingContract(false);
-    setUploadStatus(
+    actions.cacheSources(newSourceCache);
+    actions.uploadSucceeded(
       `Batch complete: ${doneCount} analyzed${errorCount > 0 ? `, ${errorCount} failed` : ""}.`
     );
-  }, [analyzeFile, applyReport, setWorkspace, updateContractReport]);
+  }, [actions, analyzeFile, applyReport, setWorkspace, updateContractReport, persistScanRecord]);
+
+  const handleClearHistory = useCallback(() => {
+    const wsName = workspace?.workspace ?? currentContractName;
+    clearScanHistory(wsName).then(() => {
+      actions.setTrendRecords([]);
+    }).catch(() => {});
+  }, [workspace, currentContractName, actions]);
 
   const handleCodeFilterChange = useCallback((input: string) => {
     const normalized = normalizeFindingCodeQuery(input);
-    setCodeFilterInput(normalized);
-    setCodeFilterError(validateFindingCodeQuery(normalized));
-  }, []);
+    actions.setCodeFilter(normalized, validateFindingCodeQuery(normalized));
+  }, [actions]);
+
+  const handleShareReport = async () => {
+    const workspace = selectedContract?.report
+      ? { workspace: "sanctifier", contracts: [{ name: selectedContract.name, total_findings: findings.length }], shared_libs: [], grand_total_findings: findings.length }
+      : null;
+    const data = workspace ?? currentReport;
+    if (!data) return;
+    if (isShareLinkTooLarge(data as Parameters<typeof copyShareLink>[0])) {
+      actions.setError("Report is too large to share via URL. Export as PDF instead.");
+      return;
+    }
+    await copyShareLink(data as Parameters<typeof copyShareLink>[0]);
+  };
 
   const hasData = currentReport !== null;
   const isProcessing = isPending || isUploadingContract;
@@ -207,11 +283,12 @@ export default function DashboardPage() {
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 space-y-8">
         <DashboardHeader
           jsonInput={jsonInput}
-          setJsonInput={setJsonInput}
+          setJsonInput={actions.setJsonInput}
           loadReport={loadReport}
           handleFileUpload={handleFileUpload}
           onContractFiles={handleContractFiles}
           exportToPdf={() => exportToPdf(findings)}
+          shareReport={handleShareReport}
           hasData={hasData}
           isProcessing={isProcessing}
           uploadStatus={uploadStatus}
@@ -225,7 +302,7 @@ export default function DashboardPage() {
         <div className="md:hidden">
           <button
             aria-label="Open workspace sidebar"
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => actions.setSidebarOpen(true)}
             className="flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 transition-colors"
           >
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true">
@@ -238,7 +315,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex flex-col md:flex-row gap-8">
-          <WorkspaceSidebar isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+          <WorkspaceSidebar isOpen={sidebarOpen} onClose={() => actions.setSidebarOpen(false)} />
 
           <div className="flex-1 space-y-8">
             {hasData && (
@@ -248,13 +325,17 @@ export default function DashboardPage() {
                     <SanctityScore findings={findings} />
                   </ErrorBoundary>
                   <ErrorBoundary>
-                    <SummaryChart findings={findings} />
+                    <SummaryChart
+                      findings={findings}
+                      trendRecords={trendRecords}
+                      onClearHistory={handleClearHistory}
+                    />
                   </ErrorBoundary>
                 </section>
 
                 <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-700 theme-high-contrast:border-white" role="tablist" aria-label="Analysis view tabs">
                   <button
-                    onClick={() => setActiveTab("findings")}
+                    onClick={() => actions.setActiveTab("findings")}
                     role="tab"
                     aria-selected={activeTab === "findings"}
                     aria-controls="findings-panel"
@@ -267,7 +348,7 @@ export default function DashboardPage() {
                     Findings
                   </button>
                   <button
-                    onClick={() => setActiveTab("callgraph")}
+                    onClick={() => actions.setActiveTab("callgraph")}
                     role="tab"
                     aria-selected={activeTab === "callgraph"}
                     aria-controls="callgraph-panel"
@@ -279,6 +360,19 @@ export default function DashboardPage() {
                   >
                     Call Graph
                   </button>
+                  <button
+                    onClick={() => actions.setActiveTab("diff")}
+                    role="tab"
+                    aria-selected={activeTab === "diff"}
+                    aria-controls="diff-panel"
+                    id="diff-tab"
+                    className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-zinc-400 ${activeTab === "diff"
+                        ? "border-zinc-900 dark:border-zinc-100 theme-high-contrast:border-yellow-300 text-zinc-900 dark:text-zinc-100 theme-high-contrast:text-yellow-300"
+                        : "border-transparent text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 theme-high-contrast:text-white theme-high-contrast:hover:text-yellow-300"
+                      }`}
+                  >
+                    Diff
+                  </button>
                 </div>
 
                 {activeTab === "findings" && (
@@ -286,7 +380,7 @@ export default function DashboardPage() {
                     <section>
                       <h2 className="text-lg font-semibold mb-4">Filter Findings</h2>
                       <div className="space-y-4">
-                        <SeverityFilter selected={severityFilter} onChange={setSeverityFilter} />
+                        <SeverityFilter selected={severityFilter} onChange={actions.setSeverityFilter} />
                         <div className="max-w-xs">
                           <label htmlFor="finding-code-filter" className="mb-1 block text-sm font-medium">
                             Search by finding code
@@ -322,6 +416,8 @@ export default function DashboardPage() {
                           findings={findings}
                           severityFilter={severityFilter}
                           codeFilter={codeFilterError ? "" : codeFilterInput}
+                          getSource={getSourceForFinding}
+                          getFileName={getFileNameForFinding}
                         />
                       </ErrorBoundary>
                     </section>
@@ -333,6 +429,46 @@ export default function DashboardPage() {
                     <ErrorBoundary>
                       <CallGraph nodes={callGraphNodes} edges={callGraphEdges} />
                     </ErrorBoundary>
+                  </section>
+                )}
+
+                {activeTab === "diff" && (
+                  <section id="diff-panel" role="tabpanel" aria-labelledby="diff-tab">
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label htmlFor="baseline-json-input" className="mb-1 block text-sm font-medium">
+                            Baseline Report (JSON)
+                          </label>
+                          <textarea
+                            id="baseline-json-input"
+                            value={baselineJsonInput}
+                            onChange={(e) => actions.setBaselineJsonInput(e.target.value)}
+                            placeholder='Paste baseline JSON report here...'
+                            rows={4}
+                            className="w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 font-mono text-xs outline-none transition focus-visible:ring-2 focus-visible:ring-zinc-400 dark:border-zinc-600 dark:bg-zinc-950"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-sm font-medium">
+                            Current Report
+                          </label>
+                          <div className="w-full rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-950 px-3 py-2 font-mono text-xs min-h-[5rem] text-zinc-500 dark:text-zinc-400">
+                            {currentReport
+                              ? "Current report loaded from the active contract."
+                              : "No current report loaded. Upload a contract first."}
+                          </div>
+                        </div>
+                      </div>
+                      <ErrorBoundary>
+                        <ComparisonView
+                          baselineReport={baselineReport}
+                          currentReport={currentReport ? normalizeReport(currentReport) : null}
+                          baselineName="Baseline"
+                          currentName={selectedContract?.name ?? "Current"}
+                        />
+                      </ErrorBoundary>
+                    </div>
                   </section>
                 )}
               </>

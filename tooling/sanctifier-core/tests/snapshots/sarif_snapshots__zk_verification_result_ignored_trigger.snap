@@ -1,0 +1,14 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+assertion_line: 504
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "execute",
+    "message": "Function 'execute' calls a ZK verifier but discards the result. A failing proof is silently ignored and execution continues.",
+    "rule_name": "zk_verification_result_ignored",
+    "severity": "Error",
+    "suggestion": "Always propagate the verifier result with `.expect(\"invalid proof\")`, the `?` operator, or an explicit match that panics or returns an error on verification failure."
+  }
+]

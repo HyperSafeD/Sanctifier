@@ -195,7 +195,10 @@ fn double_initialize_fails() {
         &String::from_str(&env, "Test Token"),
         &String::from_str(&env, "TEST"),
     );
-    assert_eq!(result.unwrap_err().unwrap(), TokenError::AlreadyInitialized.into());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TokenError::AlreadyInitialized.into()
+    );
 }
 
 #[test]
@@ -269,7 +272,10 @@ fn mint_fails_when_not_initialized() {
     let to = Address::generate(&env);
 
     let result = client.try_mint(&to, &100i128);
-    assert_eq!(result.unwrap_err().unwrap(), TokenError::NotInitialized.into());
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TokenError::NotInitialized.into()
+    );
 }
 
 #[test]

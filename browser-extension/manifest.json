@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Sanctifier — Soroban Security Scanner",
+  "version": "1.0.0",
+  "description": "Quick preview of recent Sanctifier security scans. Shows the last 10 findings from your local Sanctifier dashboard.",
+  "permissions": ["storage", "alarms"],
+  "host_permissions": ["http://localhost:3000/*", "http://127.0.0.1:9100/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Sanctifier"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sanctifier@hyperfused.xyz",
+      "strict_min_version": "109.0"
+    }
+  }
+}

@@ -16,6 +16,32 @@ const preview: Preview = {
         { name: "dark", value: "#0a0a0a" },
       ],
     },
+    a11y: {
+      config: {
+        rules: [
+          {
+            id: "color-contrast",
+            enabled: true,
+          },
+          {
+            id: "button-name",
+            enabled: true,
+          },
+          {
+            id: "link-name",
+            enabled: true,
+          },
+          {
+            id: "label",
+            enabled: true,
+          },
+          {
+            id: "image-alt",
+            enabled: true,
+          },
+        ],
+      },
+    },
   },
 };
 

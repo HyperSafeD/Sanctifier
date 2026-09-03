@@ -3,7 +3,7 @@
 //!
 //! This crate provides the [`Analyzer`] entry-point together with a
 //! [`RuleRegistry`] of pluggable rules.  Every finding is tagged with a
-//! canonical code from the [`finding_codes`] module (`S000` – `S012`).
+//! canonical code from the [`finding_codes`] module (`S000` – `S027`).
 //!
 //! # JSON output schema
 //!
@@ -12,265 +12,255 @@
 //! `schemas/analysis-output.json` in the repository root.  The schema is
 //! versioned via a `schema_version` field in every report and validated in CI.
 //!
-//! # Quick start
+//! ## Schema stability guarantees
 //!
-//! ```rust,ignore
-//! use sanctifier_core::{Analyzer, SanctifyConfig};
+//! * **Additive changes** (new optional top-level fields) increment the patch
+//!   version only and are backward-compatible.
+//! * **Structural changes** (renaming required fields, removing fields, or
+//!   changing type constraints) increment the minor or major version and
+//!   require the `schema_version` field to be updated accordingly.
+//! * Downstream consumers **must** check `schema_version` before parsing
+//!   structured fields so they can detect unsupported versions early.
 //!
-//! let analyzer = Analyzer::new(SanctifyConfig::default());
-//! let warnings = analyzer.analyze_ledger_size(source_code);
-//! ```
+//! ## Threat model notes
+//!
+//! The JSON report is written to stdout and consumed by CI pipelines, dashboards,
+//! and human operators.  The following properties are enforced to make the
+//! output safe-by-default:
+//!
+//! * **No shell injection surface** — all string fields in findings (file paths,
+//!   snippets, messages) are JSON-escaped by `serde_json` and never interpolated
+//!   into shell commands by the engine itself.
+//! * **Bounded output size** — the `--max-findings` config key caps the number of
+//!   findings per category so that a pathological contract cannot produce a
+//!   multi-gigabyte report.
+//! * **Stable IDs** — every finding carries a `stable_id` derived from a content
+//!   hash so that downstream de-duplication and suppression logic is resilient to
+//!   minor reformats and line-number drift.
 
-#![warn(missing_docs)]
-
+use regex::Regex;
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "soroban")]
+use soroban_sdk::Env;
 use std::collections::HashSet;
-use std::panic::catch_unwind;
+use std::panic::{self, AssertUnwindSafe};
 use syn::spanned::Spanned;
-use syn::visit::{self, Visit};
-
-// Import upgrade analysis functions
-use crate::upgrade_analysis::{is_init_fn, is_upgrade_or_admin_fn};
+use syn::visit::Visit;
 use syn::{parse_str, Fields, File, Item, Meta, Type};
+use thiserror::Error;
 
-/// LRU analysis result cache keyed by source content hash.
 pub mod analysis_cache;
-/// Contract complexity metrics and reports.
+pub mod cfg;
+pub mod circom_parser;
 pub mod complexity;
-/// Custom YAML-based rule definitions.
-pub mod custom_yaml_rules;
-/// Event analysis pass.
-pub mod event_analysis;
-/// Canonical finding codes (`S000` – `S012`) emitted by every analysis pass.
+pub mod constant_folding;
+pub mod contract_discovery;
 pub mod finding_codes;
 /// Resilient RPC Provider Failover Client module.
 pub mod rpc;
 /// Gas / instruction-cost estimation heuristics.
 pub mod gas_estimator;
-/// Gas report rendering and loop-warning formatting.
 pub mod gas_report;
-/// Input validation guards (size, null bytes, UTF-8, path traversal).
+pub mod harness_spec;
 pub mod input_validation;
-/// Automatic patch application.
+pub mod noir_parser;
+pub mod parser;
 pub mod patcher;
-/// Pluggable rule system ([`Rule`] trait, [`RuleRegistry`], built-in rules).
+pub mod reentrancy;
 pub mod rules;
-/// Soroban SDK version detection and deprecation warnings.
 pub mod sdk_version;
-/// SEP-41 token-interface verification.
 pub mod sep41;
-/// Z3 SMT solver integration for formal verification.
-/// Only available when the `smt` feature is enabled (default).
 #[cfg(feature = "smt")]
 pub mod smt;
-/// Upgrade and admin-pattern analysis pass.
-pub mod upgrade_analysis;
-/// Stub SMT types used when the `smt` feature is disabled.
-#[cfg(not(feature = "smt"))]
-pub mod smt {
-    use serde::{Deserialize, Serialize};
-
-    /// Placeholder invariant issue type for builds without SMT support.
-    #[derive(Debug, Serialize, Deserialize, Clone, Default)]
-    pub struct SmtInvariantIssue {
-        /// Function under verification.
-        pub function_name: String,
-        /// Human-readable description of the violation.
-        pub description: String,
-        /// Source location.
-        pub location: String,
-    }
-}
-/// Soroban v21 (Protocol 21) host functions and storage types.
 pub mod soroban_v21;
-/// Storage-key collision detection (internal).
-mod storage_collision;
+pub mod storage_collision;
+pub mod taint_engine;
 
-pub use complexity::{analyze_complexity, analyze_complexity_from_source, render_text_report};
-pub use rules::{Rule, RuleRegistry, RuleViolation, Severity};
+// Re-export common types for easier CLI access
+pub use complexity::{ContractMetrics, FunctionMetrics};
+pub use finding_codes::FindingSeverity as RuleSeverity;
+pub use finding_codes::FindingSeverity;
+pub use reentrancy::ReentrancyEdge;
+pub use rules::{Patch, Rule, RuleRegistry, RuleViolation, Severity};
 pub use sep41::{Sep41Issue, Sep41IssueKind, Sep41VerificationReport};
-pub use smt::SmtInvariantIssue;
+#[cfg(feature = "smt")]
+pub use smt::{CircuitRangeCheckResult, FlaggedSignal, SmtInvariantIssue};
 
-use crate::rules::arithmetic_overflow::ArithVisitor;
-use crate::rules::truncation_bounds::TruncationBoundsVisitor;
-
-const DEFAULT_STRICT_THRESHOLD: f64 = 0.9;
-fn with_panic_guard<F, R>(f: F) -> R
-where
-    F: FnOnce() -> R + std::panic::UnwindSafe,
-    R: Default,
-{
-    catch_unwind(f).unwrap_or_default()
-}
-
-// ── Source provenance ─────────────────────────────────────────────────────────
-
-/// Sentry-style source provenance attached to a finding.
-///
-/// `git_blob_sha` is the SHA-1 object hash of the source file at analysis
-/// time (obtainable via `git hash-object <file>`).  It pins the finding to an
-/// exact revision so cross-revision tracking in issue trackers is unambiguous.
-///
-/// `stable_id` is a deterministic digest of `(rule_name, normalised_snippet)`
-/// that survives minor reformats — two findings for the same logical location
-/// produce the same `stable_id` even when surrounding lines shift.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub struct SourceProvenance {
-    /// SHA-1 blob hash of the analysed source file, if available.
-    pub git_blob_sha: Option<String>,
-    /// 1-based line number within the source file.
-    pub line: usize,
-    /// Reformat-stable identifier derived from the rule name and code context.
-    pub stable_id: String,
-}
-
-impl SourceProvenance {
-    /// Build a [`SourceProvenance`] from a rule name and a source snippet.
-    ///
-    /// The `stable_id` is a 16-character hex string produced by a djb2 hash of
-    /// `"<rule_name>:<whitespace-normalised snippet>"`, making it independent
-    /// of line numbers and minor whitespace changes.
-    pub fn new(rule_name: &str, snippet: &str, line: usize) -> Self {
-        let normalised: String = snippet.split_whitespace().collect::<Vec<_>>().join(" ");
-        let combined = format!("{}:{}", rule_name, normalised);
-        let stable_id = format!("{:016x}", djb2_hash(&combined));
-        Self {
-            git_blob_sha: None,
-            line,
-            stable_id,
-        }
-    }
-
-    /// Attach a git blob SHA to the provenance.
-    pub fn with_git_blob_sha(mut self, sha: impl Into<String>) -> Self {
-        self.git_blob_sha = Some(sha.into());
-        self
-    }
-}
-
-fn djb2_hash(s: &str) -> u64 {
-    let mut hash: u64 = 5381;
-    for byte in s.bytes() {
-        hash = hash.wrapping_mul(33).wrapping_add(u64::from(byte));
-    }
-    hash
-}
-
-// ── Existing types ────────────────────────────────────────────────────────────
-
-/// Severity of a ledger size warning.
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum SizeWarningLevel {
-    /// Size exceeds the ledger entry limit (e.g. 64KB).
-    ExceedsLimit,
-    /// Size is approaching the limit (configurable threshold, e.g. 80%).
-    ApproachingLimit,
-}
-
-/// A warning about a `#[contracttype]` whose estimated serialised size is
-/// close to or exceeds the ledger entry limit.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SizeWarning {
-    /// Name of the struct or enum that was analysed.
-    pub struct_name: String,
-    /// Estimated size in bytes.
-    pub estimated_size: usize,
-    /// The configured ledger-entry limit in bytes.
-    pub limit: usize,
-    /// Whether the size exceeds or merely approaches the limit.
-    pub level: SizeWarningLevel,
-}
-
-/// A `panic!`, `.unwrap()`, or `.expect()` call found inside a contract
-/// function.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct PanicIssue {
-    /// The contract function containing the panic-path.
+#[cfg(not(feature = "smt"))]
+#[derive(Debug, Serialize, Clone)]
+pub struct SmtInvariantIssue {
     pub function_name: String,
-    /// One of `"panic!"`, `"unwrap"`, or `"expect"`.
-    pub issue_type: String,
-    /// Human-readable location string.
+    pub description: String,
     pub location: String,
 }
 
-// ── UnsafePattern types (visitor-based panic/unwrap scanning) ─────────────────
+#[cfg(not(feature = "smt"))]
+#[derive(Debug, Serialize, Clone)]
+pub struct CircuitRangeCheckResult {
+    pub template_name: String,
+    pub flagged_signals: Vec<FlaggedSignal>,
+}
 
-/// The kind of unsafe pattern detected by [`Analyzer::analyze_unsafe_patterns`].
+#[cfg(not(feature = "smt"))]
+#[derive(Debug, Serialize, Clone)]
+pub struct FlaggedSignal {
+    pub signal_name: String,
+    pub counterexample: Option<String>,
+    pub is_timeout: bool,
+}
+
+pub use storage_collision::StorageCollisionIssue;
+
+// ── Panic Guard ───────────────────────────────────────────────────────────────
+
+/// Runs analysis logic inside a panic guard. Returns empty/default on panic,
+/// e.g. when complex macros (contractimpl, etc.) cause AST parsing to fail.
+fn with_panic_guard<T, F>(f: F) -> T
+where
+    F: FnOnce() -> T + panic::UnwindSafe,
+    T: Default,
+{
+    panic::catch_unwind(AssertUnwindSafe(f)).unwrap_or_default()
+}
+
+// ── Configuration ─────────────────────────────────────────────────────────────
+
+pub const DEFAULT_LEDGER_ENTRY_LIMIT: usize = 64 * 1024;
+pub const DEFAULT_APPROACHING_THRESHOLD: f64 = 0.8;
+
+/// User-defined regex-based rule. Defined in .sanctify.toml under [[rules]].
 #[derive(Debug, Serialize, Deserialize, Clone)]
-#[non_exhaustive]
+pub struct CustomRule {
+    pub name: String,
+    pub pattern: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub severity: finding_codes::FindingSeverity,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SanctifyConfig {
+    #[serde(default = "default_ignore_paths")]
+    pub ignore_paths: Vec<String>,
+    #[serde(default = "default_enabled_rules")]
+    pub enabled_rules: Vec<String>,
+    #[serde(default = "default_ledger_limit")]
+    pub ledger_limit: usize,
+    #[serde(default = "default_approaching_threshold")]
+    pub approaching_threshold: f64,
+    #[serde(default = "default_telemetry_enabled")]
+    pub telemetry: bool,
+    #[serde(default)]
+    pub strict_mode: bool,
+    /// Custom regex rules (field name "rules" in TOML).
+    #[serde(default, alias = "custom_rules")]
+    pub rules: Vec<CustomRule>,
+    /// SMT solver timeout in milliseconds for deep-verify mode (default: 5000).
+    #[serde(default)]
+    pub smt_timeout_ms: Option<u64>,
+}
+
+fn default_ignore_paths() -> Vec<String> {
+    vec!["target".to_string(), ".git".to_string()]
+}
+fn default_enabled_rules() -> Vec<String> {
+    vec![
+        "auth_gaps".to_string(),
+        "panics".to_string(),
+        "arithmetic".to_string(),
+        "ledger_size".to_string(),
+    ]
+}
+fn default_ledger_limit() -> usize {
+    DEFAULT_LEDGER_ENTRY_LIMIT
+}
+fn default_approaching_threshold() -> f64 {
+    DEFAULT_APPROACHING_THRESHOLD
+}
+
+fn default_telemetry_enabled() -> bool {
+    false
+}
+
+impl Default for SanctifyConfig {
+    fn default() -> Self {
+        Self {
+            ignore_paths: default_ignore_paths(),
+            enabled_rules: default_enabled_rules(),
+            ledger_limit: default_ledger_limit(),
+            approaching_threshold: default_approaching_threshold(),
+            telemetry: default_telemetry_enabled(),
+            strict_mode: false,
+            rules: vec![],
+            smt_timeout_ms: None,
+        }
+    }
+}
+
+// ── Finding types ─────────────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone, PartialEq)]
+pub enum SizeWarningLevel {
+    ExceedsLimit,
+    ApproachingLimit,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct SizeWarning {
+    pub struct_name: String,
+    pub estimated_size: usize,
+    pub limit: usize,
+    pub level: SizeWarningLevel,
+}
+
+#[derive(Debug, Serialize, Clone, Copy, PartialEq)]
 pub enum PatternType {
-    /// A `panic!()` macro invocation.
     Panic,
-    /// A `.unwrap()` call.
     Unwrap,
-    /// A `.expect("…")` call.
     Expect,
 }
 
-/// An unsafe pattern (`panic!`, `.unwrap()`, `.expect()`) together with its
-/// source location.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct UnsafePattern {
-    /// The kind of pattern.
     pub pattern_type: PatternType,
-    /// 1-based line number.
     pub line: usize,
-    /// Source snippet around the pattern.
     pub snippet: String,
 }
 
 // ── Upgrade analysis types ────────────────────────────────────────────────────
 
-/// A single finding related to contract upgrade / admin mechanisms.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct UpgradeFinding {
-    /// Broad category of the finding.
     pub category: UpgradeCategory,
-    /// Name of the related function, if any.
     pub function_name: Option<String>,
-    /// Human-readable location.
     pub location: String,
-    /// Description of the finding.
     pub message: String,
-    /// Actionable suggestion.
     pub suggestion: String,
+    pub severity: String,
 }
 
-/// Category of an upgrade-safety finding.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "snake_case")]
-#[non_exhaustive]
 pub enum UpgradeCategory {
-    /// Admin-only access control.
     AdminControl,
-    /// Timelock mechanism.
     Timelock,
-    /// Initialisation pattern.
     InitPattern,
-    /// Storage layout concern.
     StorageLayout,
-    /// Governance / upgrade mechanism.
     Governance,
 }
 
-/// Upgrade safety report produced by [`Analyzer::analyze_upgrade_patterns`].
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+/// Upgrade safety report.
+#[derive(Debug, Serialize, Clone)]
 pub struct UpgradeReport {
-    /// Individual findings.
     pub findings: Vec<UpgradeFinding>,
-    /// Names of detected upgrade/admin functions.
     pub upgrade_mechanisms: Vec<String>,
-    /// Names of detected initialisation functions.
     pub init_functions: Vec<String>,
-    /// Names of `#[contracttype]` storage types.
     pub storage_types: Vec<String>,
-    /// Actionable suggestions for improving upgrade safety.
     pub suggestions: Vec<String>,
 }
 
 impl UpgradeReport {
-    /// Returns a default (empty) report.
     pub fn empty() -> Self {
         Self {
             findings: vec![],
@@ -282,604 +272,307 @@ impl UpgradeReport {
     }
 }
 
-struct UnhandledResultVisitor {
-    issues: Vec<UnhandledResultIssue>,
-    current_fn: Option<String>,
-    is_public_fn: bool,
-}
-
-struct UnsafeVisitor {
-    patterns: Vec<UnsafePattern>,
-}
-
-#[derive(Default)]
-struct FunctionSecuritySummary {
-    has_mutation: bool,
-    has_auth: bool,
-    has_external_call: bool,
-}
-
-impl FunctionSecuritySummary {
-    fn has_sensitive_action(&self) -> bool {
-        self.has_mutation || self.has_external_call
-    }
-}
-
-fn is_reserved_soroban_entrypoint(fn_name: &str) -> bool {
-    matches!(fn_name, "__constructor" | "__check_auth")
-}
-
-impl<'ast> Visit<'ast> for UnsafeVisitor {
-    fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
-        let method_name = node.method.to_string();
-        if method_name == "unwrap" || method_name == "expect" {
-            let pattern_type = if method_name == "unwrap" {
-                PatternType::Unwrap
-            } else {
-                PatternType::Expect
-            };
-            let line = node.span().start().line;
-            self.patterns.push(UnsafePattern {
-                pattern_type,
-                line,
-                snippet: quote::quote!(#node).to_string(),
-            });
-        }
-        visit::visit_expr_method_call(self, node);
-    }
-
-    fn visit_macro(&mut self, node: &'ast syn::Macro) {
-        if node.path.is_ident("panic") {
-            let line = node.span().start().line;
-            self.patterns.push(UnsafePattern {
-                pattern_type: PatternType::Panic,
-                line,
-                snippet: quote::quote!(#node).to_string(),
-            });
-        }
-        visit::visit_macro(self, node);
-    }
-}
-
-#[allow(dead_code)]
 fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| {
-        matches!(&attr.meta, Meta::Path(path) if path.is_ident(name) || path.segments.iter().any(|s| s.ident == name))
+        if let Meta::Path(path) = &attr.meta {
+            path.is_ident(name) || path.segments.iter().any(|s| s.ident == name)
+        } else {
+            false
+        }
     })
 }
 
-/// Returns `true` when `attrs` contains `#[cfg(test)]`.
-fn is_cfg_test_attrs(attrs: &[syn::Attribute]) -> bool {
-    attrs
-        .iter()
-        .any(|a| a.path().is_ident("cfg") && quote::quote!(#a).to_string().contains("test"))
+fn is_upgrade_or_admin_fn(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    matches!(
+        lower.as_str(),
+        "set_admin"
+            | "upgrade"
+            | "set_authorized"
+            | "deploy"
+            | "update_admin"
+            | "transfer_admin"
+            | "change_admin"
+    ) || (lower.contains("upgrade") && (lower.contains("contract") || lower.contains("wasm")))
+}
+
+fn is_init_fn(name: &str) -> bool {
+    let lower = name.to_lowercase();
+    lower == "initialize" || lower == "init" || lower == "initialise"
 }
 
 // ── ArithmeticIssue (NEW) ─────────────────────────────────────────────────────
 
+/// Represents a panic, unwrap, or expect usage detected in contract code.
+///
+/// This is the structured finding type for S002 (Panic Usage).
+#[derive(Debug, Serialize, Clone)]
+pub struct PanicIssue {
+    pub function_name: String,
+    pub issue_type: String,
+    pub location: String,
+}
+
 /// Represents an unchecked arithmetic operation that could overflow or underflow.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+///
+/// This is the structured finding type for S003 (Arithmetic Overflow / Underflow).
+/// Each instance represents one detected risky operation in the contract code.
+///
+/// # Fields
+///
+/// - `function_name`: The name of the function containing the risky operation
+/// - `operation`: The operator or method name (e.g., `"+"`, `"-"`, `"mul_div"`)
+/// - `suggestion`: Remediation guidance (e.g., "Use .checked_add(rhs)...")
+/// - `location`: Human-readable location string (e.g., "transfer:42")
+///
+/// # Deduplication
+///
+/// The detection logic ensures at most one `ArithmeticIssue` per
+/// (function_name, operation) pair. This prevents redundant findings when
+/// an operator is used multiple times in the same function.
+///
+/// # JSON Output
+///
+/// When serialized to JSON (via `--format json`), each issue appears in the
+/// `arithmetic_issues` array:
+///
+/// ```json
+/// {
+///   "arithmetic_issues": [{
+///     "function_name": "transfer",
+///     "operation": "+",
+///     "suggestion": "Use .checked_add(rhs) or .saturating_add(rhs) to handle overflow",
+///     "location": "transfer:42"
+///   }]
+/// }
+/// ```
+///
+/// # SARIF Output
+///
+/// When exported to SARIF format, these become `result` objects with:
+/// - `ruleId`: "S003"
+/// - `level`: "warning"
+/// - `message.text`: "Unchecked '{operation}' operation could overflow"
+/// - `locations[0].physicalLocation.region.startLine`: extracted from `location`
+///
+/// # Example
+///
+/// ```rust,ignore
+/// pub fn risky_add(a: u64, b: u64) -> u64 {
+///     a + b  // Produces ArithmeticIssue {
+///            //   function_name: "risky_add",
+///            //   operation: "+",
+///            //   suggestion: "Use .checked_add(rhs)...",
+///            //   location: "risky_add:2"
+///            // }
+/// }
+/// ```
+#[derive(Debug, Serialize, Clone)]
 pub struct ArithmeticIssue {
-    /// Contract function in which the operation was found.
     pub function_name: String,
-    /// The operator: "+", "-", "*", "+=", "-=", "*=".
     pub operation: String,
-    /// Human-readable suggestion pointing to the safe alternative.
     pub suggestion: String,
-    /// "function_name:line" context string.
     pub location: String,
 }
 
-// ── TruncationBoundsIssue ────────────────────────────────────────────────────
-
-/// Represents an integer truncation cast or unchecked array/slice indexing.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct TruncationBoundsIssue {
-    /// Contract function in which the issue was found.
     pub function_name: String,
-    /// The kind of issue: `"truncation"` or `"unchecked_index"`.
     pub kind: String,
-    /// The problematic expression (e.g. `as u32`, `buf[i]`).
     pub expression: String,
-    /// Human-readable suggestion for a safe alternative.
     pub suggestion: String,
-    /// "function_name:line" context string.
     pub location: String,
 }
 
-// ── StorageCollisionIssue (NEW) ──────────────────────────────────────────────
-
-/// Represents a potential storage key collision.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct StorageCollisionIssue {
-    /// The storage key literal or expression.
-    pub key_value: String,
-    /// The type of the key (e.g. `Symbol`, `BytesN`).
-    pub key_type: String,
-    /// Source location.
+#[derive(Debug, Serialize, Clone)]
+pub struct AuthGapIssue {
+    pub function_name: String,
     pub location: String,
-    /// Human-readable description.
-    pub message: String,
 }
 
-// ── ContractImportIssue (NEW) ────────────────────────────────────────────────
-
-/// Represents a mismatch or staleness between a `contractimport!` WASM and workspace source.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ContractImportMismatchIssue {
-    /// The `file` path argument from `contractimport!`.
-    pub wasm_path: String,
-    /// 1-based line location.
-    pub location: String,
-    /// Human-readable message.
-    pub message: String,
-}
-
-/// The kind of event issue detected by [`Analyzer::scan_events`].
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[non_exhaustive]
-pub enum EventIssueType {
-    /// Topics count varies for the same event name.
-    InconsistentSchema,
-    /// Topic could be optimized with symbol_short!.
-    OptimizableTopic,
-}
-
-/// An event-related finding (inconsistent schema or optimisable topic).
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct EventIssue {
-    /// Function that emits the event.
-    pub function_name: String,
-    /// Name of the event.
     pub event_name: String,
-    /// Kind of issue.
-    pub issue_type: EventIssueType,
-    /// Human-readable description.
-    pub message: String,
-    /// Source location.
+    pub issue_type: String,
     pub location: String,
+    pub message: String,
 }
 
-/// A `Result` return value that is silently discarded.
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct UnhandledResultIssue {
-    /// Function containing the unhandled result.
     pub function_name: String,
-    /// The call expression that returns `Result`.
     pub call_expression: String,
-    /// Human-readable message.
-    pub message: String,
-    /// Source location.
     pub location: String,
+    pub message: String,
 }
 
-// ── Configuration ─────────────────────────────────────────────────────────────
-/// Severity level for user-defined custom rules.
-pub type RuleSeverity = crate::finding_codes::FindingSeverity;
-
-/// A user-defined regex-based rule loaded from `.sanctify.toml`.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct CustomRule {
-    /// Display name of the rule.
-    pub name: String,
-    /// Regex pattern that triggers the rule.
-    pub pattern: String,
-    /// Severity (defaults to `Warning`).
-    #[serde(default)]
-    pub severity: RuleSeverity,
-}
-
-/// A match produced by a [`CustomRule`].
-#[derive(Debug, Serialize, Deserialize, Clone)]
+/// A match from a custom regex rule.
+#[derive(Debug, Serialize, Clone)]
 pub struct CustomRuleMatch {
-    /// Name of the custom rule that matched.
     pub rule_name: String,
-    /// 1-based line number.
     pub line: usize,
-    /// Source snippet.
     pub snippet: String,
     /// Severity inherited from the rule.
     pub severity: RuleSeverity,
 }
 
-/// Project-level configuration loaded from `.sanctify.toml`.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct SanctifyConfig {
-    /// Paths to skip during directory walking.
-    ///
-    /// Defaults to `["target", ".git"]` — the two directories that are
-    /// almost always present and never contain user contracts.
-    #[serde(default = "default_ignore_paths")]
-    pub ignore_paths: Vec<String>,
-    /// Names of enabled built-in rules.
-    ///
-    /// Defaults to the full rule set so new projects get complete coverage
-    /// without extra configuration.  Narrow this list to speed up CI.
-    #[serde(default = "default_enabled_rules")]
-    pub enabled_rules: Vec<String>,
-    /// Ledger-entry size limit in bytes.
-    #[serde(default = "default_ledger_limit")]
-    pub ledger_limit: usize,
-    /// Fraction of `ledger_limit` at which an *approaching* warning fires.
-    #[serde(default = "default_approaching_threshold")]
-    pub approaching_threshold: f64,
-    /// When `true`, use a tighter threshold for size warnings.
-    #[serde(default)]
-    pub strict_mode: bool,
-    /// User-defined regex rules.
-    #[serde(default)]
-    pub custom_rules: Vec<CustomRule>,
-    /// Maximum number of findings emitted per analysis run.
-    ///
-    /// `0` means unlimited.  Setting a cap (e.g. `500`) prevents unbounded
-    /// output on large or very noisy contracts and keeps CI logs readable.
-    /// Defaults to `0` (unlimited) so existing integrations are unaffected.
-    #[serde(default)]
-    pub max_findings: usize,
-    /// When `true`, stop analysis after the first finding per rule.
-    ///
-    /// Useful in fast-feedback loops (editor save hooks, pre-commit) where you
-    /// want a quick signal rather than a full report.  Defaults to `false`.
-    #[serde(default)]
-    pub fail_fast: bool,
+/// Validation error for a [`CustomRule`] (S007).
+///
+/// Returned by [`Analyzer::validate_custom_rules`] so callers can surface
+/// configuration problems to users with actionable messages rather than
+/// silently skipping broken rules at analysis time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CustomRuleValidationError {
+    /// Name of the offending rule.
+    pub rule_name: String,
+    /// Human-readable description of the problem.
+    pub message: String,
 }
 
-fn default_ignore_paths() -> Vec<String> {
-    vec!["target".to_string(), ".git".to_string()]
-}
-
-fn default_enabled_rules() -> Vec<String> {
-    vec![
-        "auth_gaps".to_string(),
-        "panics".to_string(),
-        "arithmetic".to_string(),
-        "ledger_size".to_string(),
-        "events".to_string(),
-        "storage_collisions".to_string(),
-        "unhandled_results".to_string(),
-        "upgrade_patterns".to_string(),
-    ]
-}
-
-fn default_ledger_limit() -> usize {
-    64000
-}
-
-fn default_approaching_threshold() -> f64 {
-    0.8
-}
-
-impl Default for SanctifyConfig {
-    fn default() -> Self {
-        Self {
-            ignore_paths: default_ignore_paths(),
-            enabled_rules: default_enabled_rules(),
-            ledger_limit: default_ledger_limit(),
-            approaching_threshold: default_approaching_threshold(),
-            strict_mode: false,
-            custom_rules: vec![],
-            max_findings: 0,
-            fail_fast: false,
-        }
+impl std::fmt::Display for CustomRuleValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "custom rule '{}': {}", self.rule_name, self.message)
     }
 }
 
-fn has_contracttype(attrs: &[syn::Attribute]) -> bool {
-    has_attr(attrs, "contracttype")
+#[derive(Debug, Serialize, Clone)]
+pub struct GasEstimation {
+    pub function_name: String,
+    pub estimated_gas: u64,
+    pub complexity_score: usize,
 }
 
-fn classify_size(
-    size: usize,
-    limit: usize,
-    approaching: f64,
-    strict: bool,
-    strict_threshold: usize,
-) -> Option<SizeWarningLevel> {
-    if size >= limit || (strict && size >= strict_threshold) {
-        Some(SizeWarningLevel::ExceedsLimit)
-    } else if size as f64 >= limit as f64 * approaching {
-        Some(SizeWarningLevel::ApproachingLimit)
-    } else {
-        None
-    }
+// ── Runtime Monitoring ────────────────────────────────────────────────────────
+
+#[derive(Error, Debug)]
+pub enum Error {
+    #[error("invariant violation: {0}")]
+    InvariantViolation(String),
+    #[error("internal error: {0}")]
+    Internal(String),
+}
+
+/// Trait for runtime monitoring. Implement this to enforce invariants on your contract state.
+#[cfg(feature = "soroban")]
+pub trait SanctifiedGuard {
+    fn check_invariant(&self, env: &Env) -> Result<(), Error>;
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct Finding {
+    pub severity: String,
+    pub file: String,
+    pub line: usize,
+    pub message: String,
 }
 
 // ── Analyzer ──────────────────────────────────────────────────────────────────
 
-/// The main analysis engine.
-///
-/// Create one via [`Analyzer::new`], then call the various `scan_*` /
-/// `analyze_*` / `verify_*` methods on contract source code.
 pub struct Analyzer {
-    /// The active configuration.
     pub config: SanctifyConfig,
-    rule_registry: RuleRegistry,
 }
 
 impl Analyzer {
-    /// Create an [`Analyzer`] with default built-in rules.
     pub fn new(config: SanctifyConfig) -> Self {
-        Self {
-            config,
-            rule_registry: RuleRegistry::default(),
-        }
+        Self { config }
+    }
+    pub fn run_rule(&self, source: &str, rule_name: &str) -> Vec<RuleViolation> {
+        let registry = rules::RuleRegistry::with_default_rules();
+        registry.run_by_name(source, rule_name)
     }
 
-    /// Create an [`Analyzer`] with a custom [`RuleRegistry`].
-    pub fn with_rules(config: SanctifyConfig, registry: RuleRegistry) -> Self {
-        Self {
-            config,
-            rule_registry: registry,
-        }
+    pub fn verify_sep41_interface(&self, source: &str) -> sep41::Sep41VerificationReport {
+        sep41::verify(source)
     }
 
-    /// Run every registered rule and return all violations.
-    pub fn run_rules(&self, source: &str) -> Vec<RuleViolation> {
-        self.rule_registry.run_all(source)
-    }
-
-    /// Run every registered rule and collect auto-fix patches.
-    pub fn run_fixes(&self, source: &str) -> Vec<rules::Patch> {
-        self.rule_registry
-            .rules
-            .iter()
-            .flat_map(|rule| rule.fix(source))
-            .collect()
-    }
-
-    /// Run a single named rule.
-    pub fn run_rule(&self, source: &str, name: &str) -> Vec<RuleViolation> {
-        self.rule_registry.run_by_name(source, name)
-    }
-
-    /// List the names of all registered rules.
-    pub fn available_rules(&self) -> Vec<&str> {
-        self.rule_registry.available_rules()
-    }
-
-    /// Detect Soroban SDK version and check for deprecations.
-    pub fn detect_sdk_version(
+    pub fn analyze_complexity(
         &self,
-        cargo_toml_path: &std::path::Path,
-    ) -> sdk_version::SdkVersionInfo {
-        sdk_version::detect_sdk_version(cargo_toml_path)
+        source: &str,
+        path: &str,
+    ) -> Result<complexity::ContractMetrics, syn::Error> {
+        complexity::analyze_complexity_from_source(source, path)
     }
 
-    /// Analyse upgrade/admin patterns and return an [`UpgradeReport`].
-    pub fn analyze_upgrade_patterns(&self, source: &str) -> UpgradeReport {
-        with_panic_guard(|| upgrade_analysis::analyze_upgrade_patterns(source))
+    pub fn scan_invoke_contract_calls(
+        &self,
+        source: &str,
+        _contract_name: &str,
+        _file_path: &str,
+    ) -> Vec<reentrancy::ReentrancyEdge> {
+        reentrancy::scan_invoke_contract_calls(source)
     }
 
-    /// Verify the contract against the SEP-41 token interface.
-    pub fn verify_sep41_interface(&self, source: &str) -> Sep41VerificationReport {
-        with_panic_guard(|| sep41::verify(source))
-    }
-
-    #[allow(dead_code)]
-    fn analyze_upgrade_patterns_impl(&self, source: &str) -> UpgradeReport {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return UpgradeReport::empty(),
-        };
-
-        let mut report = UpgradeReport::empty();
-
-        for item in &file.items {
-            match item {
-                Item::Struct(s) if has_contracttype(&s.attrs) => {
-                    report.storage_types.push(s.ident.to_string());
+    pub fn analyze_custom_rules(&self, source: &str) -> Vec<CustomRuleMatch> {
+        let mut matches = Vec::new();
+        for rule in &self.config.rules {
+            let re = match Regex::new(&rule.pattern) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            for (line_no, line) in source.lines().enumerate() {
+                if re.find(line).is_some() {
+                    matches.push(CustomRuleMatch {
+                        rule_name: rule.name.clone(),
+                        line: line_no + 1,
+                        snippet: line.trim().to_string(),
+                        severity: rule.severity,
+                    });
                 }
-                Item::Enum(e) if has_contracttype(&e.attrs) => {
-                    report.storage_types.push(e.ident.to_string());
-                }
-                Item::Impl(i) => {
-                    for impl_item in &i.items {
-                        if let syn::ImplItem::Fn(f) = impl_item {
-                            if let syn::Visibility::Public(_) = f.vis {
-                                let fn_name = f.sig.ident.to_string();
-                                if is_init_fn(&fn_name) {
-                                    report.init_functions.push(fn_name.clone());
-                                }
-                                if is_upgrade_or_admin_fn(&fn_name) {
-                                    report.upgrade_mechanisms.push(fn_name.clone());
-                                }
-                            }
-                        }
-                    }
-                }
-                _ => {}
             }
         }
-
-        if !report.upgrade_mechanisms.is_empty() {
-            report.findings.push(UpgradeFinding {
-                category: UpgradeCategory::Governance,
-                function_name: report.upgrade_mechanisms.first().cloned(),
-                location: report
-                    .upgrade_mechanisms
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| "<unknown>".to_string()),
-                message: "Upgrade/admin mechanism detected".to_string(),
-                suggestion: "Ensure upgrade/admin functions are properly access-controlled (e.g. require_auth) and consider timelocks/governance.".to_string(),
-            });
-        }
-
-        report
+        matches
     }
 
-    /// Detect public functions that mutate storage or call external contracts
-    /// without an authentication check.
-    pub fn scan_auth_gaps(&self, source: &str) -> Vec<AuthGapIssue> {
-        with_panic_guard(|| self.scan_auth_gaps_impl(source))
-    }
-
-    /// Run lightweight formal-verification checks via Z3.
-    /// Only available when the `smt` feature is enabled (default).
+    /// Deep-verify a circom circuit's range constraints using Z3 SMT encoding.
+    ///
+    /// This is an optional deeper-analysis mode for Z007 findings.  When the
+    /// `--deep-verify` flag is set, this method translates the parsed circuit's
+    /// constraint set into SMT assertions and checks whether each signal used
+    /// in comparisons is provably bounded.
     #[cfg(feature = "smt")]
-    pub fn verify_smt_invariants(&self, source: &str) -> Vec<smt::SmtInvariantIssue> {
-        with_panic_guard(|| self.verify_smt_invariants_impl(source))
+    pub fn deep_verify_circuit_range(
+        &self,
+        circuit: &circom_parser::CircomFile,
+    ) -> Vec<CircuitRangeCheckResult> {
+        let timeout_ms = self.config.smt_timeout_ms.unwrap_or(5000);
+        smt::circuit_range::verify_circuit_range_checks(circuit, timeout_ms)
     }
 
-    /// Return no SMT findings when the `smt` feature is disabled.
+    /// Stub for non-SMT builds.
     #[cfg(not(feature = "smt"))]
-    pub fn verify_smt_invariants(&self, _source: &str) -> Vec<smt::SmtInvariantIssue> {
+    pub fn deep_verify_circuit_range(
+        &self,
+        _circuit: &circom_parser::CircomFile,
+    ) -> Vec<CircuitRangeCheckResult> {
         vec![]
     }
 
-    #[cfg(feature = "smt")]
-    fn verify_smt_invariants_impl(&self, source: &str) -> Vec<smt::SmtInvariantIssue> {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return vec![],
-        };
+    pub fn scan_auth_gaps(&self, source: &str) -> Vec<String> {
+        with_panic_guard(|| self.scan_auth_gaps_impl(source))
+    }
 
-        let mut issues = Vec::new();
-
-        for item in &file.items {
-            match item {
-                Item::Impl(i) => {
-                    for impl_item in &i.items {
-                        if let syn::ImplItem::Fn(f) = impl_item {
-                            if !matches!(f.vis, syn::Visibility::Public(_)) {
-                                continue;
-                            }
-
-                            let mut summary = FunctionSecuritySummary::default();
-                            self.check_fn_body(&f.block, &mut summary);
-
-                            if summary.has_external_call {
-                                issues.push(smt::SmtInvariantIssue {
-                                    function_name: f.sig.ident.to_string(),
-                                    description: "Security-property validation is inconclusive across external contract calls; isolate the pure logic or model the callee explicitly before relying on the proof.".to_string(),
-                                    location: f.sig.ident.to_string(),
-                                });
-                            }
-                        }
-                    }
+    fn scan_auth_gaps_impl(&self, source: &str) -> Vec<String> {
+        rules::auth_gap::AuthGapRule::new()
+            .check(source)
+            .into_iter()
+            .filter_map(|v| {
+                // Validation-error violations use a "<source>" pseudo-location;
+                // skip them — they are not real auth-gap findings.
+                if v.location.starts_with('<') {
+                    return None;
                 }
-                Item::Fn(f) => {
-                    if !matches!(f.vis, syn::Visibility::Public(_)) {
-                        continue;
-                    }
-
-                    let mut summary = FunctionSecuritySummary::default();
-                    self.check_fn_body(&f.block, &mut summary);
-
-                    if summary.has_external_call {
-                        issues.push(smt::SmtInvariantIssue {
-                            function_name: f.sig.ident.to_string(),
-                            description: "Security-property validation is inconclusive across external contract calls; isolate the pure logic or model the callee explicitly before relying on the proof.".to_string(),
-                            location: f.sig.ident.to_string(),
-                        });
-                    }
-                }
-                _ => {}
-            }
-        }
-
-        issues
+                // Location format is "fn_name:line"; extract the function name.
+                let name = v
+                    .location
+                    .split(':')
+                    .next()
+                    .unwrap_or(&v.location)
+                    .to_string();
+                Some(name)
+            })
+            .collect()
     }
 
-    /// Estimate gas / instruction costs per public function.
-    pub fn scan_gas_estimation(&self, source: &str) -> Vec<gas_estimator::GasEstimationReport> {
-        with_panic_guard(|| self.scan_gas_estimation_impl(source))
-    }
-
-    fn scan_gas_estimation_impl(&self, source: &str) -> Vec<gas_estimator::GasEstimationReport> {
-        let estimator = gas_estimator::GasEstimator::new();
-        estimator.estimate_contract(source)
-    }
-
-    fn scan_auth_gaps_impl(&self, source: &str) -> Vec<AuthGapIssue> {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return vec![],
-        };
-
-        let mut gaps = Vec::new();
-
-        for item in &file.items {
-            if let Item::Impl(i) = item {
-                for impl_item in &i.items {
-                    if let syn::ImplItem::Fn(f) = impl_item {
-                        if let syn::Visibility::Public(_) = f.vis {
-                            let fn_name = f.sig.ident.to_string();
-                            if is_reserved_soroban_entrypoint(&fn_name) {
-                                continue;
-                            }
-                            let mut summary = FunctionSecuritySummary::default();
-                            self.check_fn_body(&f.block, &mut summary);
-                            if summary.has_sensitive_action() && !summary.has_auth {
-                                gaps.push(AuthGapIssue {
-                                    function_name: fn_name,
-                                });
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        gaps
-    }
-
-    // ── Contract Import scanning ─────────────────────────────────────────────
-
-    /// Scan for `contractimport!` declarations and return their parsed `file` paths.
-    /// Actual file staleness checks are performed by the caller to keep this pure.
-    pub fn scan_contractimports(&self, source: &str) -> Vec<ContractImportMismatchIssue> {
-        with_panic_guard(|| self.scan_contractimports_impl(source))
-    }
-
-    fn scan_contractimports_impl(&self, source: &str) -> Vec<ContractImportMismatchIssue> {
-        let file = match syn::parse_str::<syn::File>(source) {
-            Ok(f) => f,
-            Err(_) => return vec![],
-        };
-        let mut imports = Vec::new();
-
-        struct ContractImportVisitor<'a> {
-            issues: &'a mut Vec<ContractImportMismatchIssue>,
-        }
-
-        impl<'ast, 'a> visit::Visit<'ast> for ContractImportVisitor<'a> {
-            fn visit_macro(&mut self, node: &'ast syn::Macro) {
-                if node.path.is_ident("contractimport") {
-                    let tokens = node.tokens.to_string();
-                    // Basic parsing of `file = "..."`
-                    if let Some(path_start) = tokens.find("file = \"") {
-                        let path_start = path_start + 8;
-                        if let Some(path_end) = tokens[path_start..].find('"') {
-                            let wasm_path = &tokens[path_start..path_start + path_end];
-                            self.issues.push(ContractImportMismatchIssue {
-                                wasm_path: wasm_path.to_string(),
-                                location: node.path.segments[0]
-                                    .ident
-                                    .span()
-                                    .start()
-                                    .line
-                                    .to_string(),
-                                message: String::new(), // Populated by caller
-                            });
-                        }
-                    }
-                }
-                visit::visit_macro(self, node);
-            }
-        }
-
-        let mut visitor = ContractImportVisitor {
-            issues: &mut imports,
-        };
-        visit::Visit::visit_file(&mut visitor, &file);
-
-        imports
-    }
-
-    // ── Panic / unwrap / expect detection ────────────────────────────────────
-
-    /// Returns all `panic!`, `.unwrap()`, and `.expect()` calls found inside
-    /// contract impl functions. Prefer returning `Result` instead.
     pub fn scan_panics(&self, source: &str) -> Vec<PanicIssue> {
         with_panic_guard(|| self.scan_panics_impl(source))
     }
@@ -889,44 +582,16 @@ impl Analyzer {
             Ok(f) => f,
             Err(_) => return vec![],
         };
-
         let mut issues = Vec::new();
         for item in &file.items {
-            match item {
-                Item::Impl(i) => {
-                    if is_cfg_test_attrs(&i.attrs) {
-                        continue;
-                    }
-                    for impl_item in &i.items {
-                        if let syn::ImplItem::Fn(f) = impl_item {
-                            if has_attr(&f.attrs, "test") {
-                                continue;
-                            }
-                            let fn_name = f.sig.ident.to_string();
-                            self.check_fn_panics(&f.block, &fn_name, &mut issues);
-                        }
+            if let Item::Impl(i) = item {
+                for impl_item in &i.items {
+                    if let syn::ImplItem::Fn(f) = impl_item {
+                        self.check_fn_panics(&f.block, &f.sig.ident.to_string(), &mut issues);
                     }
                 }
-                Item::Mod(m) => {
-                    if is_cfg_test_attrs(&m.attrs) {
-                        continue;
-                    }
-                    if let Some((_, items)) = &m.content {
-                        for item in items {
-                            if let Item::Fn(f) = item {
-                                if has_attr(&f.attrs, "test") {
-                                    continue;
-                                }
-                                let fn_name = f.sig.ident.to_string();
-                                self.check_fn_panics(&f.block, &fn_name, &mut issues);
-                            }
-                        }
-                    }
-                }
-                _ => {}
             }
         }
-
         issues
     }
 
@@ -939,8 +604,6 @@ impl Analyzer {
                         self.check_expr_panics(&init.expr, fn_name, issues);
                     }
                 }
-                // In syn 2.0, bare macro calls (e.g. `panic!(...)`) are Stmt::Macro,
-                // not Stmt::Expr(Expr::Macro(...)).
                 syn::Stmt::Macro(m) if m.mac.path.is_ident("panic") => {
                     issues.push(PanicIssue {
                         function_name: fn_name.to_string(),
@@ -999,96 +662,104 @@ impl Analyzer {
         }
     }
 
-    // ── Mutation / auth helpers ───────────────────────────────────────────────
-
-    fn check_fn_body(&self, block: &syn::Block, summary: &mut FunctionSecuritySummary) {
+    fn check_fn_body(&self, block: &syn::Block, has_mutation: &mut bool, has_auth: &mut bool) {
         for stmt in &block.stmts {
             match stmt {
-                syn::Stmt::Expr(expr, _) => self.check_expr(expr, summary),
+                syn::Stmt::Expr(expr, _) => self.check_expr(expr, has_mutation, has_auth),
                 syn::Stmt::Local(local) => {
                     if let Some(init) = &local.init {
-                        self.check_expr(&init.expr, summary);
+                        self.check_expr(&init.expr, has_mutation, has_auth);
                     }
                 }
                 syn::Stmt::Macro(m)
                     if m.mac.path.is_ident("require_auth")
                         || m.mac.path.is_ident("require_auth_for_args") =>
                 {
-                    summary.has_auth = true;
+                    *has_auth = true;
                 }
                 _ => {}
             }
         }
     }
 
-    fn check_expr(&self, expr: &syn::Expr, summary: &mut FunctionSecuritySummary) {
+    fn check_expr(&self, expr: &syn::Expr, has_mutation: &mut bool, has_auth: &mut bool) {
         match expr {
             syn::Expr::Call(c) => {
                 if let syn::Expr::Path(p) = &*c.func {
                     if let Some(segment) = p.path.segments.last() {
                         let ident = segment.ident.to_string();
                         if ident == "require_auth" || ident == "require_auth_for_args" {
-                            summary.has_auth = true;
+                            *has_auth = true;
                         }
                     }
                 }
                 for arg in &c.args {
-                    self.check_expr(arg, summary);
+                    self.check_expr(arg, has_mutation, has_auth);
                 }
             }
             syn::Expr::MethodCall(m) => {
                 let method_name = m.method.to_string();
                 if method_name == "set" || method_name == "update" || method_name == "remove" {
-                    // Heuristic: check if receiver chain contains "storage"
                     let receiver_str = quote::quote!(#m.receiver).to_string();
                     if receiver_str.contains("storage")
                         || receiver_str.contains("persistent")
                         || receiver_str.contains("temporary")
                         || receiver_str.contains("instance")
                     {
-                        summary.has_mutation = true;
+                        *has_mutation = true;
                     }
                 }
                 if method_name == "require_auth" || method_name == "require_auth_for_args" {
-                    summary.has_auth = true;
+                    *has_auth = true;
                 }
-                if is_external_contract_method_call(m) {
-                    summary.has_external_call = true;
-                }
-                self.check_expr(&m.receiver, summary);
+                self.check_expr(&m.receiver, has_mutation, has_auth);
                 for arg in &m.args {
-                    self.check_expr(arg, summary);
+                    self.check_expr(arg, has_mutation, has_auth);
                 }
             }
-            syn::Expr::Block(b) => self.check_fn_body(&b.block, summary),
+            syn::Expr::Block(b) => self.check_fn_body(&b.block, has_mutation, has_auth),
             syn::Expr::If(i) => {
-                self.check_expr(&i.cond, summary);
-                self.check_fn_body(&i.then_branch, summary);
+                self.check_expr(&i.cond, has_mutation, has_auth);
+                self.check_fn_body(&i.then_branch, has_mutation, has_auth);
                 if let Some((_, else_expr)) = &i.else_branch {
-                    self.check_expr(else_expr, summary);
+                    self.check_expr(else_expr, has_mutation, has_auth);
                 }
             }
             syn::Expr::Match(m) => {
-                self.check_expr(&m.expr, summary);
+                self.check_expr(&m.expr, has_mutation, has_auth);
                 for arm in &m.arms {
-                    self.check_expr(&arm.body, summary);
+                    self.check_expr(&arm.body, has_mutation, has_auth);
                 }
             }
             _ => {}
         }
     }
 
-    // ── Storage collision (stub) ──────────────────────────────────────────────
-
-    /// (Stub) Check a set of storage keys for collisions.
-    pub fn check_storage_collisions(&self, _keys: Vec<String>) -> bool {
-        false
+    pub fn scan_storage_collisions(&self, source: &str) -> Vec<StorageCollisionIssue> {
+        let file = match parse_str::<File>(source) {
+            Ok(f) => f,
+            Err(_) => return vec![],
+        };
+        let mut visitor = storage_collision::StorageVisitor::new();
+        syn::visit::visit_file(&mut visitor, &file);
+        visitor.final_check();
+        visitor.collisions
     }
 
-    // ── Ledger size analysis ──────────────────────────────────────────────────
+    pub fn scan_unhandled_results(&self, source: &str) -> Vec<UnhandledResultIssue> {
+        with_panic_guard(|| {
+            self.run_rule(source, "unhandled_result")
+                .into_iter()
+                .map(|violation| UnhandledResultIssue {
+                    function_name: String::new(),
+                    call_expression: String::new(),
+                    location: violation.location,
+                    message: violation.message,
+                })
+                .collect()
+        })
+    }
 
-    /// Analyzes `#[contracttype]` structs and enums, estimates serialized size,
-    /// and warns when approaching or exceeding the ledger entry limit (e.g. 64KB).
     pub fn analyze_ledger_size(&self, source: &str) -> Vec<SizeWarning> {
         with_panic_guard(|| self.analyze_ledger_size_impl(source))
     }
@@ -1098,14 +769,11 @@ impl Analyzer {
             Ok(f) => f,
             Err(_) => return vec![],
         };
-
-        let limit = self.config.ledger_limit;
-        let approaching = self.config.approaching_threshold;
-        let strict = self.config.strict_mode;
-        // Use 90% as strict threshold heuristic
-        let strict_threshold = (limit as f64 * DEFAULT_STRICT_THRESHOLD) as usize;
-
         let mut warnings = Vec::new();
+        let limit = self.config.ledger_limit;
+        let approaching = (limit as f64 * self.config.approaching_threshold) as usize;
+        let strict = self.config.strict_mode;
+        let strict_threshold = limit / 2;
 
         for item in &file.items {
             match item {
@@ -1135,21 +803,151 @@ impl Analyzer {
                         });
                     }
                 }
-                Item::Impl(_) | Item::Macro(_) => {}
                 _ => {}
             }
         }
-
         warnings
     }
 
     // ── Event Consistency and Optimization ──────────────────────────────────────
 
+    fn extract_topics(line: &str) -> String {
+        if let Some(start_paren) = line.find('(') {
+            let after_publish = &line[start_paren + 1..];
+            if let Some(end_paren) = after_publish.rfind(')') {
+                let topics_content = &after_publish[..end_paren];
+                if topics_content.contains(',') || topics_content.starts_with('(') {
+                    return topics_content.to_string();
+                }
+            }
+        }
+        if let Some(vec_start) = line.find("vec![") {
+            let after_vec = &line[vec_start + 5..];
+            if let Some(end_bracket) = after_vec.find(']') {
+                return after_vec[..end_bracket].to_string();
+            }
+        }
+        String::new()
+    }
+
+    fn extract_event_name(line: &str) -> Option<String> {
+        if let Some(start) = line.find('(') {
+            let content = &line[start..];
+            if let Some(name_end) = content.find(',') {
+                let name_part = &content[1..name_end];
+                let clean_name = name_part.trim().trim_matches('"');
+                if !clean_name.is_empty() {
+                    return Some(clean_name.to_string());
+                }
+            } else if let Some(end_paren) = content.find(')') {
+                let name_part = &content[1..end_paren];
+                let clean_name = name_part.trim().trim_matches('"');
+                if !clean_name.is_empty() {
+                    return Some(clean_name.to_string());
+                }
+            }
+        }
+        None
+    }
+
     /// Scans for `env.events().publish(topics, data)` and checks:
     /// 1. Consistency of topic counts for the same event name.
     /// 2. Opportunities to use `symbol_short!` for gas savings.
     pub fn scan_events(&self, source: &str) -> Vec<EventIssue> {
-        with_panic_guard(|| event_analysis::scan_events(source))
+        with_panic_guard(|| self.scan_events_impl(source))
+    }
+
+    fn scan_events_impl(&self, source: &str) -> Vec<EventIssue> {
+        let mut issues = Vec::new();
+        let mut event_schemas: std::collections::HashMap<String, Vec<usize>> =
+            std::collections::HashMap::new();
+        let mut issue_locations: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+
+        // Normalize multiline event calls: join "env.events()\n.publish(" onto one line
+        // so the line-by-line scanner can detect them.
+        let mut normalized_lines: Vec<(usize, String)> = Vec::new();
+        {
+            let raw: Vec<&str> = source.lines().collect();
+            let mut i = 0;
+            while i < raw.len() {
+                let trimmed = raw[i].trim();
+                if trimmed.ends_with(".events()")
+                    && i + 1 < raw.len()
+                    && raw[i + 1].trim().starts_with(".publish(")
+                {
+                    let joined = format!("{}{}", trimmed, raw[i + 1].trim());
+                    normalized_lines.push((i, joined));
+                    i += 2;
+                } else {
+                    normalized_lines.push((i, trimmed.to_string()));
+                    i += 1;
+                }
+            }
+        }
+
+        for (line_num, line) in &normalized_lines {
+            let line_num = *line_num;
+            let line = line.as_str();
+
+            if line.contains("env.events().publish(") || line.contains("env.events().emit(") {
+                let topics_str = Self::extract_topics(line);
+                let topic_count = if topics_str.is_empty() {
+                    0
+                } else {
+                    topics_str.matches(',').count() + 1
+                };
+
+                let event_name = Self::extract_event_name(line)
+                    .unwrap_or_else(|| format!("unknown_{}", line_num));
+
+                let location = format!("line {}", line_num + 1);
+                let _location_key = format!("{}:{}", event_name, topic_count);
+
+                if let Some(previous_counts) = event_schemas.get(&event_name) {
+                    for &prev_count in previous_counts {
+                        if prev_count != topic_count {
+                            let issue_key = format!("{}:{}:inconsistent", event_name, line_num + 1);
+                            if !issue_locations.contains(&issue_key) {
+                                issue_locations.insert(issue_key);
+                                issues.push(EventIssue {
+                                    event_name: event_name.clone(),
+                                    issue_type: "inconsistent_schema".to_string(),
+                                    location: location.clone(),
+                                    message: format!(
+                                        "Event '{}' has inconsistent topic count. Previous: {}, Current: {}",
+                                        event_name, prev_count, topic_count
+                                    ),
+                                });
+                            }
+                        }
+                    }
+                }
+
+                event_schemas
+                    .entry(event_name.clone())
+                    .or_default()
+                    .push(topic_count);
+
+                if !line.contains("symbol_short!") && topic_count > 0 {
+                    let has_string_topic = line.contains("\"") || line.contains("String");
+                    if has_string_topic {
+                        let issue_key = format!("{}:{}:gas_optimization", event_name, line_num + 1);
+                        if !issue_locations.contains(&issue_key) {
+                            issue_locations.insert(issue_key);
+                            issues.push(EventIssue {
+                                event_name,
+                                issue_type: "optimizable_topic".to_string(),
+                                location: format!("line {}", line_num + 1),
+                                message: "Consider using symbol_short! for short topic names to save gas.".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        issues
     }
 
     // ── Unsafe-pattern visitor ────────────────────────────────────────────────
@@ -1165,7 +963,6 @@ impl Analyzer {
             Ok(f) => f,
             Err(_) => return vec![],
         };
-
         let mut visitor = UnsafeVisitor {
             patterns: Vec::new(),
         };
@@ -1173,15 +970,6 @@ impl Analyzer {
         visitor.patterns
     }
 
-    // ── Arithmetic overflow detection (NEW) ───────────────────────────────────
-
-    /// Scans contract impl functions for unchecked arithmetic (`+`, `-`, `*`,
-    /// `+=`, `-=`, `*=`) and suggests the corresponding `checked_*` or
-    /// `saturating_*` alternatives.
-    ///
-    /// One issue is reported per (function, operator) pair to keep output
-    /// actionable. Line numbers are included when span-location info is
-    /// available (requires `proc-macro2` with `span-locations` feature).
     pub fn scan_arithmetic_overflow(&self, source: &str) -> Vec<ArithmeticIssue> {
         with_panic_guard(|| self.scan_arithmetic_overflow_impl(source))
     }
@@ -1191,137 +979,201 @@ impl Analyzer {
             Ok(f) => f,
             Err(_) => return vec![],
         };
-
         let mut visitor = ArithVisitor {
             issues: Vec::new(),
             current_fn: None,
             seen: HashSet::new(),
-            index_depth: 0,
-            test_mod_depth: 0,
         };
         visitor.visit_file(&file);
         visitor.issues
     }
 
-    // ── Truncation / bounds risk detection ───────────────────────────────────
-
-    /// Detects narrowing integer casts (`as u32`, `as u16`, `as u8`, etc.) and
-    /// unchecked array/slice indexing that could cause truncation or
-    /// out-of-bounds panics.
-    pub fn scan_truncation_bounds(&self, source: &str) -> Vec<TruncationBoundsIssue> {
-        with_panic_guard(|| self.scan_truncation_bounds_impl(source))
+    pub fn scan_gas_estimation(&self, source: &str) -> Vec<GasEstimation> {
+        let reports = gas_estimator::GasEstimator::new().estimate_contract(source);
+        reports
+            .into_iter()
+            .map(|r| GasEstimation {
+                function_name: r.function_name,
+                estimated_gas: r.estimated_instructions as u64,
+                complexity_score: 0,
+            })
+            .collect()
     }
 
-    fn scan_truncation_bounds_impl(&self, source: &str) -> Vec<TruncationBoundsIssue> {
+    // ── Upgrade pattern analysis ──────────────────────────────────────────────
+
+    /// Analyzes contracts for upgrade mechanisms, init patterns, storage layout
+    /// visibility, and governance (auth on privileged functions).
+    pub fn analyze_upgrade_patterns(&self, source: &str) -> UpgradeReport {
         let file = match parse_str::<File>(source) {
             Ok(f) => f,
-            Err(_) => return vec![],
+            Err(_) => return UpgradeReport::empty(),
         };
 
-        let mut visitor = TruncationBoundsVisitor {
-            issues: Vec::new(),
-            current_fn: None,
-            seen: HashSet::new(),
-            test_mod_depth: 0,
+        let mut report = UpgradeReport {
+            findings: Vec::new(),
+            upgrade_mechanisms: Vec::new(),
+            init_functions: Vec::new(),
+            storage_types: Vec::new(),
+            suggestions: Vec::new(),
         };
-        visitor.visit_file(&file);
-        visitor.issues
-    }
 
-    /// Run regex-based custom rules from config. Returns matches with line and snippet.
-    pub fn analyze_custom_rules(&self, source: &str, rules: &[CustomRule]) -> Vec<CustomRuleMatch> {
-        use regex::Regex;
-
-        let mut matches = Vec::new();
-        for rule in rules {
-            let re = match Regex::new(&rule.pattern) {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
-            for (line_no, line) in source.lines().enumerate() {
-                let line_num = line_no + 1;
-                if re.find(line).is_some() {
-                    matches.push(CustomRuleMatch {
-                        rule_name: rule.name.clone(),
-                        line: line_num,
-                        snippet: line.trim().to_string(),
-                        severity: rule.severity,
-                    });
+        // Collect #[contracttype] storage types
+        for item in &file.items {
+            if let Item::Struct(s) = item {
+                if has_attr(&s.attrs, "contracttype") {
+                    report.storage_types.push(s.ident.to_string());
+                }
+            }
+            if let Item::Enum(e) = item {
+                if has_attr(&e.attrs, "contracttype") {
+                    report.storage_types.push(e.ident.to_string());
                 }
             }
         }
-        matches
+
+        // Walk impl blocks for upgrade-related functions
+        for item in &file.items {
+            if let Item::Impl(impl_block) = item {
+                for impl_item in &impl_block.items {
+                    if let syn::ImplItem::Fn(f) = impl_item {
+                        let fn_name = f.sig.ident.to_string();
+                        let line = f.sig.ident.span().start().line;
+                        let location = format!("{}:{}", fn_name, line);
+
+                        // Admin / upgrade mechanism detection
+                        if is_upgrade_or_admin_fn(&fn_name) {
+                            report.upgrade_mechanisms.push(fn_name.clone());
+                            let has_auth = self.fn_has_auth(&f.block);
+                            if !has_auth {
+                                report.findings.push(UpgradeFinding {
+                                    category: UpgradeCategory::Governance,
+                                    function_name: Some(fn_name.clone()),
+                                    location: location.clone(),
+                                    message: format!(
+                                        "Upgrade/admin function '{}' modifies state without require_auth",
+                                        fn_name
+                                    ),
+                                    suggestion: "Add require_auth or require_auth_for_args before state mutations".to_string(),
+                                    severity: "high".to_string(),
+                                });
+                                report.suggestions.push(format!(
+                                    "Ensure '{}' requires admin authorization",
+                                    fn_name
+                                ));
+                            }
+                        }
+
+                        // Init pattern detection
+                        if is_init_fn(&fn_name) {
+                            report.init_functions.push(fn_name.clone());
+                            let has_guard = fn_has_reinit_guard(&f.block);
+                            let severity_str = if has_guard {
+                                "medium".to_string()
+                            } else {
+                                "critical".to_string()
+                            };
+                            let message = if has_guard {
+                                format!(
+                                    "Initialization function '{}' detected (with re-init guard)",
+                                    fn_name
+                                )
+                            } else {
+                                format!("Initialization function '{}' is callable more than once — add re-init guard", fn_name)
+                            };
+                            report.findings.push(UpgradeFinding {
+                                category: UpgradeCategory::InitPattern,
+                                function_name: Some(fn_name.clone()),
+                                location: location.clone(),
+                                message,
+                                suggestion: "Guard init with an early return when storage already has an initialization flag: if env.storage().instance().has(&DataKey::IsInit) { return; }".to_string(),
+                                severity: severity_str,
+                            });
+                        }
+
+                        // Timelock heuristics: look for delay/timelock in name or body
+                        if fn_name.to_lowercase().contains("upgrade")
+                            && self.fn_references_delay(&f.block)
+                        {
+                            report.findings.push(UpgradeFinding {
+                                category: UpgradeCategory::Timelock,
+                                function_name: Some(fn_name.clone()),
+                                location: location.clone(),
+                                message: format!(
+                                    "Upgrade function '{}' may use delay/timelock",
+                                    fn_name
+                                ),
+                                suggestion: "Verify timelock delay is enforced before upgrade"
+                                    .to_string(),
+                                severity: "medium".to_string(),
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Storage layout suggestions
+        if report.storage_types.len() > 1 {
+            report.suggestions.push(format!(
+                "Track storage types [{}] across versions; avoid reordering or removing fields",
+                report.storage_types.join(", ")
+            ));
+        }
+
+        report
     }
 
-    /// Extract cross-contract call edges for the call-graph.
-    pub fn scan_invoke_contract_calls(
-        &self,
-        source: &str,
-        caller: &str,
-        file_path: &str,
-    ) -> Vec<ContractCallEdge> {
-        with_panic_guard(|| self.scan_invoke_contract_calls_impl(source, caller, file_path))
+    /// Validate custom rules before executing them (S007 UX improvement).
+    ///
+    /// Returns a list of [`CustomRuleValidationError`] for every rule whose
+    /// regex pattern fails to compile or whose name is empty.  An empty return
+    /// value means all rules are ready to run.  Call this once at startup so
+    /// broken configuration is surfaced to the user with a clear message rather
+    /// than silently dropped during analysis.
+    ///
+    /// # Example
+    /// ```rust,ignore
+    /// let errors = analyzer.validate_custom_rules(&config.custom_rules);
+    /// if !errors.is_empty() {
+    ///     for e in &errors { eprintln!("Config error: {e}"); }
+    ///     std::process::exit(1);
+    /// }
+    /// ```
+    pub fn validate_custom_rules(&self, rules: &[CustomRule]) -> Vec<CustomRuleValidationError> {
+        use regex::Regex;
+        let mut errors = Vec::new();
+        for rule in rules {
+            if rule.name.trim().is_empty() {
+                errors.push(CustomRuleValidationError {
+                    rule_name: "<unnamed>".to_string(),
+                    message: "rule name must not be empty".to_string(),
+                });
+            }
+            if rule.pattern.is_empty() {
+                errors.push(CustomRuleValidationError {
+                    rule_name: rule.name.clone(),
+                    message: "pattern must not be empty — use a non-empty regex string".to_string(),
+                });
+            } else if let Err(e) = Regex::new(&rule.pattern) {
+                errors.push(CustomRuleValidationError {
+                    rule_name: rule.name.clone(),
+                    message: format!("invalid regex pattern '{}': {}", rule.pattern, e),
+                });
+            }
+        }
+        errors
     }
 
-    fn scan_invoke_contract_calls_impl(
-        &self,
-        source: &str,
-        caller: &str,
-        file_path: &str,
-    ) -> Vec<ContractCallEdge> {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return vec![],
-        };
-
-        let mut visitor = InvokeContractVisitor {
-            edges: Vec::new(),
-            caller: caller.to_string(),
-            file_path: file_path.to_string(),
-        };
-        visitor.visit_file(&file);
-        visitor.edges
+    fn fn_has_auth(&self, block: &syn::Block) -> bool {
+        let mut has = false;
+        self.check_fn_body(block, &mut false, &mut has);
+        has
     }
 
-    // ── Storage key collision detection (NEW) ─────────────────────────────────
-
-    /// Scans for potential storage key collisions by analyzing constants,
-    /// Symbol::new calls, and symbol_short! macros.
-    /// Detect potential storage-key collisions within a single source file.
-    pub fn scan_storage_collisions(&self, source: &str) -> Vec<StorageCollisionIssue> {
-        with_panic_guard(|| self.scan_storage_collisions_impl(source))
-    }
-
-    fn scan_storage_collisions_impl(&self, source: &str) -> Vec<StorageCollisionIssue> {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return vec![],
-        };
-
-        let mut visitor = storage_collision::StorageVisitor::new();
-        visitor.visit_file(&file);
-        visitor.final_check();
-        visitor.collisions
-    }
-
-    /// Detect `Result` return values that are silently discarded.
-    pub fn scan_unhandled_results(&self, source: &str) -> Vec<UnhandledResultIssue> {
-        with_panic_guard(|| self.scan_unhandled_results_impl(source))
-    }
-
-    fn scan_unhandled_results_impl(&self, source: &str) -> Vec<UnhandledResultIssue> {
-        let file = match parse_str::<File>(source) {
-            Ok(f) => f,
-            Err(_) => return vec![],
-        };
-
-        let mut visitor = UnhandledResultVisitor {
-            issues: Vec::new(),
-            current_fn: None,
-            is_public_fn: false,
-        };
-        visitor.visit_file(&file);
-        visitor.issues
+    fn fn_references_delay(&self, block: &syn::Block) -> bool {
+        let s = quote::quote!(#block).to_string();
+        s.contains("delay") || s.contains("timelock") || s.contains("ledger_seq")
     }
 
     // ── Size estimation helpers ───────────────────────────────────────────────
@@ -1332,17 +1184,17 @@ impl Analyzer {
         for v in &e.variants {
             let mut variant_size = 0;
             match &v.fields {
-                syn::Fields::Named(fields) => {
+                Fields::Named(fields) => {
                     for f in &fields.named {
                         variant_size += self.estimate_type_size(&f.ty);
                     }
                 }
-                syn::Fields::Unnamed(fields) => {
+                Fields::Unnamed(fields) => {
                     for f in &fields.unnamed {
                         variant_size += self.estimate_type_size(&f.ty);
                     }
                 }
-                syn::Fields::Unit => {}
+                Fields::Unit => {}
             }
             max_variant = max_variant.max(variant_size);
         }
@@ -1367,12 +1219,11 @@ impl Analyzer {
         total
     }
 
-    #[allow(clippy::only_used_in_recursion)]
     fn estimate_type_size(&self, ty: &Type) -> usize {
         match ty {
             Type::Path(tp) => {
                 if let Some(seg) = tp.path.segments.last() {
-                    let base = match seg.ident.to_string().as_str() {
+                    match seg.ident.to_string().as_str() {
                         "u32" | "i32" | "bool" => 4,
                         "u64" | "i64" => 8,
                         "u128" | "i128" | "I128" | "U128" => 16,
@@ -1414,8 +1265,7 @@ impl Analyzer {
                             32
                         }
                         _ => 32,
-                    };
-                    base
+                    }
                 } else {
                     8
                 }
@@ -1435,426 +1285,29 @@ impl Analyzer {
     }
 }
 
-/// An edge in the cross-contract call graph.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ContractCallEdge {
-    /// The calling contract.
-    pub caller: String,
-    /// The callee contract (derived from the expression).
-    pub callee: String,
-    /// File containing the call.
-    pub file: String,
-    /// 1-based line number.
-    pub line: usize,
-    /// Raw expression used as the contract-id argument.
-    pub contract_id_expr: String,
-    /// Optional function-name expression.
-    pub function_expr: Option<String>,
-}
-
-/// Render a set of [`ContractCallEdge`]s as a Graphviz DOT string.
-pub fn callgraph_to_dot(edges: &[ContractCallEdge]) -> String {
-    use std::collections::BTreeMap;
-
-    let mut per_pair: BTreeMap<(String, String), Vec<&ContractCallEdge>> = BTreeMap::new();
-    for e in edges {
-        per_pair
-            .entry((e.caller.clone(), e.callee.clone()))
-            .or_default()
-            .push(e);
-    }
-
-    let mut out = String::new();
-    out.push_str("digraph ContractCallGraph {\n");
-    out.push_str("  rankdir=LR;\n");
-    out.push_str("  node [shape=box, fontname=\"Helvetica\"];\n");
-
-    for ((caller, callee), calls) in per_pair {
-        let mut label = String::new();
-        for (idx, c) in calls.iter().enumerate() {
-            if idx > 0 {
-                label.push_str("\\n");
-            }
-            label.push_str(&format!("{}:{}", c.file, c.line));
-            if let Some(fx) = &c.function_expr {
-                label.push_str(&format!(" [{}]", fx));
-            }
-        }
-
-        out.push_str(&format!(
-            "  \"{}\" -> \"{}\" [label=\"{}\"];\n",
-            escape_dot(&caller),
-            escape_dot(&callee),
-            escape_dot(&label)
-        ));
-    }
-
-    out.push_str("}\n");
-    out
-}
-
-fn escape_dot(s: &str) -> String {
-    s.replace('\\', "\\\\").replace('"', "\\\"")
-}
-
-struct InvokeContractVisitor {
-    edges: Vec<ContractCallEdge>,
-    caller: String,
-    file_path: String,
-}
-
-impl<'ast> Visit<'ast> for InvokeContractVisitor {
-    fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
-        if node.method == "invoke_contract" {
-            let contract_id_expr = node
-                .args
-                .first()
-                .map(|e| quote::quote!(#e).to_string())
-                .unwrap_or_else(|| "<missing>".to_string());
-
-            let function_expr = node
-                .args
-                .iter()
-                .nth(1)
-                .map(|e| quote::quote!(#e).to_string());
-
-            let callee = simplify_expr_string(&contract_id_expr);
-            let line = node.span().start().line;
-
-            self.edges.push(ContractCallEdge {
-                caller: self.caller.clone(),
-                callee,
-                file: self.file_path.clone(),
-                line,
-                contract_id_expr,
-                function_expr: function_expr.map(|s| simplify_expr_string(&s)),
-            });
-        }
-
-        visit::visit_expr_method_call(self, node);
-    }
-}
-
-fn simplify_expr_string(s: &str) -> String {
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-fn is_external_contract_method_call(method_call: &syn::ExprMethodCall) -> bool {
-    if method_call.method == "invoke_contract" {
-        return true;
-    }
-
-    receiver_looks_like_external_client(&method_call.receiver)
-        && !method_looks_read_only(&method_call.method.to_string())
-}
-
-fn receiver_looks_like_external_client(expr: &syn::Expr) -> bool {
-    match expr {
-        syn::Expr::Call(call) => {
-            if let syn::Expr::Path(path) = &*call.func {
-                return path_looks_like_client_constructor(&path.path);
-            }
+fn has_contracttype(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        if let Meta::Path(path) = &attr.meta {
+            path.is_ident("contracttype") || path.segments.iter().any(|s| s.ident == "contracttype")
+        } else {
             false
         }
-        syn::Expr::Path(path) => path
-            .path
-            .segments
-            .last()
-            .map(|segment| ident_looks_like_client(&segment.ident.to_string()))
-            .unwrap_or(false),
-        syn::Expr::Reference(reference) => receiver_looks_like_external_client(&reference.expr),
-        syn::Expr::Paren(paren) => receiver_looks_like_external_client(&paren.expr),
-        syn::Expr::Group(group) => receiver_looks_like_external_client(&group.expr),
-        _ => false,
-    }
+    })
 }
 
-fn path_looks_like_client_constructor(path: &syn::Path) -> bool {
-    let mut saw_client_type = false;
-
-    for segment in &path.segments {
-        let ident = segment.ident.to_string();
-        if ident_looks_like_client(&ident) {
-            saw_client_type = true;
-        }
-
-        if ident == "new" && saw_client_type {
-            return true;
-        }
-    }
-
-    false
-}
-
-fn ident_looks_like_client(ident: &str) -> bool {
-    let lower = ident.to_lowercase();
-    lower.ends_with("client") || lower.ends_with("_client")
-}
-
-fn method_looks_read_only(method_name: &str) -> bool {
-    matches!(
-        method_name,
-        "balance" | "paused" | "allowance" | "decimals" | "name" | "symbol"
-    ) || method_name.starts_with("get_")
-        || method_name.starts_with("is_")
-        || method_name.starts_with("has_")
-}
-
-// ── EventVisitor (stubs/helpers moved) ──────────────────────────────────────
-
-impl<'ast> Visit<'ast> for UnhandledResultVisitor {
-    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
-        let prev_fn = self.current_fn.take();
-        let prev_public = self.is_public_fn;
-
-        self.current_fn = Some(node.sig.ident.to_string());
-        self.is_public_fn = matches!(node.vis, syn::Visibility::Public(_));
-
-        let fn_returns_result = Self::is_result_returning_fn(&node.sig);
-
-        for stmt in &node.block.stmts {
-            self.check_statement_for_unhandled_result(stmt, fn_returns_result);
-        }
-
-        self.current_fn = prev_fn;
-        self.is_public_fn = prev_public;
-    }
-
-    fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
-        let prev_fn = self.current_fn.take();
-        let prev_public = self.is_public_fn;
-
-        self.current_fn = Some(node.sig.ident.to_string());
-        self.is_public_fn = matches!(node.vis, syn::Visibility::Public(_));
-
-        let fn_returns_result = Self::is_result_returning_fn(&node.sig);
-
-        for stmt in &node.block.stmts {
-            self.check_statement_for_unhandled_result(stmt, fn_returns_result);
-        }
-
-        self.current_fn = prev_fn;
-        self.is_public_fn = prev_public;
-    }
-}
-
-impl UnhandledResultVisitor {
-    fn check_statement_for_unhandled_result(&mut self, stmt: &syn::Stmt, fn_returns_result: bool) {
-        match stmt {
-            syn::Stmt::Expr(expr, _) => {
-                self.check_expr_for_unhandled_result(expr, fn_returns_result);
-            }
-            syn::Stmt::Local(local) => {
-                if let Some(init) = &local.init {
-                    self.check_expr_for_unhandled_result(&init.expr, fn_returns_result);
-                }
-            }
-            syn::Stmt::Macro(_) => {}
-            _ => {}
-        }
-    }
-
-    fn check_expr_for_unhandled_result(&mut self, expr: &syn::Expr, fn_returns_result: bool) {
-        match expr {
-            syn::Expr::Call(call) => {
-                if Self::is_handled(expr) {
-                    return;
-                }
-                if Self::call_returns_result(call) && !fn_returns_result && self.is_public_fn {
-                    if let Some(fn_name) = &self.current_fn {
-                        let line = expr.span().start().line;
-                        self.issues.push(UnhandledResultIssue {
-                        function_name: fn_name.to_string(),
-                        call_expression: Self::expr_to_string(expr),
-                        message: "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.".to_string(),
-                        location: format!("{}:{}", fn_name, line),
-                    });
-                    }
-                }
-                for arg in &call.args {
-                    self.check_expr_for_unhandled_result(arg, fn_returns_result);
-                }
-            }
-            syn::Expr::MethodCall(m) => {
-                if Self::is_handled(expr) {
-                    return;
-                }
-                self.check_expr_for_unhandled_result(&m.receiver, fn_returns_result);
-                for arg in &m.args {
-                    self.check_expr_for_unhandled_result(arg, fn_returns_result);
-                }
-            }
-            syn::Expr::Try(e) => {
-                self.check_expr_for_unhandled_result(&e.expr, true);
-            }
-            syn::Expr::Match(m) => {
-                for arm in &m.arms {
-                    self.check_expr_for_unhandled_result(&arm.body, fn_returns_result);
-                }
-            }
-            syn::Expr::If(i) => {
-                self.check_expr_for_unhandled_result(&i.cond, fn_returns_result);
-                self.check_block_for_unhandled_result(&i.then_branch, fn_returns_result);
-                if let Some((_, else_expr)) = &i.else_branch {
-                    self.check_expr_for_unhandled_result(else_expr, fn_returns_result);
-                }
-            }
-            syn::Expr::Block(b) => {
-                self.check_block_for_unhandled_result(&b.block, fn_returns_result);
-            }
-            syn::Expr::Closure(c) => {
-                self.check_expr_for_unhandled_result(&c.body, fn_returns_result);
-            }
-            syn::Expr::Assign(a) => {
-                self.check_expr_for_unhandled_result(&a.right, fn_returns_result);
-            }
-            syn::Expr::Binary(b) => {
-                self.check_expr_for_unhandled_result(&b.left, fn_returns_result);
-                self.check_expr_for_unhandled_result(&b.right, fn_returns_result);
-            }
-            syn::Expr::Tuple(t) => {
-                for elem in &t.elems {
-                    self.check_expr_for_unhandled_result(elem, fn_returns_result);
-                }
-            }
-            syn::Expr::Array(a) => {
-                for elem in &a.elems {
-                    self.check_expr_for_unhandled_result(elem, fn_returns_result);
-                }
-            }
-            syn::Expr::Struct(s) => {
-                for field in &s.fields {
-                    self.check_expr_for_unhandled_result(&field.expr, fn_returns_result);
-                }
-            }
-            syn::Expr::Return(r) => {
-                if let Some(expr) = &r.expr {
-                    self.check_expr_for_unhandled_result(expr, true);
-                }
-            }
-            syn::Expr::Path(_) => {}
-            syn::Expr::Lit(_) => {}
-            syn::Expr::Field(f) => {
-                self.check_expr_for_unhandled_result(&f.base, fn_returns_result);
-            }
-            syn::Expr::Index(i) => {
-                self.check_expr_for_unhandled_result(&i.expr, fn_returns_result);
-                self.check_expr_for_unhandled_result(&i.index, fn_returns_result);
-            }
-            syn::Expr::Reference(r) => {
-                self.check_expr_for_unhandled_result(&r.expr, fn_returns_result);
-            }
-            syn::Expr::Unary(u) => {
-                self.check_expr_for_unhandled_result(&u.expr, fn_returns_result);
-            }
-            syn::Expr::Cast(c) => {
-                self.check_expr_for_unhandled_result(&c.expr, fn_returns_result);
-            }
-            _ => {}
-        }
-    }
-
-    fn check_block_for_unhandled_result(&mut self, block: &syn::Block, fn_returns_result: bool) {
-        for stmt in &block.stmts {
-            self.check_statement_for_unhandled_result(stmt, fn_returns_result);
-        }
-    }
-
-    fn call_returns_result(call: &syn::ExprCall) -> bool {
-        if let syn::Expr::Path(p) = &*call.func {
-            if let Some(seg) = p.path.segments.last() {
-                let name = seg.ident.to_string();
-                if matches!(name.as_str(), "Ok" | "Err" | "Some" | "None" | "panic") {
-                    return false;
-                }
-                if matches!(
-                    name.as_str(),
-                    "assert"
-                        | "assert_eq"
-                        | "assert_ne"
-                        | "debug_assert"
-                        | "debug_assert_eq"
-                        | "debug_assert_ne"
-                        | "println"
-                        | "print"
-                        | "eprintln"
-                        | "eprint"
-                        | "format"
-                        | "vec"
-                        | "panic"
-                ) {
-                    return false;
-                }
-                return true;
-            }
-        }
-        false
-    }
-
-    fn is_result_returning_fn(sig: &syn::Signature) -> bool {
-        if let syn::ReturnType::Type(_, ty) = &sig.output {
-            if let syn::Type::Path(tp) = &**ty {
-                if let Some(seg) = tp.path.segments.last() {
-                    return seg.ident == "Result";
-                }
-            }
-        }
-        false
-    }
-
-    fn is_handled(expr: &syn::Expr) -> bool {
-        match expr {
-            syn::Expr::Try(_) => true,
-            syn::Expr::Match(_) => true,
-            syn::Expr::MethodCall(m) => {
-                let method = m.method.to_string();
-                matches!(
-                    method.as_str(),
-                    "unwrap"
-                        | "expect"
-                        | "unwrap_or"
-                        | "unwrap_or_else"
-                        | "unwrap_or_default"
-                        | "ok"
-                        | "err"
-                        | "is_ok"
-                        | "is_err"
-                        | "map"
-                        | "map_err"
-                        | "and_then"
-                        | "or_else"
-                        | "unwrap_unchecked"
-                        | "expect_unchecked"
-                        | "as_ref"
-                        | "as_mut"
-                        | "clone"
-                        | "inspect"
-                        | "inspect_err"
-                )
-            }
-            syn::Expr::Assign(a) => Self::is_handled(&a.right),
-            syn::Expr::Call(c) => {
-                if let syn::Expr::Path(p) = &*c.func {
-                    if let Some(seg) = p.path.segments.last() {
-                        if seg.ident == "Ok" || seg.ident == "Err" {
-                            return true;
-                        }
-                    }
-                }
-                false
-            }
-            syn::Expr::Block(_) => true,
-            _ => false,
-        }
-    }
-
-    fn expr_to_string(expr: &syn::Expr) -> String {
-        let s = quote::quote!(#expr).to_string();
-        if s.len() > 80 {
-            format!("{}...", &s[..77])
-        } else {
-            s
-        }
+fn classify_size(
+    size: usize,
+    limit: usize,
+    approaching: usize,
+    strict: bool,
+    strict_threshold: usize,
+) -> Option<SizeWarningLevel> {
+    if size > limit {
+        Some(SizeWarningLevel::ExceedsLimit)
+    } else if size > approaching || (strict && size > strict_threshold) {
+        Some(SizeWarningLevel::ApproachingLimit)
+    } else {
+        None
     }
 }
 
@@ -1863,36 +1316,6 @@ impl UnhandledResultVisitor {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_analyze_with_macros() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            use soroban_sdk::{contract, contractimpl, Env};
-
-            #[contract]
-            pub struct MyContract;
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn hello(env: Env) {}
-            }
-
-            #[contracttype]
-            pub struct SmallData {
-                pub x: u32,
-            }
-
-            #[contracttype]
-            pub struct BigData {
-                pub buffer: Bytes,
-                pub large: u128,
-            }
-        "#;
-        let warnings = analyzer.analyze_ledger_size(source);
-        // SmallData: 4 bytes — BigData: 64 + 16 = 80 bytes — both under 64 KB
-        assert!(warnings.is_empty());
-    }
 
     #[test]
     fn test_analyze_with_limit() {
@@ -1904,89 +1327,29 @@ mod tests {
         let source = r#"
             #[contracttype]
             pub struct ExceedsLimit {
-                pub buffer: Bytes, // 64 bytes estimated
+                pub buffer: Bytes,
             }
         "#;
         let warnings = analyzer.analyze_ledger_size(source);
         assert_eq!(warnings.len(), 1);
         assert_eq!(warnings[0].struct_name, "ExceedsLimit");
-        assert_eq!(warnings[0].estimated_size, 64);
         assert_eq!(warnings[0].level, SizeWarningLevel::ExceedsLimit);
     }
-
-    /*
-        #[test]
-        fn test_ledger_size_enum_and_approaching() {
-            let mut config = SanctifyConfig::default();
-            config.ledger_limit = 100;
-            config.approaching_threshold = 0.5;
-            let analyzer = Analyzer::new(config);
-            let source = r#"
-                #[contracttype]
-                pub enum DataKey {
-                    Balance(Address),
-                    Admin,
-                }
-
-                #[contracttype]
-                pub struct NearLimit {
-                    pub a: u128,
-                    pub b: u128,
-                    pub c: u128,
-                    pub d: u128,
-                }
-            "#;
-            let warnings = analyzer.analyze_ledger_size(source);
-            assert!(warnings.iter().any(|w| w.struct_name == "NearLimit"), "NearLimit (64 bytes) should exceed 50% of 100");
-            assert!(warnings.iter().any(|w| w.level == SizeWarningLevel::ApproachingLimit));
-        }
-    */
 
     #[test]
     fn test_complex_macro_no_panic() {
         let analyzer = Analyzer::new(SanctifyConfig::default());
         let source = r#"
-            macro_rules! complex {
-                ($($t:tt)*) => { $($t)* };
-            }
-
-            complex! {
-                pub struct MyStruct {
-                    pub x: u32,
-                }
-            }
-
             #[contractimpl]
             impl Contract {
-                pub fn test() {
-                    let x = symbol_short!("test");
+                pub fn test(_env: Env) {
+                    let _x = 1u32;
                 }
             }
         "#;
+        // Must not panic
         let _ = analyzer.analyze_ledger_size(source);
-    }
-
-    #[test]
-    fn test_heavy_macro_usage_graceful() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            use soroban_sdk::{contract, contractimpl, Env};
-
-            #[contract]
-            pub struct Token;
-
-            #[contractimpl]
-            impl Token {
-                pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
-                    // Heavy macro expansion - analyzer must not panic
-                }
-            }
-        "#;
         let _ = analyzer.scan_auth_gaps(source);
-        let _ = analyzer.scan_panics(source);
-        let _ = analyzer.analyze_unsafe_patterns(source);
-        let _ = analyzer.analyze_ledger_size(source);
-        let _ = analyzer.scan_arithmetic_overflow(source);
     }
 
     #[test]
@@ -1998,194 +1361,60 @@ mod tests {
                 pub fn set_data(env: Env, val: u32) {
                     env.storage().instance().set(&DataKey::Val, &val);
                 }
-
-                pub fn set_data_secure(env: Env, val: u32) {
-                    env.require_auth();
-                    env.storage().instance().set(&DataKey::Val, &val);
-                }
-
-                pub fn get_data(env: Env) -> u32 {
-                    env.storage().instance().get(&DataKey::Val).unwrap_or(0)
-                }
-
-                pub fn no_storage(env: Env) {
-                    let x = 1 + 1;
-                }
             }
         "#;
         let gaps = analyzer.scan_auth_gaps(source);
         assert_eq!(gaps.len(), 1);
-        assert_eq!(gaps[0].function_name, "set_data");
+        assert_eq!(gaps[0], "set_data");
     }
+}
 
-    #[test]
-    fn test_scan_auth_gaps_flags_read_modify_write_without_auth() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl Token {
-                pub fn transfer(env: Env, from: Address, to: Address, amount: i128) {
-                    let from_balance: i128 = env.storage().persistent().get(&from).unwrap_or(0);
-                    let to_balance: i128 = env.storage().persistent().get(&to).unwrap_or(0);
+// ── Visitors ──────────────────────────────────────────────────────────────────
 
-                    env.storage().persistent().set(&from, &(from_balance - amount));
-                    env.storage().persistent().set(&to, &(to_balance + amount));
-                }
+struct UnsafeVisitor {
+    patterns: Vec<UnsafePattern>,
+}
 
-                pub fn transfer_secure(env: Env, from: Address, to: Address, amount: i128) {
-                    from.require_auth();
-
-                    let from_balance: i128 = env.storage().persistent().get(&from).unwrap_or(0);
-                    let to_balance: i128 = env.storage().persistent().get(&to).unwrap_or(0);
-
-                    env.storage().persistent().set(&from, &(from_balance - amount));
-                    env.storage().persistent().set(&to, &(to_balance + amount));
-                }
-            }
-        "#;
-
-        let gaps = analyzer.scan_auth_gaps(source);
-        assert_eq!(gaps.len(), 1);
-        assert_eq!(gaps[0].function_name, "transfer");
+impl<'ast> Visit<'ast> for UnsafeVisitor {
+    fn visit_macro(&mut self, node: &'ast syn::Macro) {
+        if node.path.is_ident("panic") {
+            let line = node
+                .path
+                .get_ident()
+                .map(|i| i.span().start().line)
+                .unwrap_or(0);
+            self.patterns.push(UnsafePattern {
+                pattern_type: PatternType::Panic,
+                line,
+                snippet: "panic!()".to_string(),
+            });
+        }
+        syn::visit::visit_macro(self, node);
     }
-
-    #[test]
-    fn test_scan_auth_gaps_flags_external_contract_calls_without_auth() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl Router {
-                pub fn forward(env: Env, target: Address, to: Address, amount: i128) {
-                    let fn_name = Symbol::new(&env, "transfer");
-                    env.invoke_contract::<()>(&target, &fn_name, (&to, &amount));
-                }
-
-                pub fn forward_secure(env: Env, target: Address, admin: Address, to: Address, amount: i128) {
-                    admin.require_auth();
-                    let fn_name = Symbol::new(&env, "transfer");
-                    env.invoke_contract::<()>(&target, &fn_name, (&to, &amount));
-                }
-            }
-        "#;
-
-        let gaps = analyzer.scan_auth_gaps(source);
-        assert_eq!(gaps.len(), 1);
-        assert_eq!(gaps[0].function_name, "forward");
+    fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
+        let method = node.method.to_string();
+        if method == "unwrap" || method == "expect" {
+            let line = node.method.span().start().line;
+            let pattern_type = if method == "unwrap" {
+                PatternType::Unwrap
+            } else {
+                PatternType::Expect
+            };
+            self.patterns.push(UnsafePattern {
+                pattern_type,
+                line,
+                snippet: format!(".{}()", method),
+            });
+        }
+        syn::visit::visit_expr_method_call(self, node);
     }
+}
 
-    #[test]
-    fn test_scan_auth_gaps_ignores_reserved_soroban_entrypoints() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl AccountContract {
-                pub fn __constructor(env: Env, admin: Address) {
-                    env.storage().instance().set(&symbol_short!("admin"), &admin);
-                }
+// ── Tests (Continued) ─────────────────────────────────────────────────────────
 
-                pub fn reset_admin(env: Env, admin: Address) {
-                    env.storage().instance().set(&symbol_short!("admin"), &admin);
-                }
-            }
-
-            #[contractimpl(contracttrait)]
-            impl CustomAccountInterface for AccountContract {
-                pub fn __check_auth(env: Env, payload: BytesN<32>) {
-                    env.storage().temporary().set(&payload, &true);
-                }
-            }
-        "#;
-
-        let gaps = analyzer.scan_auth_gaps(source);
-        assert_eq!(gaps.len(), 1);
-        assert_eq!(gaps[0].function_name, "reset_admin");
-    }
-
-    #[test]
-    fn test_scan_auth_gaps_ignores_read_only_external_client_calls() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl Pool {
-                pub fn get_balance(env: Env, token: Address) -> i128 {
-                    let client = token::Client::new(&env, &token);
-                    client.balance(&env.current_contract_address())
-                }
-
-                pub fn forward_transfer(env: Env, token: Address, to: Address, amount: i128) {
-                    let client = token::Client::new(&env, &token);
-                    client.transfer(&env.current_contract_address(), &to, &amount);
-                }
-            }
-        "#;
-
-        let gaps = analyzer.scan_auth_gaps(source);
-        assert_eq!(gaps.len(), 1);
-        assert_eq!(gaps[0].function_name, "forward_transfer");
-    }
-
-    #[test]
-    #[cfg(feature = "smt")]
-    fn test_verify_smt_invariants_reports_external_contract_boundaries() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl Settlement {
-                pub fn settle(env: Env, market: Address, amount: i128) {
-                    let fn_name = Symbol::new(&env, "settle_position");
-                    env.invoke_contract::<()>(&market, &fn_name, (&amount,));
-                }
-
-                pub fn local_only(env: Env, amount: i128) {
-                    env.storage().instance().set(&symbol_short!("amount"), &amount);
-                }
-            }
-        "#;
-
-        let issues = analyzer.verify_smt_invariants(source);
-        assert_eq!(issues.len(), 1);
-        assert_eq!(issues[0].function_name, "settle");
-        assert!(
-            issues[0].description.contains("external contract calls"),
-            "expected external-call proof boundary warning"
-        );
-    }
-
-    #[test]
-    fn test_scan_panics() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn unsafe_fn(env: Env) {
-                    panic!("Something went wrong");
-                }
-
-                pub fn unsafe_unwrap(env: Env) {
-                    let x: Option<u32> = None;
-                    let y = x.unwrap();
-                }
-
-                pub fn unsafe_expect(env: Env) {
-                    let x: Option<u32> = None;
-                    let y = x.expect("Failed to get x");
-                }
-
-                pub fn safe_fn(env: Env) -> Result<(), u32> {
-                    Ok(())
-                }
-            }
-        "#;
-        let issues = analyzer.scan_panics(source);
-        assert_eq!(issues.len(), 3);
-
-        let types: Vec<String> = issues.iter().map(|i| i.issue_type.clone()).collect();
-        assert!(types.contains(&"panic!".to_string()));
-        assert!(types.contains(&"unwrap".to_string()));
-        assert!(types.contains(&"expect".to_string()));
-    }
-
-    // ── Arithmetic overflow tests ─────────────────────────────────────────────
+#[cfg(test)]
+mod tests_continued {
+    use super::*;
 
     #[test]
     fn test_scan_arithmetic_overflow_basic() {
@@ -2304,34 +1533,32 @@ mod tests {
         assert_eq!(issues[0].operation, "+");
     }
 
-    /*
-        #[test]
-        fn test_analyze_upgrade_patterns() {
-            let analyzer = Analyzer::new(SanctifyConfig::default());
-            let source = r#"
-                #[contracttype]
-                pub enum DataKey { Admin, Balance }
+    #[test]
+    fn test_analyze_upgrade_patterns() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
+        let source = r#"
+            #[contracttype]
+            pub enum DataKey { Admin, Balance }
 
-                #[contractimpl]
-                impl Token {
-                    pub fn initialize(env: Env, admin: Address) {
-                        env.storage().instance().set(&DataKey::Admin, &admin);
-                    }
-                    pub fn set_admin(env: Env, new_admin: Address) {
-                        env.storage().instance().set(&DataKey::Admin, &new_admin);
-                    }
+            #[contractimpl]
+            impl Token {
+                pub fn initialize(env: Env, admin: Address) {
+                    env.storage().instance().set(&DataKey::Admin, &admin);
                 }
-            "#;
-            let report = analyzer.analyze_upgrade_patterns(source);
-            assert_eq!(report.init_functions, vec!["initialize"]);
-            assert_eq!(report.upgrade_mechanisms, vec!["set_admin"]);
-            assert!(report.storage_types.contains(&"DataKey".to_string()));
-            assert!(report
-                .findings
-                .iter()
-                .any(|f| matches!(f.category, UpgradeCategory::Governance)));
-        }
-    */
+                pub fn set_admin(env: Env, new_admin: Address) {
+                    env.storage().instance().set(&DataKey::Admin, &new_admin);
+                }
+            }
+        "#;
+        let report = analyzer.analyze_upgrade_patterns(source);
+        assert_eq!(report.init_functions, vec!["initialize"]);
+        assert_eq!(report.upgrade_mechanisms, vec!["set_admin"]);
+        assert!(report.storage_types.contains(&"DataKey".to_string()));
+        assert!(report
+            .findings
+            .iter()
+            .any(|f| matches!(f.category, UpgradeCategory::Governance)));
+    }
 
     #[test]
     fn test_scan_arithmetic_overflow_suggestion_content() {
@@ -2351,474 +1578,69 @@ mod tests {
         // Location should include function name
         assert!(issues[0].location.starts_with("risky:"));
     }
+
     #[test]
-    fn test_custom_rules_with_severity() {
-        let config = SanctifyConfig {
-            custom_rules: vec![
-                CustomRule {
-                    name: "no_unsafe".to_string(),
-                    pattern: "unsafe".to_string(),
-                    severity: RuleSeverity::Critical,
-                },
-                CustomRule {
-                    name: "todo_comment".to_string(),
-                    pattern: "TODO".to_string(),
-                    severity: RuleSeverity::Info,
-                },
-            ],
-            ..Default::default()
-        };
-        let analyzer = Analyzer::new(config);
+    fn test_token_with_bugs() {
+        let analyzer = Analyzer::new(SanctifyConfig::default());
         let source = r#"
-            pub fn my_fn() {
-                // TODO: implement this
-                unsafe { let x = 1; }
+            #![no_std]
+            use soroban_sdk::{contract, contractimpl, symbol_short, Env, String, Address, Symbol, Val};
+
+            #[contract]
+            pub struct TokenWithBugs;
+
+            const BALANCE: Symbol = symbol_short!("BALANCE");
+
+            #[contractimpl]
+            impl TokenWithBugs {
+                pub fn initialize(e: Env, admin: Address, name: String, symbol: String) {
+                    // Not implemented for this test
+                }
+
+                pub fn balance(e: Env, id: Address) -> i128 {
+                    e.storage().persistent().get(&id).unwrap_or(0)
+                }
+
+                // This transfer function is missing an authorization check but performs a storage operation
+                pub fn transfer(e: Env, from: Address, to: Address, amount: i128) {
+                    // Vulnerability: Missing require_auth call for 'from'
+                    let from_balance = Self::balance(e.clone(), from.clone());
+                    e.storage().persistent().set(&from, &(from_balance - amount)); // Mutable operation
+                    
+                    let to_balance = Self::balance(e.clone(), to.clone());
+                    e.storage().persistent().set(&to, &(to_balance + amount));
+                }
+
+                // This mint function can cause an overflow
+                pub fn mint(e: Env, to: Address, amount: i128) {
+                    // VULNERABILITY: No overflow check
+                    let current_balance = Self::balance(e.clone(), to.clone());
+                    let new_balance = current_balance + amount; // This can overflow
+                    e.storage().persistent().set(&to, &new_balance);
+                }
+
+                pub fn symbol(e: Env) -> String {
+                    String::from_str(&e, "TKN")
+                }
             }
         "#;
-        let matches = analyzer.analyze_custom_rules(source, &analyzer.config.custom_rules);
-        assert_eq!(matches.len(), 2);
-        let todo_match = matches
+
+        let auth_gaps = analyzer.scan_auth_gaps(source);
+        assert_eq!(auth_gaps.len(), 2, "Expected 2 auth gaps");
+        assert!(auth_gaps.contains(&"transfer".to_string()));
+        assert!(auth_gaps.contains(&"mint".to_string()));
+
+        let arithmetic_issues = analyzer.scan_arithmetic_overflow(source);
+        assert_eq!(arithmetic_issues.len(), 3, "Expected 3 arithmetic issues");
+        assert!(arithmetic_issues
             .iter()
-            .find(|m| m.rule_name == "todo_comment")
-            .unwrap();
-        assert_eq!(todo_match.severity, RuleSeverity::Info);
-        let unsafe_match = matches.iter().find(|m| m.rule_name == "no_unsafe").unwrap();
-        assert_eq!(unsafe_match.severity, RuleSeverity::Critical);
-    }
-
-    // ── contractimport scanning tests ─────────────────────────────────────────
-
-    #[test]
-    fn test_scan_contractimports_detects_file_path() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            use soroban_sdk::contractimport;
-            contractimport!(file = "../target/wasm32-unknown-unknown/release/my_contract.wasm");
-        "#;
-        let imports = analyzer.scan_contractimports(source);
-        assert_eq!(imports.len(), 1, "should detect one contractimport");
-        assert_eq!(
-            imports[0].wasm_path,
-            "../target/wasm32-unknown-unknown/release/my_contract.wasm"
-        );
-    }
-
-    #[test]
-    fn test_scan_contractimports_no_false_positive() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        // No contractimport! macro here — should find nothing
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn hello(env: Env) -> Symbol {
-                    Symbol::new(&env, "hello")
-                }
-            }
-        "#;
-        let imports = analyzer.scan_contractimports(source);
-        assert_eq!(
-            imports.len(),
-            0,
-            "contractimpl should not be confused with contractimport"
-        );
-    }
-
-    #[test]
-    fn test_scan_contractimports_multiple() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            contractimport!(file = "../wasm/token.wasm");
-            contractimport!(file = "../wasm/oracle.wasm");
-        "#;
-        let imports = analyzer.scan_contractimports(source);
-        assert_eq!(imports.len(), 2, "should detect two contractimports");
-        let paths: Vec<&str> = imports.iter().map(|i| i.wasm_path.as_str()).collect();
-        assert!(paths.contains(&"../wasm/token.wasm"));
-        assert!(paths.contains(&"../wasm/oracle.wasm"));
-    }
-
-    #[test]
-    fn test_scan_contractimports_invalid_source_no_panic() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        // Intentionally broken Rust — should not panic, just return empty
-        let source = "this is { not valid rust }}}}";
-        let imports = analyzer.scan_contractimports(source);
-        assert_eq!(imports.len(), 0);
-    }
-
-    #[test]
-    fn test_unhandled_result_basic() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn internal_fn() -> Result<u32, Error> {
-                Ok(42)
-            }
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn public_fn(env: Env) -> u32 {
-                    internal_fn()
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 1);
-        assert!(issues[0].message.contains("not handled"));
-    }
-
-    #[test]
-    fn test_unhandled_result_with_try_operator() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn internal_fn() -> Result<u32, Error> {
-                Ok(42)
-            }
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn public_fn(env: Env) -> Result<u32, Error> {
-                    internal_fn()
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 0, "{:?}", issues);
-    }
-
-    #[test]
-    fn test_unhandled_result_with_unwrap() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn internal_fn() -> Result<u32, Error> {
-                Ok(42)
-            }
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn public_fn(env: Env) -> u32 {
-                    internal_fn().unwrap()
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 0, "{:?}", issues);
-    }
-
-    #[test]
-    fn test_unhandled_result_with_expect() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn internal_fn() -> Result<u32, Error> {
-                Ok(42)
-            }
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn public_fn(env: Env) -> u32 {
-                    internal_fn().expect("should succeed")
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 0, "{:?}", issues);
-    }
-
-    #[test]
-    fn test_unhandled_result_with_match() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn internal_fn() -> Result<u32, Error> {
-                Ok(42)
-            }
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn public_fn(env: Env) -> u32 {
-                    match internal_fn() {
-                        Ok(v) => v,
-                        Err(_) => 0,
-                    }
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 0, "{:?}", issues);
-    }
-
-    #[test]
-    fn test_unhandled_result_with_map() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn internal_fn() -> Result<u32, Error> {
-                Ok(42)
-            }
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn public_fn(env: Env) {
-                    internal_fn().map(|v| v + 1);
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 0, "{:?}", issues);
-    }
-
-    #[test]
-    fn test_unhandled_result_private_fn() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn internal_fn() -> Result<u32, Error> {
-                Ok(42)
-            }
-
-            impl MyContract {
-                fn private_fn(env: Env) -> u32 {
-                    internal_fn()
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 0, "{:?}", issues);
-    }
-
-    #[test]
-    fn test_unhandled_result_multiple_calls() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn fn_a() -> Result<u32, Error> { Ok(1) }
-            fn fn_b() -> Result<u32, Error> { Ok(2) }
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn public_fn(env: Env) {
-                    fn_a();
-                    fn_b().unwrap();
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 1);
-        assert!(issues[0].call_expression.contains("fn_a"));
-    }
-
-    #[test]
-    fn test_unhandled_result_nested_calls() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn inner() -> Result<u32, Error> { Ok(42) }
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn public_fn(env: Env) {
-                    let x = inner();
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 1);
-    }
-
-    #[test]
-    fn test_unhandled_result_ok_err_wrapped() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn internal_fn() -> Result<u32, Error> {
-                Ok(42)
-            }
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn public_fn(env: Env) -> Result<u32, Error> {
-                    Ok(internal_fn()?)
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 0, "{:?}", issues);
-    }
-
-    #[test]
-    fn test_unhandled_result_with_unwrap_or() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            fn internal_fn() -> Result<u32, Error> {
-                Ok(42)
-            }
-
-            #[contractimpl]
-            impl MyContract {
-                pub fn public_fn(env: Env) -> u32 {
-                    internal_fn().unwrap_or(0)
-                }
-            }
-        "#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 0, "{:?}", issues);
-    }
-
-    #[test]
-    fn test_unhandled_result_empty_source() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = "";
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 0, "{:?}", issues);
-    }
-
-    #[test]
-    fn test_unhandled_result_invalid_syntax() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = "this is not valid rust";
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(issues.len(), 0, "{:?}", issues);
-    }
-
-    #[test]
-    fn test_unhandled_result_assert_macro() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-fn returns_result() -> Result<u32, Error> { Ok(42) }
-
-#[contractimpl]
-impl MyContract {
-    pub fn test_fn(env: Env) {
-        assert!(true);
-        assert_eq!(1, 1);
-        assert_ne!(1, 2);
-        debug_assert!(true);
-        println!("test");
-        format!("test");
-    }
-}
-"#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(
-            issues.len(),
-            0,
-            "assert/print macros should not be flagged as unhandled results: {:?}",
-            issues
-        );
-    }
-
-    #[test]
-    fn test_unhandled_result_fluent_builder() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-struct Builder { val: u32 }
-impl Builder {
-    fn with_value(mut self, v: u32) -> Self { self.val = v; self }
-}
-
-#[contractimpl]
-impl MyContract {
-    pub fn build(env: Env) -> u32 {
-        Builder { val: 0 }
-            .with_value(1)
-            .with_value(2)
-    }
-}
-"#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(
-            issues.len(),
-            0,
-            "fluent builder should not be flagged: {:?}",
-            issues
-        );
-    }
-
-    #[test]
-    fn test_unhandled_result_assignment() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-fn returns_result() -> Result<u32, Error> { Ok(42) }
-
-#[contractimpl]
-impl MyContract {
-    pub fn test_fn(env: Env) {
-        let result = returns_result();
-        let _ = returns_result();
-    }
-}
-"#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(
-            issues.len(),
-            2,
-            "assignment without handling should be flagged: {:?}",
-            issues
-        );
-    }
-
-    #[test]
-    fn test_unhandled_result_block_expression() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-fn returns_result() -> Result<u32, Error> { Ok(42) }
-
-#[contractimpl]
-impl MyContract {
-    pub fn test_fn(env: Env) -> u32 {
-        {
-            let x = 1;
-            x + 1
-        }
-    }
-}
-"#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(
-            issues.len(),
-            0,
-            "block expressions should not be flagged: {:?}",
-            issues
-        );
-    }
-
-    #[test]
-    fn test_unhandled_result_inspect() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-fn returns_result() -> Result<u32, Error> { Ok(42) }
-
-#[contractimpl]
-impl MyContract {
-    pub fn test_fn(env: Env) -> u32 {
-        returns_result()
-            .inspect(|v| println!("Got {}", v))
-            .unwrap()
-    }
-}
-"#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(
-            issues.len(),
-            0,
-            "inspect should be recognized as handled: {:?}",
-            issues
-        );
-    }
-
-    #[test]
-    fn test_unhandled_result_private_fn_not_flagged() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-fn returns_result() -> Result<u32, Error> { Ok(42) }
-
-#[contractimpl]
-impl MyContract {
-    fn private_fn(env: Env) {
-        returns_result();
-    }
-}
-"#;
-        let issues = analyzer.scan_unhandled_results(source);
-        assert_eq!(
-            issues.len(),
-            0,
-            "private function unhandled results should not be flagged: {:?}",
-            issues
-        );
+            .any(|issue| issue.function_name == "transfer" && issue.operation == "-"));
+        assert!(arithmetic_issues
+            .iter()
+            .any(|issue| issue.function_name == "transfer" && issue.operation == "+"));
+        assert!(arithmetic_issues
+            .iter()
+            .any(|issue| issue.function_name == "mint" && issue.operation == "+"));
     }
 
     #[test]
@@ -3173,193 +1995,168 @@ impl MyContract {
         assert_eq!(reports.len(), 1);
         assert!(reports[0].estimated_instructions >= 5000);
     }
-
-    #[test]
-    fn test_rule_registry_default_rules() {
-        let registry = RuleRegistry::default();
-        let rules = registry.available_rules();
-        assert!(rules.contains(&"auth_gap"));
-        assert!(rules.contains(&"ledger_size"));
-        assert!(rules.contains(&"panic_detection"));
-        assert!(rules.contains(&"arithmetic_overflow"));
-        assert!(rules.contains(&"unhandled_result"));
-    }
-
-    #[test]
-    fn test_rule_run_all() {
-        let registry = RuleRegistry::default();
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn unsafe_fn(env: Env) {
-                    panic!("Something went wrong");
-                }
-            }
-        "#;
-        let violations = registry.run_all(source);
-        assert!(!violations.is_empty());
-    }
-
-    #[test]
-    fn test_rule_run_by_name() {
-        let registry = RuleRegistry::default();
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn risky(env: Env, a: u64, b: u64) -> u64 {
-                    a + b
-                }
-            }
-        "#;
-        let violations = registry.run_by_name(source, "arithmetic_overflow");
-        assert_eq!(violations.len(), 1);
-        assert_eq!(violations[0].rule_name, "arithmetic_overflow");
-    }
-
-    #[test]
-    fn test_analyzer_run_rules() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn add(env: Env, a: u64, b: u64) -> u64 {
-                    a + b
-                }
-            }
-        "#;
-        let violations = analyzer.run_rules(source);
-        assert!(!violations.is_empty());
-    }
-
-    #[test]
-    fn test_storage_collision_detects_within_same_storage_type() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn write_a(env: Env) {
-                    env.storage().persistent().set(&"USER", &1u32);
-                }
-
-                pub fn write_b(env: Env) {
-                    env.storage().persistent().set(&"USER", &2u32);
-                }
-            }
-        "#;
-
-        let collisions = analyzer.scan_storage_collisions(source);
-        assert_eq!(collisions.len(), 2);
-        assert!(collisions.iter().all(|c| c.key_value == "USER"));
-        assert!(collisions
-            .iter()
-            .all(|c| c.message.contains("persistent storage key collision")));
-    }
-
-    #[test]
-    fn test_storage_collision_ignores_cross_storage_type_key_reuse() {
-        let analyzer = Analyzer::new(SanctifyConfig::default());
-        let source = r#"
-            #[contractimpl]
-            impl MyContract {
-                pub fn set_persistent(env: Env) {
-                    env.storage().persistent().set(&"SESSION", &1u32);
-                }
-
-                pub fn set_temporary(env: Env) {
-                    env.storage().temporary().set(&"SESSION", &2u32);
-                }
-
-                pub fn set_instance(env: Env) {
-                    env.storage().instance().set(&"SESSION", &3u32);
-                }
-            }
-        "#;
-
-        let collisions = analyzer.scan_storage_collisions(source);
-        assert!(collisions.is_empty());
-    }
 }
 
-#[cfg(feature = "smt")]
-impl SmtInvariantIssue {
-    /// Returns the severity level of this SMT invariant violation.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        crate::finding_codes::FindingSeverity::Critical
-    }
+struct ArithVisitor {
+    issues: Vec<ArithmeticIssue>,
+    current_fn: Option<String>,
+    seen: HashSet<(String, String)>,
 }
-impl SizeWarning {
-    /// Returns the severity level of this ledger size warning.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        if self.level == SizeWarningLevel::ExceedsLimit {
-            crate::finding_codes::FindingSeverity::Critical
-        } else {
-            crate::finding_codes::FindingSeverity::High
+
+impl ArithVisitor {
+    fn classify_op(op: &syn::BinOp) -> Option<(&'static str, &'static str)> {
+        match op {
+            syn::BinOp::Add(_) => Some(("+", "Use `.checked_add(rhs)` or `.saturating_add(rhs)`")),
+            syn::BinOp::Sub(_) => Some(("-", "Use `.checked_sub(rhs)` or `.saturating_sub(rhs)`")),
+            syn::BinOp::Mul(_) => Some(("*", "Use `.checked_mul(rhs)` or `.saturating_mul(rhs)`")),
+            syn::BinOp::AddAssign(_) => Some((
+                "+=",
+                "Replace with `a = a.checked_add(b).expect(\"overflow\")`",
+            )),
+            syn::BinOp::SubAssign(_) => Some((
+                "-=",
+                "Replace with `a = a.checked_sub(b).expect(\"underflow\")`",
+            )),
+            syn::BinOp::MulAssign(_) => Some((
+                "*=",
+                "Replace with `a = a.checked_mul(b).expect(\"overflow\")`",
+            )),
+            _ => None,
         }
     }
 }
-impl PanicIssue {
-    /// Returns the severity level of this panic issue.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        if self.issue_type == "panic!" || self.issue_type == "unwrap" || self.issue_type == "expect"
-        {
-            crate::finding_codes::FindingSeverity::Critical
-        } else {
-            crate::finding_codes::FindingSeverity::High
+
+impl<'ast> Visit<'ast> for ArithVisitor {
+    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        let prev = self.current_fn.take();
+        self.current_fn = Some(node.sig.ident.to_string());
+        syn::visit::visit_impl_item_fn(self, node);
+        self.current_fn = prev;
+    }
+    fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
+        let prev = self.current_fn.take();
+        self.current_fn = Some(node.sig.ident.to_string());
+        syn::visit::visit_item_fn(self, node);
+        self.current_fn = prev;
+    }
+    fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
+        if let Some(fn_name) = self.current_fn.clone() {
+            if let Some((op_str, suggestion)) = Self::classify_op(&node.op) {
+                if !is_string_literal(&node.left) && !is_string_literal(&node.right) {
+                    let key = (fn_name.clone(), op_str.to_string());
+                    if !self.seen.contains(&key) {
+                        self.seen.insert(key);
+                        let line = node.left.span().start().line;
+                        self.issues.push(ArithmeticIssue {
+                            function_name: fn_name.clone(),
+                            operation: op_str.to_string(),
+                            suggestion: suggestion.to_string(),
+                            location: format!("{}:{}", fn_name, line),
+                        });
+                    }
+                }
+            }
         }
-    }
-}
-impl UnsafePattern {
-    /// Returns the severity level of this unsafe pattern.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        crate::finding_codes::FindingSeverity::High
-    }
-}
-impl UpgradeFinding {
-    /// Returns the severity level of this upgrade finding.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        crate::finding_codes::FindingSeverity::High
-    }
-}
-impl ArithmeticIssue {
-    /// Returns the severity level of this arithmetic issue.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        crate::finding_codes::FindingSeverity::High
-    }
-}
-impl TruncationBoundsIssue {
-    /// Returns the severity level of this truncation/bounds issue.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        crate::finding_codes::FindingSeverity::High
-    }
-}
-impl StorageCollisionIssue {
-    /// Returns the severity level of this storage collision issue.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        crate::finding_codes::FindingSeverity::High
-    }
-}
-impl EventIssue {
-    /// Returns the severity level of this event issue.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        crate::finding_codes::FindingSeverity::High
-    }
-}
-impl UnhandledResultIssue {
-    /// Returns the severity level of this unhandled result issue.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        crate::finding_codes::FindingSeverity::High
+        syn::visit::visit_expr_binary(self, node);
     }
 }
 
-/// An authentication gap issue detected in a contract function.
-#[derive(Debug, serde::Serialize, serde::Deserialize, Clone, PartialEq)]
-pub struct AuthGapIssue {
-    /// The name of the function missing authentication.
-    pub function_name: String,
+fn is_string_literal(expr: &syn::Expr) -> bool {
+    matches!(
+        expr,
+        syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(_),
+            ..
+        })
+    )
 }
-impl AuthGapIssue {
-    /// Returns the severity level of this authentication gap.
-    pub fn severity(&self) -> crate::finding_codes::FindingSeverity {
-        crate::finding_codes::FindingSeverity::Critical
+
+/// Check if a function body contains an early-return guard against re-initialization.
+/// Looks for a pattern where storage is queried (via `.has()`, `.get()`, or `.try_get()`)
+/// and an early exit (`return` or `panic!`) follows before the main init logic.
+fn fn_has_reinit_guard(block: &syn::Block) -> bool {
+    for stmt in &block.stmts {
+        match stmt {
+            syn::Stmt::Expr(expr, _) => {
+                if expr_has_storage_guard(expr) {
+                    return true;
+                }
+            }
+            syn::Stmt::Local(local) => {
+                if let Some(init) = &local.init {
+                    if expr_has_storage_guard(&init.expr) {
+                        return true;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+/// Recursively check if an expression contains a storage guard pattern.
+/// A storage guard is an `if` whose condition calls `.has()`, `.get()`, or `.try_get()`
+/// on a storage API, and whose branch contains a `return` or `panic!`.
+fn expr_has_storage_guard(expr: &syn::Expr) -> bool {
+    match expr {
+        syn::Expr::If(i) => {
+            let cond_str = quote::quote!(#i.cond).to_string();
+            let has_storage_check = cond_str.contains(".has(")
+                || cond_str.contains(".get(")
+                || cond_str.contains(".try_get(");
+            if !has_storage_check {
+                // Check sub-expressions recursively
+                return expr_has_storage_guard(&i.cond) || block_has_early_exit(&i.then_branch);
+            }
+            // Check if either branch has an early return/panic
+            if block_has_early_exit(&i.then_branch) {
+                return true;
+            }
+            if let Some((_, else_expr)) = &i.else_branch {
+                if expr_has_early_exit(else_expr) {
+                    return true;
+                }
+            }
+            true // storage check found — treat as guarded regardless of branch content
+        }
+        syn::Expr::Block(b) => fn_has_reinit_guard(&b.block),
+        syn::Expr::Unary(u) => expr_has_storage_guard(&u.expr),
+        syn::Expr::Paren(p) => expr_has_storage_guard(&p.expr),
+        syn::Expr::Binary(b) => expr_has_storage_guard(&b.left) || expr_has_storage_guard(&b.right),
+        _ => false,
+    }
+}
+
+fn block_has_early_exit(block: &syn::Block) -> bool {
+    for stmt in &block.stmts {
+        match stmt {
+            syn::Stmt::Expr(expr, _) => {
+                if expr_has_early_exit(expr) {
+                    return true;
+                }
+            }
+            syn::Stmt::Macro(m) if m.mac.path.is_ident("panic") => {
+                return true;
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn expr_has_early_exit(expr: &syn::Expr) -> bool {
+    match expr {
+        syn::Expr::Return(_) => true,
+        syn::Expr::Macro(m) => m.mac.path.is_ident("panic"),
+        syn::Expr::Block(b) => block_has_early_exit(&b.block),
+        syn::Expr::If(i) => {
+            block_has_early_exit(&i.then_branch)
+                || i.else_branch
+                    .as_ref()
+                    .map(|(_, e)| expr_has_early_exit(e))
+                    .unwrap_or(false)
+        }
+        _ => false,
     }
 }

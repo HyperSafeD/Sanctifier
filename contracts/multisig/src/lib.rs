@@ -315,7 +315,9 @@ impl MultisigWallet {
     /// Must be called via contract self-auth (i.e. through a passed proposal).
     pub fn set_recovery_guardian(env: Env, guardian: Address) {
         env.current_contract_address().require_auth();
-        env.storage().instance().set(&DataKey::RecoveryGuardian, &guardian);
+        env.storage()
+            .instance()
+            .set(&DataKey::RecoveryGuardian, &guardian);
     }
 
     /// Guardian initiates a recovery: proposes new signers + threshold with a
@@ -323,14 +325,14 @@ impl MultisigWallet {
     pub fn initiate_recovery(
         env: Env,
         guardian: Address,
-        new_signers: soroban_sdk::Vec<Address>,
+        new_signers: Vec<Address>,
         new_threshold: u32,
     ) {
         guardian.require_auth();
         let stored_guardian: Option<Address> =
             env.storage().instance().get(&DataKey::RecoveryGuardian);
-        let stored_guardian = stored_guardian
-            .unwrap_or_else(|| env.panic_with_error(Error::NoRecoveryGuardian));
+        let stored_guardian =
+            stored_guardian.unwrap_or_else(|| env.panic_with_error(Error::NoRecoveryGuardian));
         if guardian != stored_guardian {
             env.panic_with_error(Error::Unauthorized);
         }
@@ -342,8 +344,14 @@ impl MultisigWallet {
         }
         // 7-day timelock (7 * 24 * 60 * 60 seconds)
         let unlock_at = env.ledger().timestamp() + 7 * 24 * 60 * 60;
-        let req = RecoveryRequest { new_signers, new_threshold, unlock_at };
-        env.storage().instance().set(&DataKey::RecoveryRequest, &req);
+        let req = RecoveryRequest {
+            new_signers,
+            new_threshold,
+            unlock_at,
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::RecoveryRequest, &req);
     }
 
     /// Execute a pending recovery after the timelock has expired.
@@ -357,8 +365,12 @@ impl MultisigWallet {
         if env.ledger().timestamp() < req.unlock_at {
             env.panic_with_error(Error::TimelockActive);
         }
-        env.storage().instance().set(&DataKey::Signers, &req.new_signers);
-        env.storage().instance().set(&DataKey::Threshold, &req.new_threshold);
+        env.storage()
+            .instance()
+            .set(&DataKey::Signers, &req.new_signers);
+        env.storage()
+            .instance()
+            .set(&DataKey::Threshold, &req.new_threshold);
         env.storage().instance().remove(&DataKey::RecoveryRequest);
     }
 

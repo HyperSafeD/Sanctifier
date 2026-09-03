@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sanctifier</title>
+  <style>
+    :root {
+      --bg: #fafafa;
+      --surface: #ffffff;
+      --border: #e4e4e7;
+      --text: #18181b;
+      --text-secondary: #71717a;
+      --critical: #ef4444;
+      --high: #f97316;
+      --medium: #f59e0b;
+      --low: #a1a1aa;
+      --added-bg: #fef2f2;
+      --added-border: #fca5a5;
+      --font-mono: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      width: 380px;
+      min-height: 300px;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+    .header h1 {
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+    .header .badge {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-weight: 600;
+    }
+    .badge.ok { background: #dcfce7; color: #166534; }
+    .badge.error { background: #fef2f2; color: #991b1b; }
+    .badge.pending { background: #fef9c3; color: #854d0e; }
+    .content { padding: 12px 16px; }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .status-bar .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .dot.connected { background: #22c55e; }
+    .dot.disconnected { background: #ef4444; }
+    .dot.loading { background: #f59e0b; animation: pulse 1s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .finding {
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+      transition: box-shadow 0.15s;
+    }
+    .finding:hover { box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .finding.added {
+      background: var(--added-bg);
+      border-color: var(--added-border);
+    }
+    .finding-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 4px;
+    }
+    .finding-code {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 4px;
+      background: #f4f4f5;
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+    .finding-severity {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 2px 8px;
+      border-radius: 999px;
+      color: #fff;
+    }
+    .finding-title {
+      font-weight: 600;
+      font-size: 12px;
+      margin-bottom: 2px;
+    }
+    .finding-location {
+      font-size: 11px;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .empty-state {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--text-secondary);
+    }
+    .empty-state .icon { font-size: 32px; margin-bottom: 8px; }
+    .empty-state p { font-size: 13px; }
+    .footer {
+      padding: 8px 16px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+    }
+    .footer a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 11px;
+    }
+    .footer a:hover { text-decoration: underline; }
+    .severity-critical { background: var(--critical); }
+    .severity-high { background: var(--high); }
+    .severity-medium { background: var(--medium); }
+    .severity-low { background: var(--low); }
+    .loading-spinner {
+      text-align: center;
+      padding: 40px 16px;
+      color: var(--text-secondary);
+    }
+    .loading-spinner .spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid var(--border);
+      border-top-color: var(--text-secondary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Sanctifier</h1>
+    <span id="badge" class="badge pending">Loading</span>
+  </div>
+  <div class="status-bar">
+    <span id="statusDot" class="dot loading"></span>
+    <span id="statusText">Connecting to dashboard…</span>
+  </div>
+  <div id="content" class="content">
+    <div class="loading-spinner">
+      <div class="spinner"></div>
+      <p>Loading findings…</p>
+    </div>
+  </div>
+  <div class="footer">
+    <a href="http://localhost:3000/dashboard" target="_blank">Open Dashboard →</a>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

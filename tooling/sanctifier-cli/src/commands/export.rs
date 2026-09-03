@@ -1,9 +1,9 @@
 use crate::commands::analyze::{
     analyze_single_file, collect_rs_files, load_config, run_with_timeout,
 };
+use crate::commands::color as c;
 use crate::vulndb::VulnDatabase;
 use clap::{Args, ValueEnum};
-use colored::*;
 use rayon::prelude::*;
 use sanctifier_core::Analyzer;
 use std::fs;
@@ -86,7 +86,11 @@ pub fn exec(args: ExportArgs) -> anyhow::Result<()> {
     };
 
     if rs_files.is_empty() {
-        eprintln!("{} No Rust source files found at {:?}", "⚠️".yellow(), args.path);
+        eprintln!(
+            "{} No Rust source files found at {:?}",
+            c::yellow_warning(),
+            args.path
+        );
         return Ok(());
     }
 
@@ -111,12 +115,10 @@ pub fn exec(args: ExportArgs) -> anyhow::Result<()> {
             let analyzer = Arc::clone(&analyzer);
             let vuln_db = Arc::clone(&vuln_db);
             let file_name_clone = file_name.clone();
-            match run_with_timeout(timeout_dur, move || {
+            run_with_timeout(timeout_dur, move || {
                 analyze_single_file(&analyzer, &vuln_db, &content, &file_name_clone)
-            }) {
-                Some(r) => r,
-                None => Default::default(),
-            }
+            })
+            .unwrap_or_default()
         })
         .collect();
 
@@ -127,7 +129,14 @@ pub fn exec(args: ExportArgs) -> anyhow::Result<()> {
         .delimiter(args.format.delimiter())
         .from_writer(file);
 
-    wtr.write_record(["severity", "code", "category", "title", "location", "suggestion"])?;
+    wtr.write_record([
+        "severity",
+        "code",
+        "category",
+        "title",
+        "location",
+        "suggestion",
+    ])?;
 
     for r in &results {
         for item in &r.auth_gaps {
@@ -239,7 +248,7 @@ pub fn exec(args: ExportArgs) -> anyhow::Result<()> {
                 "smt_verification",
                 "SMT invariant violation",
                 &item.location,
-                &item.suggestion,
+                &item.description,
             ])?;
         }
         for item in &r.sep41_issues {
@@ -268,7 +277,7 @@ pub fn exec(args: ExportArgs) -> anyhow::Result<()> {
                 "S014",
                 "vuln_db",
                 &item.name,
-                &item.location,
+                &format!("{}:{}", item.file, item.line),
                 &item.description,
             ])?;
         }
@@ -289,7 +298,7 @@ pub fn exec(args: ExportArgs) -> anyhow::Result<()> {
     let total_rows = results.iter().map(count_findings).sum::<usize>();
     println!(
         "{} Exported {} finding(s) to {:?}",
-        "✅".green(),
+        c::green_check(),
         total_rows,
         output_path
     );
@@ -306,7 +315,10 @@ fn count_findings(r: &crate::commands::analyze::FileAnalysisResult) -> usize {
         + r.custom_matches.len()
         + r.event_issues.len()
         + r.unhandled_results.len()
-        + r.upgrade_reports.iter().map(|u| u.findings.len()).sum::<usize>()
+        + r.upgrade_reports
+            .iter()
+            .map(|u| u.findings.len())
+            .sum::<usize>()
         + r.smt_issues.len()
         + r.sep41_issues.len()
         + r.truncation_bounds_issues.len()

@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sanctifier for Stellar Laboratory</title>
+    <style>
+      body { font-family: Inter, system-ui, sans-serif; margin: 0; min-height: 100vh; background: #0b1220; color: #f8fafc; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 2rem; }
+      .container { width: min(100%, 980px); }
+      h1 { margin: 0 0 0.5rem; font-size: clamp(2rem, 3vw, 3rem); }
+      p { margin: 0 0 1.5rem; color: #cbd5e1; }
+      textarea { width: 100%; min-height: 280px; border-radius: 16px; border: 1px solid #334155; background: #020617; color: #f8fafc; padding: 1rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 0.95rem; resize: vertical; }
+      button { margin-top: 1rem; padding: 0.9rem 1.4rem; border: none; border-radius: 999px; background: #22c55e; color: #020617; font-weight: 700; cursor: pointer; transition: transform 0.15s ease, filter 0.15s ease; }
+      button:hover { transform: translateY(-1px); filter: brightness(1.05); }
+      .status { margin-top: 1rem; font-size: 0.95rem; color: #94a3b8; }
+      pre { margin-top: 1rem; padding: 1rem; border-radius: 16px; background: rgba(15, 23, 42, 0.9); overflow-x: auto; max-height: 380px; }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Sanctifier for Stellar Laboratory</h1>
+      <p>Paste Soroban contract source below. The plugin sends it to a hosted Sanctifier API and renders the analysis results in-browser.</p>
+      <textarea id="source-input" placeholder="Paste Soroban source here..."></textarea>
+      <button id="analyze-btn">Analyze with Sanctifier API</button>
+      <div id="status" class="status"></div>
+      <pre id="result" hidden></pre>
+    </div>
+    <script src="plugin.js"></script>
+  </body>
+</html>

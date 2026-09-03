@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "add",
+    "message": "Unchecked '+' operation could overflow",
+    "rule_name": "arithmetic_overflow",
+    "severity": "Warning",
+    "suggestion": "Use .checked_add(rhs) or .saturating_add(rhs) to handle overflow"
+  }
+]

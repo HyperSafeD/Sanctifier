@@ -3,7 +3,7 @@ import { spawn } from "child_process";
 import path from "path";
 import os from "os";
 import { mkdtemp, rm, writeFile } from "fs/promises";
-import { normalizeReport } from "../../lib/transform";
+import { normalizeReport, transformReport } from "../../lib/transform";
 import { SANCTIFIER_BIN, RATE_LIMIT_REQUESTS_PER_MINUTE } from "../../lib/env";
 import { logger } from "../../../lib/logger";
 
@@ -13,6 +13,16 @@ const REPO_ROOT = path.resolve(process.cwd(), "..");
 const SUPPORTED_SOURCE_EXTENSIONS = new Set([".rs"]);
 const MAX_FILE_SIZE_BYTES = 250 * 1024;
 const EXECUTION_TIMEOUT_MS = 30000;
+
+function getSettingsFromHeaders(request: NextRequest): {
+  binPath?: string;
+  customRulesPath?: string;
+} {
+  const binPath = request.headers.get("x-sanctifier-bin-path") || undefined;
+  const customRulesPath =
+    request.headers.get("x-sanctifier-custom-rules") || undefined;
+  return { binPath, customRulesPath };
+}
 
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 
@@ -279,6 +289,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const settingsFromHeaders = getSettingsFromHeaders(request);
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "sanctifier-contract-"));
   try {
     const contentType = request.headers.get("content-type") ?? "";

@@ -6,18 +6,18 @@
 //! audit the mapping between internal codes and output messages in one place.
 
 use sanctifier_core::{
-    finding_codes, ArithmeticIssue, AuthGapIssue, EventIssue, PanicIssue, SizeWarning,
-    StorageCollisionIssue, UnhandledResultIssue, UnsafePattern,
+    finding_codes, ArithmeticIssue, EventIssue, PanicIssue, SizeWarning, StorageCollisionIssue,
+    UnhandledResultIssue, UnsafePattern,
 };
 
 use crate::types::Finding;
 
-pub fn auth_gap(issue: &AuthGapIssue) -> Finding {
+pub fn auth_gap(function_name: &str) -> Finding {
     Finding {
         code: finding_codes::AUTH_GAP,
         category: "authentication",
-        message: format!("Missing authentication guard in `{}`", issue.function_name),
-        location: Some(issue.function_name.clone()),
+        message: format!("Missing authentication guard in `{}`", function_name),
+        location: Some(function_name.to_string()),
     }
 }
 

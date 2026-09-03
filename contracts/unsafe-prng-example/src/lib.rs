@@ -46,6 +46,27 @@ impl UnsafePrngExample {
     pub fn set_value(env: Env, key: u32, value: u64) {
         env.storage().persistent().set(&key, &value);
     }
+
+    /// UNSAFE: Uses ledger timestamp as the sole source of randomness seed.
+    /// Flagged by the timestamp_randomness rule (S029).
+    pub fn pick_winner_by_timestamp(env: Env, participants: Vec<Address>) -> Address {
+        let seed = env.ledger().timestamp();
+        let idx = seed % participants.len() as u64;
+        participants.get(idx as u32).unwrap()
+    }
+
+    /// UNSAFE: Timestamp used directly to derive a rand value.
+    /// Flagged by the timestamp_randomness rule (S029).
+    pub fn rand_from_timestamp(env: Env) -> u64 {
+        let rand = env.ledger().timestamp() % 1000;
+        rand
+    }
+
+    /// SAFE: Timestamp used only for deadline/expiry checks.
+    /// This function will NOT be flagged.
+    pub fn is_expired(env: Env, deadline: u64) -> bool {
+        env.ledger().timestamp() > deadline
+    }
 }
 
 #[cfg(test)]

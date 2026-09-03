@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 //! # GitHub PR Comment Formatter
 //!
 //! Renders a structured "delta vs base branch" summary for posting as a
@@ -7,7 +8,6 @@
 //! - A link to the full SARIF/JSON report artifact
 //! - Markdown table of new findings grouped by severity
 
-use crate::commands::analyze::SeverityLevel;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -36,22 +36,38 @@ pub fn build_diff_summary(diff_json: &Value) -> DiffSummary {
 
     // New findings
     if let Some(new) = diff_json.get("new_findings") {
-        let files = new.as_object().map(|o| o.values().collect::<Vec<_>>()).unwrap_or_default();
+        let files = new
+            .as_object()
+            .map(|o| o.values().collect::<Vec<_>>())
+            .unwrap_or_default();
         for file_val in &files {
             if let Some(findings) = file_val.get("findings").and_then(|f| f.as_array()) {
                 for f in findings {
                     summary.new_count += 1;
-                    let sev = f.get("severity")
+                    let sev = f
+                        .get("severity")
                         .and_then(|s| s.as_str())
                         .unwrap_or("unknown")
                         .to_string();
                     *summary.by_severity.entry(sev.clone()).or_insert(0) += 1;
                     if summary.top_new.len() < 10 {
                         summary.top_new.push(FindingSummary {
-                            rule: f.get("rule_id").and_then(|v| v.as_str()).unwrap_or("unknown").to_string(),
+                            rule: f
+                                .get("rule_id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("unknown")
+                                .to_string(),
                             severity: sev,
-                            file: file_val.get("file").and_then(|v| v.as_str()).unwrap_or("?").to_string(),
-                            message: f.get("message").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+                            file: file_val
+                                .get("file")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("?")
+                                .to_string(),
+                            message: f
+                                .get("message")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string(),
                         });
                     }
                 }
@@ -60,7 +76,10 @@ pub fn build_diff_summary(diff_json: &Value) -> DiffSummary {
     }
 
     // Resolved findings (present in baseline but not in current)
-    if let Some(resolved) = diff_json.get("resolved_findings_count").and_then(|v| v.as_u64()) {
+    if let Some(resolved) = diff_json
+        .get("resolved_findings_count")
+        .and_then(|v| v.as_u64())
+    {
         summary.resolved_count = resolved as usize;
     }
 
@@ -75,15 +94,23 @@ pub fn render_pr_comment(summary: &DiffSummary, artifact_url: Option<&str>) -> S
     let mut md = String::new();
 
     // Sticky marker — used by the Action to find and update the comment
-    md.push_str("<!-- sanctifier-pr-comment -->
-");
-    md.push_str("## 🛡️ Sanctifier Security Analysis
+    md.push_str(
+        "<!-- sanctifier-pr-comment -->
+",
+    );
+    md.push_str(
+        "## 🛡️ Sanctifier Security Analysis
 
-");
+",
+    );
 
     // Delta line
     let new_str = if summary.new_count > 0 {
-        format!("`+{}` new finding{}", summary.new_count, if summary.new_count == 1 { "" } else { "s" })
+        format!(
+            "`+{}` new finding{}",
+            summary.new_count,
+            if summary.new_count == 1 { "" } else { "s" }
+        )
     } else {
         "`+0` new findings".to_string()
     };
@@ -92,52 +119,78 @@ pub fn render_pr_comment(summary: &DiffSummary, artifact_url: Option<&str>) -> S
     } else {
         "`-0` resolved".to_string()
     };
-    md.push_str(&format!("{new_str} · {resolved_str}
+    md.push_str(&format!(
+        "{new_str} · {resolved_str}
 
-"));
+"
+    ));
 
     // Severity breakdown
     if !summary.by_severity.is_empty() {
         let order = ["critical", "high", "medium", "low", "info"];
-        let parts: Vec<String> = order.iter()
-            .filter_map(|sev| summary.by_severity.get(*sev).map(|n| format!("**{}** {}", sev, n)))
+        let parts: Vec<String> = order
+            .iter()
+            .filter_map(|sev| {
+                summary
+                    .by_severity
+                    .get(*sev)
+                    .map(|n| format!("**{}** {}", sev, n))
+            })
             .collect();
         if !parts.is_empty() {
-            md.push_str(&format!("Severity: {}
+            md.push_str(&format!(
+                "Severity: {}
 
-", parts.join(" · ")));
+",
+                parts.join(" · ")
+            ));
         }
     }
 
     // Top new findings table
     if !summary.top_new.is_empty() {
-        md.push_str("<details>
+        md.push_str(
+            "<details>
 <summary>New findings</summary>
 
-");
-        md.push_str("| Severity | Rule | File | Message |
-");
-        md.push_str("|---|---|---|---|
-");
+",
+        );
+        md.push_str(
+            "| Severity | Rule | File | Message |
+",
+        );
+        md.push_str(
+            "|---|---|---|---|
+",
+        );
         for f in &summary.top_new {
             let msg = f.message.chars().take(80).collect::<String>();
-            md.push_str(&format!("| {} | `{}` | `{}` | {} |
-", f.severity, f.rule, f.file, msg));
+            md.push_str(&format!(
+                "| {} | `{}` | `{}` | {} |
+",
+                f.severity, f.rule, f.file, msg
+            ));
         }
-        md.push_str("
+        md.push_str(
+            "
 </details>
 
-");
+",
+        );
     } else if summary.new_count == 0 {
-        md.push_str("✅ No new findings — great work!
+        md.push_str(
+            "✅ No new findings — great work!
 
-");
+",
+        );
     }
 
     // Artifact link
     if let Some(url) = artifact_url {
-        md.push_str(&format!("[📄 Full report]({url})
-"));
+        md.push_str(&format!(
+            "[📄 Full report]({url})
+"
+        ));
     }
 
     md
@@ -147,10 +200,10 @@ pub fn render_pr_comment(summary: &DiffSummary, artifact_url: Option<&str>) -> S
 pub fn severity_rank(s: &str) -> u8 {
     match s.to_lowercase().as_str() {
         "critical" => 4,
-        "high"     => 3,
-        "medium"   => 2,
-        "low"      => 1,
-        _          => 0,
+        "high" => 3,
+        "medium" => 2,
+        "low" => 1,
+        _ => 0,
     }
 }
 
@@ -160,11 +213,15 @@ mod tests {
     use serde_json::json;
 
     fn make_diff_json(new_count: usize, resolved: usize) -> Value {
-        let findings: Vec<Value> = (0..new_count).map(|i| json!({
-            "rule_id": format!("rule_{i}"),
-            "severity": if i % 2 == 0 { "high" } else { "medium" },
-            "message": format!("finding {i}"),
-        })).collect();
+        let findings: Vec<Value> = (0..new_count)
+            .map(|i| {
+                json!({
+                    "rule_id": format!("rule_{i}"),
+                    "severity": if i % 2 == 0 { "high" } else { "medium" },
+                    "message": format!("finding {i}"),
+                })
+            })
+            .collect();
         json!({
             "new_findings": {
                 "src/lib.rs": { "file": "src/lib.rs", "findings": findings }

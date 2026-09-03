@@ -74,7 +74,7 @@ fn cache_hit_arithmetic_findings_match_fresh_analysis() {
 #[test]
 fn cache_hit_auth_gap_findings_match_fresh_analysis() {
     let a = analyzer();
-    let mut cache: AnalysisCache<Vec<sanctifier_core::AuthGapIssue>> = AnalysisCache::new(16);
+    let mut cache: AnalysisCache<Vec<String>> = AnalysisCache::new(16);
 
     let fresh = a.scan_auth_gaps(AUTH_GAP_CONTRACT);
     let cached = cache.get_or_analyze("auth_gap.rs", AUTH_GAP_CONTRACT, || {
@@ -83,7 +83,7 @@ fn cache_hit_auth_gap_findings_match_fresh_analysis() {
 
     assert_eq!(fresh.len(), cached.len());
     for (f, c) in fresh.iter().zip(cached.iter()) {
-        assert_eq!(f.function_name, c.function_name);
+        assert_eq!(f, c);
     }
 }
 
@@ -195,7 +195,7 @@ fn cache_stays_within_capacity_across_workspace_scan() {
 #[test]
 fn repeated_cache_reads_are_deterministic_across_invocations() {
     let a = analyzer();
-    let mut cache: AnalysisCache<Vec<sanctifier_core::AuthGapIssue>> = AnalysisCache::new(16);
+    let mut cache: AnalysisCache<Vec<String>> = AnalysisCache::new(16);
 
     let results: Vec<_> = (0..10)
         .map(|_| {

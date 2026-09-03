@@ -231,7 +231,10 @@ mod tests {
             }
         "#;
         let violations = rule.check(source);
-        assert!(violations.is_empty(), "test using ContractClient must not be flagged");
+        assert!(
+            violations.is_empty(),
+            "test using ContractClient must not be flagged"
+        );
     }
 
     #[test]

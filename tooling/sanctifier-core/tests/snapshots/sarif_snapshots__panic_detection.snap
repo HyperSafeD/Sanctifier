@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "fund",
+    "message": "Use of 'unwrap' can cause contract failure",
+    "rule_name": "panic_detection",
+    "severity": "Warning",
+    "suggestion": "Use Result types and proper error handling instead"
+  }
+]

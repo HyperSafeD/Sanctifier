@@ -10,9 +10,33 @@ strict_mode = false
 [[custom_rules]]
 name = "no_unsafe_block"
 pattern = "unsafe\\s*\\{"
-severity = "error"
+severity = "High"
 
 [[custom_rules]]
 name = "no_mem_forget"
 pattern = "std::mem::forget"
-severity = "warning"
+severity = "Medium"
+
+# ---------------------------------------------------------------------------
+# ZK rule pack (#1233)
+# ---------------------------------------------------------------------------
+# Controls whether Sanctifier loads and runs the Z-rule pack (Z001–Z0NN).
+# Most pure-Soroban projects have no circuit source; leaving 'auto' avoids
+# parser-loading overhead and irrelevant findings for those projects.
+#
+# enabled = "auto"   — enable only when .circom or .nr files are detected
+# enabled = true     — always run ZK rules
+# enabled = false    — always skip ZK rules
+[zk]
+enabled = "auto"
+
+# Directories to add to Circom's include search path (relative to repo root).
+# Uncomment and extend if you vendor circomlib or other libraries locally.
+# circom_include_dirs = ["./circuits/lib"]
+
+# Path to the Nargo.toml directory for Noir projects (default: repo root).
+# noir_project_root = "./circuits"
+
+# Z-rule codes to suppress in this project.  Prefer the generic rule-disable
+# mechanism (enabled_rules / #1230) for permanent suppressions.
+# skip_rules = ["Z003"]

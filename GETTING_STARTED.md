@@ -81,7 +81,8 @@ Congratulations! You now have a complete automation platform for deploying runti
   - Monitor GitHub Actions runs
   - Set up alerts/notifications (optional)
 
-- [ ] **Plan for Multiple Networks**
+- [ ] **Migrate to Mainnet**
+  - Read the [Mainnet Migration Guide](MAINNET_MIGRATION_GUIDE.md)
   - Consider separate keys per network
   - Test on futurenet if needed
   - Prepare mainnet deployment process
@@ -294,7 +295,7 @@ Once you've deployed successfully, explore:
 
 ### 3. Network Migration
 - Test on futurenet
-- Prepare for mainnet
+- Follow the [Mainnet Migration Guide](MAINNET_MIGRATION_GUIDE.md) to safely migrate to mainnet
 - Manage multiple environments
 
 ### 4. Monitoring & Alerting

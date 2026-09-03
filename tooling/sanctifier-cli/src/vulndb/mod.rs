@@ -1,3 +1,34 @@
+#![allow(dead_code)]
+//! Vulnerability database — loading, validation, and pattern matching.
+//!
+//! # Module layout
+//!
+//! | Submodule | Responsibility |
+//! |-----------|----------------|
+//! | (this file) | Database types, JSON loading, semantic validation |
+//! | [`matcher`] | Regex scan engine and [`VulnMatch`] result type |
+//!
+//! ## Threat model
+//!
+//! The vulnerability database is an untrusted external input (especially when
+//! loaded from a user-supplied `--vuln-db` path).  [`VulnDatabase::validate`]
+//! runs before any scanning to:
+//!
+//! 1. Reject databases whose entries contain invalid regular expressions,
+//!    preventing a malformed pattern from panicking inside `regex::Regex::new`.
+//! 2. Enforce unique IDs and non-overlapping signatures so that a crafted DB
+//!    cannot produce duplicate or misleading findings.
+//! 3. Reject unknown severity strings to keep downstream consumers (JSON
+//!    output, CI exit-code logic) from seeing unexpected values.
+//!
+//! The embedded default database (`data/vulnerability-db.json`) is validated
+//! at compile-time via `expect` — a bug in the embedded DB causes a build
+//! failure, not a runtime error.
+
+pub mod matcher;
+
+pub use matcher::VulnMatch;
+
 use anyhow::Context;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -5,42 +36,45 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+/// A single entry in the vulnerability database.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VulnEntry {
+    /// Unique identifier (e.g. `"VULN-001"`).
     pub id: String,
+    /// Human-readable name.
     pub name: String,
+    /// Human-readable description.
     pub description: String,
+    /// Severity level: one of `critical`, `high`, `medium`, `low`, `info`.
     pub severity: String,
+    /// Broad vulnerability category.
     pub category: String,
+    /// Regex pattern matched against source code.
     pub pattern: String,
+    /// Actionable recommendation.
     pub recommendation: String,
+    /// Optional external references (CVEs, advisories, …).
     #[serde(default)]
     pub references: Vec<String>,
 }
 
+/// A parsed and validated vulnerability database.
 #[derive(Debug, Clone, Deserialize)]
 pub struct VulnDatabase {
+    /// Schema version of this database file.
     pub version: String,
+    /// ISO-8601 date of the last update.
     pub last_updated: String,
+    /// Human-readable description of the database.
     pub description: String,
+    /// All vulnerability entries.
     pub vulnerabilities: Vec<VulnEntry>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct VulnMatch {
-    pub vuln_id: String,
-    pub name: String,
-    pub severity: String,
-    pub category: String,
-    pub description: String,
-    pub recommendation: String,
-    pub file: String,
-    pub line: usize,
-    pub snippet: String,
-}
-
 impl VulnDatabase {
-    /// Load the vulnerability database from a JSON file.
+    /// Load a vulnerability database from a JSON file on disk.
+    ///
+    /// The file is parsed and then semantically validated via [`Self::validate`].
     pub fn load(path: &Path) -> anyhow::Result<Self> {
         let content = fs::read_to_string(path)
             .with_context(|| format!("failed to read vulnerability database {}", path.display()))?;
@@ -59,9 +93,12 @@ impl VulnDatabase {
         Ok(db)
     }
 
-    /// Load the embedded default vulnerability database.
+    /// Load the embedded default vulnerability database (compiled into the binary).
+    ///
+    /// Panics at startup if the embedded JSON is invalid — this is intentional
+    /// because a broken embedded database is a build defect, not a runtime one.
     pub fn load_default() -> Self {
-        let content = include_str!("../data/vulnerability-db.json");
+        let content = include_str!("../../data/vulnerability-db.json");
         let db: VulnDatabase =
             serde_json::from_str(content).expect("embedded vulnerability-db.json is valid JSON");
         db.validate()
@@ -69,7 +106,10 @@ impl VulnDatabase {
         db
     }
 
-    /// Validate uniqueness and overlap constraints that JSON Schema cannot express.
+    /// Validate uniqueness and semantic constraints that JSON Schema cannot express.
+    ///
+    /// Returns an error listing **all** validation failures so that users can
+    /// fix their custom database in one pass rather than chasing errors one by one.
     pub fn validate(&self) -> anyhow::Result<()> {
         if self.version.trim().is_empty() {
             anyhow::bail!("vulnerability database version must not be empty");
@@ -190,43 +230,11 @@ impl VulnDatabase {
         Ok(())
     }
 
-    /// Scan source code against all vulnerability patterns.
+    /// Scan `source` against all vulnerability patterns.
+    ///
+    /// Delegates to [`matcher::scan_source`] keeping I/O and matching separate.
     pub fn scan(&self, source: &str, file_name: &str) -> Vec<VulnMatch> {
-        let mut matches = Vec::new();
-
-        for vuln in &self.vulnerabilities {
-            let re = match Regex::new(&vuln.pattern) {
-                Ok(r) => r,
-                Err(_) => continue,
-            };
-
-            for mat in re.find_iter(source) {
-                let line = source[..mat.start()].matches('\n').count() + 1;
-                let line_start = source[..mat.start()]
-                    .rfind('\n')
-                    .map(|p| p + 1)
-                    .unwrap_or(0);
-                let line_end = source[mat.end()..]
-                    .find('\n')
-                    .map(|p| mat.end() + p)
-                    .unwrap_or(source.len());
-                let snippet = source[line_start..line_end].trim().to_string();
-
-                matches.push(VulnMatch {
-                    vuln_id: vuln.id.clone(),
-                    name: vuln.name.clone(),
-                    severity: vuln.severity.clone(),
-                    category: vuln.category.clone(),
-                    description: vuln.description.clone(),
-                    recommendation: vuln.recommendation.clone(),
-                    file: file_name.to_string(),
-                    line,
-                    snippet,
-                });
-            }
-        }
-
-        matches
+        matcher::scan_source(&self.vulnerabilities, source, file_name)
     }
 }
 

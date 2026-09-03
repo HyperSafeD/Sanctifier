@@ -1,0 +1,19 @@
+[package]
+name = "sanctifier-test-support"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# This crate is intentionally a plain `rlib` — no `cdylib` — so it can be
+# compiled once and reused across every contract's test harness rather than
+# being re-linked into each WASM binary.
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+# Used by the `sep41_compliance` conformance harness to parse contract source
+# and verify the SEP-41 token interface. Host-side only (this crate is a
+# dev-dependency of contracts), so it never reaches a WASM build.
+syn = { version = "2.0", features = ["full", "extra-traits", "visit"] }
+quote = "1.0"

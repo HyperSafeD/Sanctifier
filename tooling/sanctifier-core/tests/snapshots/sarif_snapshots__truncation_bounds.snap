@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "shrink",
+    "message": "Integer truncation risk: `as u32`",
+    "rule_name": "truncation_bounds",
+    "severity": "Warning",
+    "suggestion": "Use `u32::try_from(val).unwrap_or(...)` or `.try_into()` with proper error handling instead of `as u32`; suppress with `#[allow(sanctifier::truncate)]` if intentional"
+  }
+]

@@ -47,6 +47,11 @@ pub struct ReportArgs {
     /// Per-file analysis timeout in seconds (0 = disabled)
     #[arg(short, long, default_value = "30")]
     pub timeout: u64,
+
+    /// Target network (testnet, futurenet, mainnet).
+    /// Overrides SOROBAN_NETWORK env var. Default: testnet.
+    #[arg(long, default_value = "testnet")]
+    pub network: String,
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -141,10 +146,11 @@ pub fn exec(args: ReportArgs) -> anyhow::Result<()> {
         .map(|e| e.eq_ignore_ascii_case("html"))
         .unwrap_or(false);
 
+    let network = resolve_network(&args.network);
     let report_text = if is_html {
-        render_html(&data, path, &vuln_db.version)
+        render_html(&data, path, &vuln_db.version, &network)
     } else {
-        render_markdown(&data, path, &vuln_db.version)
+        render_markdown(&data, path, &vuln_db.version, &network)
     };
 
     match &args.output {
@@ -170,7 +176,7 @@ struct ReportData {
     event_issues: Vec<sanctifier_core::EventIssue>,
     unhandled_results: Vec<sanctifier_core::UnhandledResultIssue>,
     upgrade_findings: Vec<sanctifier_core::UpgradeFinding>,
-    smt_issues: Vec<sanctifier_core::smt::SmtInvariantIssue>,
+    smt_issues: Vec<sanctifier_core::SmtInvariantIssue>,
     sep41_issues: Vec<sanctifier_core::Sep41Issue>,
     vuln_matches: Vec<VulnMatch>,
     timed_out_files: Vec<String>,
@@ -234,7 +240,7 @@ fn merge_results(results: Vec<FileAnalysisResult>) -> ReportData {
 
 // ── Markdown renderer ─────────────────────────────────────────────────────────
 
-fn render_markdown(data: &ReportData, path: &Path, vuln_db_version: &str) -> String {
+fn render_markdown(data: &ReportData, path: &Path, vuln_db_version: &str, network: &str) -> String {
     let mut md = String::new();
     let version = env!("CARGO_PKG_VERSION");
     let date = human_date();
@@ -245,6 +251,7 @@ fn render_markdown(data: &ReportData, path: &Path, vuln_db_version: &str) -> Str
     md.push_str(&format!("| **Contract path** | `{}` |\n", path.display()));
     md.push_str(&format!("| **Analysis date** | {} |\n", date));
     md.push_str(&format!("| **Tool version** | {} |\n", version));
+    md.push_str(&format!("| **Network** | {} |\n", network));
     md.push_str(&format!("| **Vuln DB version** | {} |\n", vuln_db_version));
     let overall = if data.has_critical {
         "🔴 Critical"
@@ -477,7 +484,7 @@ fn render_markdown(data: &ReportData, path: &Path, vuln_db_version: &str) -> Str
         for s in &data.smt_issues {
             md.push_str(&format!(
                 "| `{}` | `{}` | {} |\n",
-                s.function_name, s.location, s.description
+                s.function_name, s.location, s.description,
             ));
         }
         md.push('\n');
@@ -540,10 +547,10 @@ fn render_markdown(data: &ReportData, path: &Path, vuln_db_version: &str) -> Str
 
 // ── HTML renderer ─────────────────────────────────────────────────────────────
 
-fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str) -> String {
+fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str, network: &str) -> String {
     // Embed the Markdown as sanitised HTML.  For a structured HTML doc we
     // convert the key sections manually to avoid pulling in a Markdown crate.
-    let md = render_markdown(data, path, vuln_db_version);
+    let md = render_markdown(data, path, vuln_db_version, network);
 
     // Escape the raw Markdown so it can be embedded in a <pre> block, and
     // also generate a proper HTML document with a minimal stylesheet.
@@ -697,6 +704,7 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str) -> String 
   <tr><th>Contract path</th><td><code>{path}</code></td></tr>
   <tr><th>Analysis date</th><td>{date}</td></tr>
   <tr><th>Tool version</th><td>{version}</td></tr>
+  <tr><th>Network</th><td><code>{network}</code></td></tr>
   <tr><th>Vuln DB version</th><td>{vuln_db_version}</td></tr>
   <tr><th>Overall</th><td><span class="badge {overall_class}">{overall_label}</span></td></tr>
 </table>
@@ -720,6 +728,7 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str) -> String 
         date = date,
         version = version,
         vuln_db_version = vuln_db_version,
+        network = network,
         overall_class = overall_class,
         overall_label = overall_label,
         summary_rows = summary_rows,
@@ -728,6 +737,13 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str) -> String 
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+fn resolve_network(cli_network: &str) -> String {
+    std::env::var("SOROBAN_NETWORK")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| cli_network.to_string())
+}
 
 fn human_date() -> String {
     let now = std::time::SystemTime::now();

@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "draw_winner",
+    "message": "Function 'draw_winner' uses PRNG in state-critical code without explicit reseeding. Predictable randomness can lead to security vulnerabilities.",
+    "rule_name": "unsafe_prng",
+    "severity": "Warning",
+    "suggestion": "Consider using prng.reseed() with unpredictable entropy (e.g., from ledger timestamp, transaction hash, or external oracle) before generating random values for state-critical operations. Alternatively, document why the default seeding is sufficient for your use case."
+  }
+]

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeToggle } from "./ThemeToggle";
@@ -14,6 +14,10 @@ vi.mock("../providers/theme-provider", () => ({
 }));
 
 describe("ThemeToggle", () => {
+  beforeEach(() => {
+    mockSetTheme.mockClear();
+  });
+
   it("renders all theme options", () => {
     currentTheme = "light";
     render(<ThemeToggle />);
