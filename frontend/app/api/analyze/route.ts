@@ -5,7 +5,7 @@ import os from "os";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { normalizeReport } from "../../lib/transform";
 import { SANCTIFIER_BIN, RATE_LIMIT_REQUESTS_PER_MINUTE } from "../../lib/env";
-import { logger } from "../../lib/logger";
+import { logger } from "../../../lib/logger";
 
 export const runtime = "nodejs";
 

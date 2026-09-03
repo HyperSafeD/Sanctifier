@@ -104,9 +104,9 @@ impl DepositWithdraw {
 
         env.storage().persistent().set(&key, &(bal - amount));
 
-        // Send tokens directly to the caller — NOT to `account`
+        // Send tokens to account
         token::Client::new(&env, &token)
-            .transfer(&env.current_contract_address(), &env.invoker(), &amount);
+            .transfer(&env.current_contract_address(), &account, &amount);
 
         Ok(())
     }

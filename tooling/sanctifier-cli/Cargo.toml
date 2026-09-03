@@ -17,7 +17,7 @@ default = []
 smt = ["sanctifier-core/smt"]
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
+clap = { version = "4.4", features = ["derive", "env"] }
 clap_complete = "4.4"
 anyhow = "1.0"
 sanctifier-core = { version = "0.1.0", path = "../sanctifier-core", default-features = false }

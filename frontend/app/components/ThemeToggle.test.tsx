@@ -3,38 +3,41 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeToggle } from "./ThemeToggle";
 
-const mockToggle = vi.fn();
+const mockSetTheme = vi.fn();
 let currentTheme = "light";
 
 vi.mock("../providers/theme-provider", () => ({
   useTheme: () => ({
     theme: currentTheme,
-    toggleTheme: mockToggle,
-    setTheme: vi.fn(),
+    setTheme: mockSetTheme,
   }),
 }));
 
 describe("ThemeToggle", () => {
-  it("renders with correct label for light mode", () => {
+  it("renders all theme options", () => {
     currentTheme = "light";
     render(<ThemeToggle />);
 
-    expect(screen.getByText("Switch to Dark")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Light" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dark" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "System" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "High Contrast" })).toBeInTheDocument();
   });
 
-  it("renders with correct label for dark mode", () => {
+  it("indicates active theme via aria-pressed", () => {
     currentTheme = "dark";
     render(<ThemeToggle />);
 
-    expect(screen.getByText("Switch to Light")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dark" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Light" })).toHaveAttribute("aria-pressed", "false");
   });
 
-  it("calls toggleTheme on click", async () => {
+  it("calls setTheme on click", async () => {
     currentTheme = "light";
     const user = userEvent.setup();
     render(<ThemeToggle />);
 
-    await user.click(screen.getByRole("button"));
-    expect(mockToggle).toHaveBeenCalledOnce();
+    await user.click(screen.getByRole("button", { name: "Dark" }));
+    expect(mockSetTheme).toHaveBeenCalledWith("dark");
   });
 });

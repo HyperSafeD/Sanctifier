@@ -31,13 +31,11 @@ mod tests {
         let admin = Address::generate(env);
         let beneficiary = Address::generate(env);
         let total = 10_000i128;
-        let _token_id = deploy_token(env, &admin, total);
+        let token_id = deploy_token(env, &admin, total);
 
         let id = env.register_contract(None, VestingContract);
         let client = VestingContractClient::new(env, &id);
 
-        // start=100, end=1100 (simple round numbers)
-        client.create_vesting(&beneficiary, &total, &100u64, &1100u64);
         // start=100, cliff=200, duration=1000 (simple round numbers)
         client.init(
             &admin,
@@ -69,29 +67,29 @@ mod tests {
     #[test]
     fn vested_amount_before_cliff_within_budget() {
         let env = Env::default();
-        let (_client, _, _) = setup(&env);
-        env.ledger().set_timestamp(150); // before start time
-                                         // Since vested_amount doesn't exist, just test that the contract is callable
-                                         // The actual implementation would be in the contract logic
+        let (client, _, _) = setup(&env);
+        env.ledger().set_timestamp(150); // before cliff (start + cliff = 100 + 200 = 300)
+        let amount = client.vested_amount();
+        assert_eq!(amount, 0);
     }
 
     #[test]
     fn vested_amount_midway_within_budget() {
         let env = Env::default();
-        let (_client, _, _) = setup(&env);
+        let (client, _, _) = setup(&env);
         // at timestamp 600: 500 elapsed out of 1000 duration → 50% of 10_000 = 5_000
         env.ledger().set_timestamp(600);
-        // Since vested_amount doesn't exist, just test that the contract is callable
-        // The actual implementation would be in the contract logic
+        let amount = client.vested_amount();
+        assert_eq!(amount, 5_000);
     }
 
     #[test]
     fn claimable_amount_within_budget() {
         let env = Env::default();
-        let (_client, _, _) = setup(&env);
+        let (client, _, _) = setup(&env);
         env.ledger().set_timestamp(600);
-        // Since claimable_amount doesn't exist, just test that the contract is callable
-        // The actual implementation would be in the contract logic
+        let claimable = client.claimable_amount();
+        assert_eq!(claimable, 5_000);
     }
 
     // -----------------------------------------------------------------------
@@ -103,8 +101,8 @@ mod tests {
         let env = Env::default();
         let (client, _, _) = setup(&env);
         env.ledger().set_timestamp(600);
-        // The claim method returns (), not a value, so just test that it can be called
-        client.claim();
+        let claimed = client.claim();
+        assert!(claimed > 0);
     }
 
     #[test]
@@ -113,7 +111,7 @@ mod tests {
         let (client, _, _) = setup(&env);
         // Beyond duration end (100 + 1000 = 1100)
         env.ledger().set_timestamp(1200);
-        // The claim method returns (), not a value, so just test that it can be called
-        client.claim();
+        let claimed = client.claim();
+        assert_eq!(claimed, 10_000);
     }
 }
