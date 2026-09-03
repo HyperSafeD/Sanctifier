@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import type { Finding } from "../../../types";
 import { AI_EXPLAIN_PROVIDER } from "../../../lib/env";
 import { logger } from "../../../lib/logger";
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { finding } = (await req.json()) as { finding: Finding };
+    const { finding, stream } = (await req.json()) as { finding: Finding; stream?: boolean };
 
     if (!finding) {
       logger.warn("Missing finding parameter in AI explain request", { request_id: requestId });

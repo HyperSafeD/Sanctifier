@@ -21,10 +21,7 @@
 //! | `balance`          | no            | Read caller's stored balance           |
 #![no_std]
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype,
-    token, Address, Env,
-};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, token, Address, Env};
 
 // ─── Storage keys ─────────────────────────────────────────────────────────────
 
@@ -41,7 +38,7 @@ enum DataKey {
 #[repr(u32)]
 pub enum Error {
     InsufficientBalance = 1,
-    ZeroAmount          = 2,
+    ZeroAmount = 2,
 }
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -65,8 +62,11 @@ impl DepositWithdraw {
         caller.require_auth();
 
         // Pull tokens from caller into this contract
-        token::Client::new(&env, &token)
-            .transfer(&caller, &env.current_contract_address(), &amount);
+        token::Client::new(&env, &token).transfer(
+            &caller,
+            &env.current_contract_address(),
+            &amount,
+        );
 
         // Credit balance
         let key = DataKey::Balance(caller.clone());
@@ -90,10 +90,12 @@ impl DepositWithdraw {
     pub fn withdraw_unsafe(
         env: Env,
         account: Address,
+        recipient: Address,
         token: Address,
         amount: i128,
     ) -> Result<(), Error> {
         // ⚠️  `account.require_auth()` is intentionally omitted here.
+        // `recipient` is accepted without any auth check — demonstrating the S001 auth-gap.
 
         let key = DataKey::Balance(account.clone());
         let bal: i128 = env.storage().persistent().get(&key).unwrap_or(0);
@@ -104,9 +106,12 @@ impl DepositWithdraw {
 
         env.storage().persistent().set(&key, &(bal - amount));
 
-        // Send tokens directly to the caller — NOT to `account`
-        token::Client::new(&env, &token)
-            .transfer(&env.current_contract_address(), &env.invoker(), &amount);
+        // Send tokens to `recipient` (caller-controlled, no auth check) — NOT to `account`
+        token::Client::new(&env, &token).transfer(
+            &env.current_contract_address(),
+            &recipient,
+            &amount,
+        );
 
         Ok(())
     }
@@ -134,8 +139,11 @@ impl DepositWithdraw {
 
         env.storage().persistent().set(&key, &(bal - amount));
 
-        token::Client::new(&env, &token)
-            .transfer(&env.current_contract_address(), &account, &amount);
+        token::Client::new(&env, &token).transfer(
+            &env.current_contract_address(),
+            &account,
+            &amount,
+        );
 
         Ok(())
     }
@@ -157,19 +165,21 @@ impl DepositWithdraw {
 mod tests {
     use super::*;
     use soroban_sdk::{
-        testutils::{Address as _, MockAuth, MockAuthInvoke},
+        testutils::Address as _,
         token::{Client as TokenClient, StellarAssetClient},
-        Env, IntoVal,
+        Env,
     };
 
     fn setup() -> (Env, Address, Address, Address, Address) {
         let env = Env::default();
         env.mock_all_auths();
 
-        let admin       = Address::generate(&env);
-        let token_addr  = env.register_stellar_asset_contract_v2(admin.clone()).address();
-        let contract_id = env.register(DepositWithdraw, ());
-        let user        = Address::generate(&env);
+        let admin = Address::generate(&env);
+        let token_addr = env
+            .register_stellar_asset_contract_v2(admin.clone())
+            .address();
+        let contract_id = env.register_contract(None, DepositWithdraw);
+        let user = Address::generate(&env);
 
         StellarAssetClient::new(&env, &token_addr).mint(&user, &10_000i128);
 
@@ -216,9 +226,9 @@ mod tests {
         c.deposit(&victim, &token, &1_000i128);
         assert_eq!(c.balance(&victim), 1_000);
 
-        // Attacker calls withdraw_unsafe passing victim's address — no auth check!
-        // (mock_all_auths means the absent auth is silently passed in test env)
-        c.withdraw_unsafe(&victim, &token, &1_000i128);
+        // Attacker calls withdraw_unsafe with victim's account but their own address
+        // as recipient — no auth check on recipient, demonstrating S001.
+        c.withdraw_unsafe(&victim, &attacker, &token, &1_000i128);
 
         // Victim's on-contract balance is now zero
         assert_eq!(c.balance(&victim), 0, "victim balance drained by attacker");

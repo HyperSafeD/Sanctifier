@@ -54,15 +54,15 @@ describe("ErrorBoundary", () => {
     expect(alert).toBeInTheDocument();
   });
 
-  it("has proper focus management on try again button", () => {
+  it("has proper focus management on reload button", () => {
     render(
       <ErrorBoundary>
         <ThrowError message="Test error" />
       </ErrorBoundary>,
     );
 
-    const tryAgainButton = screen.getByRole("button", { name: /try again/i });
-    expect(tryAgainButton).toHaveClass("focus-visible:ring-2");
+    const reloadButton = screen.getByRole("button", { name: /reload page/i });
+    expect(reloadButton).toHaveClass("focus-visible:ring-2");
   });
 
   it("logs error to console", () => {

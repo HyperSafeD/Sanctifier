@@ -35,6 +35,11 @@
       "description": "Maximum ledger size limit in bytes for the analysis engine",
       "default": 64000
     },
+    "telemetry": {
+      "type": "boolean",
+      "description": "Opt-in anonymous telemetry for rule IDs, run duration, and sanitized tool version",
+      "default": false
+    },
     "strict_mode": {
       "type": "boolean",
       "description": "If true, the tool will exit with a non-zero code if any warnings are found",
@@ -63,6 +68,38 @@
         },
         "required": ["name", "pattern", "severity"]
       }
+    },
+    "zk": {
+      "type": "object",
+      "description": "ZK rule pack configuration. Most non-ZK projects can leave this section absent; 'auto' mode skips the pack when no .circom or .nr files are detected.",
+      "properties": {
+        "enabled": {
+          "oneOf": [
+            { "type": "boolean" },
+            { "type": "string", "enum": ["auto"] }
+          ],
+          "description": "Enable the ZK rule pack. true = always on, false = always off, 'auto' (default) = enable only when .circom or .nr files are found in the project.",
+          "default": "auto"
+        },
+        "circom_include_dirs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Additional directories to search for Circom library imports (e.g. circomlib). Paths are relative to the project root.",
+          "default": []
+        },
+        "noir_project_root": {
+          "type": "string",
+          "description": "Path to the Noir project root (directory containing Nargo.toml). Defaults to the repo root.",
+          "default": "."
+        },
+        "skip_rules": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Z-rule codes to exclude from this run (e.g. ['Z003', 'Z007']). Prefer the generic rule-disable mechanism once #1230 lands.",
+          "default": []
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

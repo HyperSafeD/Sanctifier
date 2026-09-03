@@ -1,0 +1,22 @@
+[package]
+name = "zk-verifier"
+version = "0.1.0"
+edition = "2021"
+description = "Groth16 proof-verifier reference contract for Soroban with nullifier checks, public-input binding, and access-controlled VK storage"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
+
+[profile.release]
+opt-level = "z"
+overflow-checks = true
+debug = 0

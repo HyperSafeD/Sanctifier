@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "set_balance",
+    "message": "Function 'set_balance' stores per-user data key `& user` in Instance storage (line 4). Instance storage is a single shared ledger entry; per-user data will cause it to grow unboundedly, ballooning rent costs.",
+    "rule_name": "instance_storage_misuse",
+    "severity": "Warning",
+    "suggestion": "Move per-user / per-account data to `env.storage().persistent()` (or `temporary()` for short-lived state). Reserve `instance()` for contract-wide singletons such as admin address, decimals, or feature flags."
+  }
+]

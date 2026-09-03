@@ -46,77 +46,6 @@ use security_disclaimers::{DisclaimerCategory, SecurityLevel};
 use soroban_sdk::{
     contract, contracterror, contractimpl, contracttype, symbol_short, xdr::ToXdr, Address, Bytes,
     Env, IntoVal, Symbol, Val, Vec,
-
-    // ── Recovery with timelock (issue #831) ──────────────────────────────────
-
-    /// Set the guardian address that can initiate stuck-state recovery.
-    /// Must be called via contract self-auth (i.e. through a passed proposal).
-    pub fn set_recovery_guardian(env: Env, guardian: Address) {
-        env.current_contract_address().require_auth();
-        env.storage().instance().set(&DataKey::RecoveryGuardian, &guardian);
-    }
-
-    /// Guardian initiates a recovery: proposes new signers + threshold with a
-    /// 7-day timelock. Only one pending recovery at a time.
-    pub fn initiate_recovery(
-        env: Env,
-        guardian: Address,
-        new_signers: soroban_sdk::Vec<Address>,
-        new_threshold: u32,
-    ) {
-        guardian.require_auth();
-        let stored_guardian: Option<Address> =
-            env.storage().instance().get(&DataKey::RecoveryGuardian);
-        let stored_guardian = stored_guardian
-            .unwrap_or_else(|| env.panic_with_error(Error::NoRecoveryGuardian));
-        if guardian != stored_guardian {
-            env.panic_with_error(Error::Unauthorized);
-        }
-        if env.storage().instance().has(&DataKey::RecoveryRequest) {
-            env.panic_with_error(Error::RecoveryAlreadyPending);
-        }
-        if new_threshold == 0 || new_threshold as usize > new_signers.len() as usize {
-            env.panic_with_error(Error::InvalidThreshold);
-        }
-        // 7-day timelock (7 * 24 * 60 * 60 seconds)
-        let unlock_at = env.ledger().timestamp() + 7 * 24 * 60 * 60;
-        let req = RecoveryRequest { new_signers, new_threshold, unlock_at };
-        env.storage().instance().set(&DataKey::RecoveryRequest, &req);
-    }
-
-    /// Execute a pending recovery after the timelock has expired.
-    /// Anyone can call this once the timelock passes.
-    pub fn execute_recovery(env: Env) {
-        let req: RecoveryRequest = env
-            .storage()
-            .instance()
-            .get(&DataKey::RecoveryRequest)
-            .unwrap_or_else(|| env.panic_with_error(Error::ProposalNotFound));
-        if env.ledger().timestamp() < req.unlock_at {
-            env.panic_with_error(Error::TimelockActive);
-        }
-        env.storage().instance().set(&DataKey::Signers, &req.new_signers);
-        env.storage().instance().set(&DataKey::Threshold, &req.new_threshold);
-        env.storage().instance().remove(&DataKey::RecoveryRequest);
-    }
-
-    /// Cancel a pending recovery (guardian or contract self-auth).
-    pub fn cancel_recovery(env: Env, caller: Address) {
-        caller.require_auth();
-        let guardian: Option<Address> = env.storage().instance().get(&DataKey::RecoveryGuardian);
-        let is_guardian = guardian.map(|g| g == caller).unwrap_or(false);
-        let is_self = caller == env.current_contract_address();
-        if !is_guardian && !is_self {
-            env.panic_with_error(Error::Unauthorized);
-        }
-        env.storage().instance().remove(&DataKey::RecoveryRequest);
-    }
-
-    /// View the pending recovery request, if any.
-    pub fn get_recovery_request(env: Env) -> Option<RecoveryRequest> {
-        env.storage().instance().get(&DataKey::RecoveryRequest)
-    }
-
 };
 
 #[cfg(test)]
@@ -378,6 +307,79 @@ impl MultisigWallet {
     pub fn set_threshold(env: Env, threshold: u32) {
         env.current_contract_address().require_auth();
         Self::internal_set_threshold(&env, threshold);
+    }
+
+    // ── Recovery with timelock ────────────────────────────────────────────────
+
+    pub fn set_recovery_guardian(env: Env, guardian: Address) {
+        env.current_contract_address().require_auth();
+        env.storage()
+            .instance()
+            .set(&DataKey::RecoveryGuardian, &guardian);
+    }
+
+    pub fn initiate_recovery(
+        env: Env,
+        guardian: Address,
+        new_signers: Vec<Address>,
+        new_threshold: u32,
+    ) {
+        guardian.require_auth();
+        let stored_guardian: Option<Address> =
+            env.storage().instance().get(&DataKey::RecoveryGuardian);
+        let stored_guardian =
+            stored_guardian.unwrap_or_else(|| env.panic_with_error(Error::NoRecoveryGuardian));
+        if guardian != stored_guardian {
+            env.panic_with_error(Error::Unauthorized);
+        }
+        if env.storage().instance().has(&DataKey::RecoveryRequest) {
+            env.panic_with_error(Error::RecoveryAlreadyPending);
+        }
+        if new_threshold == 0 || new_threshold as usize > new_signers.len() as usize {
+            env.panic_with_error(Error::InvalidThreshold);
+        }
+        let unlock_at = env.ledger().timestamp() + 7 * 24 * 60 * 60;
+        let req = RecoveryRequest {
+            new_signers,
+            new_threshold,
+            unlock_at,
+        };
+        env.storage()
+            .instance()
+            .set(&DataKey::RecoveryRequest, &req);
+    }
+
+    pub fn execute_recovery(env: Env) {
+        let req: RecoveryRequest = env
+            .storage()
+            .instance()
+            .get(&DataKey::RecoveryRequest)
+            .unwrap_or_else(|| env.panic_with_error(Error::ProposalNotFound));
+        if env.ledger().timestamp() < req.unlock_at {
+            env.panic_with_error(Error::TimelockActive);
+        }
+        env.storage()
+            .instance()
+            .set(&DataKey::Signers, &req.new_signers);
+        env.storage()
+            .instance()
+            .set(&DataKey::Threshold, &req.new_threshold);
+        env.storage().instance().remove(&DataKey::RecoveryRequest);
+    }
+
+    pub fn cancel_recovery(env: Env, caller: Address) {
+        caller.require_auth();
+        let guardian: Option<Address> = env.storage().instance().get(&DataKey::RecoveryGuardian);
+        let is_guardian = guardian.map(|g| g == caller).unwrap_or(false);
+        let is_self = caller == env.current_contract_address();
+        if !is_guardian && !is_self {
+            env.panic_with_error(Error::Unauthorized);
+        }
+        env.storage().instance().remove(&DataKey::RecoveryRequest);
+    }
+
+    pub fn get_recovery_request(env: Env) -> Option<RecoveryRequest> {
+        env.storage().instance().get(&DataKey::RecoveryRequest)
     }
 
     // --- Internal Helpers ---

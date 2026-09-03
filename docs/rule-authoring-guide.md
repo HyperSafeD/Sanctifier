@@ -7,9 +7,9 @@ Sanctifier rule using the YAML rule format.
 
 ## Prerequisites
 
-- Sanctifier CLI installed (`cargo install sanctifier` or see [Getting Started](../getting-started.md))
-- A Soroban smart-contract project to lint
-- Basic familiarity with YAML
+- **Sanctifier CLI installed** — Install via `cargo install sanctifier-cli` (or see [Installation Options](../README.md#install-options))
+- **A Soroban smart-contract project** to lint
+- **Basic familiarity with YAML** syntax
 
 ---
 
@@ -105,7 +105,7 @@ panic!("unreachable"); // sanctifier: ignore[no_panic_in_contractimpl]
 | `method_call`       | `method`, `receiver?`                              | Method calls (`obj.method(...)`)     |
 | `storage_operation` | `operation` (`get`/`set`/`remove`), `key_pattern?` | DataStore read/write patterns        |
 
-See [`custom-rules.example.yaml`](../custom-rules.example.yaml) for one example of each type.
+See [`custom-rules.example.yaml`](../custom-rules.example.yaml) for an example of each type.
 
 ---
 
@@ -168,9 +168,64 @@ Downstream users who add your crate automatically inherit the rules.
 
 ---
 
+## 7. Taint Propagation and Destructures (Built-in Rule S026)
+
+When writing built-in Rust rules that perform taint analysis, be aware that taint
+**must** be propagated through all pattern-binding forms — not just simple `let x = ...`
+assignments.
+
+### 7.1 Tuple destructures
+
+```rust
+// user_data is a tainted function parameter
+let (key, val) = user_data;   // key AND val must inherit taint
+env.storage().persistent().set(&key, &val);  // should be flagged
+```
+
+In the AST this is a `syn::Stmt::Local` whose `pat` is `syn::Pat::Tuple`.  Iterate
+`pt.elems` and mark every bound identifier as tainted.
+
+### 7.2 Struct destructures
+
+```rust
+let MyRecord { key, value } = record;  // key AND value must inherit taint
+```
+
+The pattern is `syn::Pat::Struct`; iterate `ps.fields` and recurse into each
+`field.pat`.
+
+### 7.3 Implementation pattern
+
+```rust
+fn collect_pat_idents(pat: &Pat, out: &mut HashSet<String>) {
+    match pat {
+        Pat::Ident(pi)        => { out.insert(pi.ident.to_string()); }
+        Pat::Tuple(pt)        => pt.elems.iter().for_each(|e| collect_pat_idents(e, out)),
+        Pat::Struct(ps)       => ps.fields.iter().for_each(|f| collect_pat_idents(&f.pat, out)),
+        Pat::TupleStruct(pts) => pts.elems.iter().for_each(|e| collect_pat_idents(e, out)),
+        Pat::Reference(pr)    => collect_pat_idents(&pr.pat, out),
+        _                     => {}
+    }
+}
+```
+
+Not handling `Pat::Tuple` / `Pat::Struct` is the most common source of false negatives
+in taint passes — taint silently disappears at the destructure boundary.
+
+## 8. ZK Rules (Z-series) Namespace
+
+Sanctifier introduces a dedicated `Z001-Z0NN` numbering convention for Zero-Knowledge (ZK)-specific vulnerability rules, operating alongside the existing `S0xx` static-rule namespace.
+
+When authoring ZK rules:
+- **Namespace:** All ZK rules MUST use the `Z` prefix (e.g., `Z001`, `Z002`).
+- **Severity Mapping:** ZK vulnerabilities often have different blast-radius characteristics than typical Soroban bugs. Explicit severity mapping guidance is required to ensure consistent rating by reviewers. Refer to `schemas/severity-taxonomy.schema.json` and `data/sarif/severity-map.yaml` for specific vulnerability classes (e.g., missing nullifier checks, weak fiat-shamir).
+
+---
+
 ## Further Reading
 
 - [`custom-rules.example.yaml`](../custom-rules.example.yaml) — full example rule set
 - [`tooling/sanctifier-core/src/custom_yaml_rules.rs`](../tooling/sanctifier-core/src/custom_yaml_rules.rs) — rule engine source
+- [`tooling/sanctifier-core/src/rules/taint_propagation.rs`](../tooling/sanctifier-core/src/rules/taint_propagation.rs) — reference taint implementation
 - [Troubleshooting Guide](troubleshooting-guide.md)
 - [Contributing](../CONTRIBUTING.md)

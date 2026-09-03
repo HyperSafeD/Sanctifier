@@ -10,7 +10,7 @@
 mod tests {
     use soroban_sdk::{
         testutils::{Address as _, Ledger as _},
-        token::StellarAssetClient,
+        token::{StellarAssetClient, TokenClient},
         Address, Env,
     };
     use vesting_contract::{VestingContract, VestingContractClient};
@@ -31,13 +31,12 @@ mod tests {
         let admin = Address::generate(env);
         let beneficiary = Address::generate(env);
         let total = 10_000i128;
-        let _token_id = deploy_token(env, &admin, total);
+        let token_id = deploy_token(env, &admin, total);
+        let token = TokenClient::new(env, &token_id);
 
         let id = env.register_contract(None, VestingContract);
         let client = VestingContractClient::new(env, &id);
 
-        // start=100, end=1100 (simple round numbers)
-        client.create_vesting(&beneficiary, &total, &100u64, &1100u64);
         // start=100, cliff=200, duration=1000 (simple round numbers)
         client.init(
             &admin,
@@ -49,6 +48,7 @@ mod tests {
             &total,
             &true,
         );
+        token.transfer(&admin, &id, &total);
         (client, admin, beneficiary)
     }
 

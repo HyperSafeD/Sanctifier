@@ -3,24 +3,66 @@ updates:
   - package-ecosystem: "cargo"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "rust"
+    reviewers:
+      - "CelestinaBeing"
     groups:
       rust-dependencies:
         patterns:
           - "*"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+
   - package-ecosystem: "cargo"
     directory: "/contracts/bridge"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "rust"
+    reviewers:
+      - "CelestinaBeing"
+
   - package-ecosystem: "cargo"
     directory: "/contracts/oracle"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "rust"
+    reviewers:
+      - "CelestinaBeing"
+
   - package-ecosystem: "npm"
     directory: "/frontend"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "javascript"
+    reviewers:
+      - "CelestinaBeing"
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+      day: "monday"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    reviewers:
+      - "CelestinaBeing"

@@ -1,6 +1,9 @@
 #![cfg(target_arch = "wasm32")]
 
-use sanctifier_wasm::{analyze, analyze_with_config, finding_codes, schema_version, version};
+use sanctifier_wasm::{
+    analyze, analyze_with_config, asset_cache_key, cache_metadata, finding_codes, schema_version,
+    version,
+};
 use wasm_bindgen_test::*;
 
 wasm_bindgen_test_configure!(run_in_browser);
@@ -186,4 +189,20 @@ fn test_analyze_normal_source_unaffected_by_memory_check() {
     "#;
     let result = analyze(source);
     assert!(!result.is_null());
+}
+
+// ── Caching API Tests ────────────────────────────────────────────────────────
+
+#[wasm_bindgen_test]
+fn test_asset_cache_key() {
+    let key = asset_cache_key();
+    assert!(!key.is_empty());
+    assert!(key.contains("sanctifier-wasm:"));
+}
+
+#[wasm_bindgen_test]
+fn test_cache_metadata() {
+    let meta = cache_metadata();
+    assert!(!meta.is_null());
+    assert!(meta.is_object());
 }

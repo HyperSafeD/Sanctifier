@@ -160,7 +160,10 @@ mod tests {
             }
         "#;
         let violations = rule.check(source);
-        assert!(!violations.is_empty(), "raw invoke_contract must be flagged");
+        assert!(
+            !violations.is_empty(),
+            "raw invoke_contract must be flagged"
+        );
         assert!(violations[0].message.contains("invoke_contract"));
         assert!(violations[0].suggestion.is_some());
     }

@@ -162,11 +162,19 @@ fn load_config(path: &Path) -> anyhow::Result<SanctifyConfig> {
     loop {
         let config_path = current.join(".sanctify.toml");
         if config_path.exists() {
-            let content = fs::read_to_string(&config_path)
-                .with_context(|| format!("failed to read {}", config_path.display()))?;
-            let config = toml::from_str(&content)
-                .map_err(|error| anyhow!("failed to parse {}: {}", config_path.display(), error))?;
-            return Ok(config);
+            if let Ok(content) = fs::read_to_string(&config_path) {
+                match toml::from_str(&content) {
+                    Ok(config) => return Ok(config),
+                    Err(e) => {
+                        eprintln!(
+                            "Error: Invalid configuration file at {}\n{}",
+                            config_path.display(),
+                            e
+                        );
+                        std::process::exit(1);
+                    }
+                }
+            }
         }
 
         if !current.pop() {

@@ -12,6 +12,7 @@ security-disclaimers = { path = "../security-disclaimers", optional = true }
 
 [dev-dependencies]
 soroban-sdk = { workspace = true, features = ["testutils"] }
+sanctifier-test-support = { workspace = true }
 
 [features]
 security-disclaimers = ["dep:security-disclaimers"]

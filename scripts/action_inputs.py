@@ -73,12 +73,19 @@ def validate_inputs(
         allowed = ", ".join(sorted(_ALLOWED_SEVERITIES))
         raise ValueError(f"min-severity must be one of {allowed}, got {min_severity!r}")
 
+    validated_sarif_output = _validate_path(sarif_output, name="sarif-output", allow_missing=True)
+    if fmt == "sarif" and not validated_sarif_output.lower().endswith(".sarif"):
+        raise ValueError(
+            f"sarif-output must use a '.sarif' file extension when format is 'sarif' "
+            f"(GitHub Code Scanning rejects other extensions); got {validated_sarif_output!r}"
+        )
+
     return ActionInputs(
         path=_validate_path(path, name="path", allow_missing=False),
         min_severity=severity,
         format=fmt,
         upload_sarif=_normalise_bool(upload_sarif, name="upload-sarif"),
-        sarif_output=_validate_path(sarif_output, name="sarif-output", allow_missing=True),
+        sarif_output=validated_sarif_output,
         debug=_normalise_bool(debug, name="debug"),
     )
 
@@ -123,6 +130,15 @@ def main() -> int:
     except ValueError as exc:
         print(f"::error title=Invalid Input::Sanctifier action input error: {exc}", file=sys.stderr)
         return 2
+
+    if inputs.upload_sarif == "true" and inputs.format != "sarif":
+        print(
+            "::warning title=SARIF Upload Skipped::"
+            "upload-sarif is 'true' but format is not 'sarif'; "
+            "the Upload SARIF step will be skipped automatically. "
+            "Set format to 'sarif' or set upload-sarif to 'false' to silence this warning.",
+            file=sys.stderr,
+        )
 
     if inputs.debug == "true":
         print(

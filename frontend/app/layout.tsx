@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./providers/theme-provider";
 import { WorkspaceProvider } from "./providers/WorkspaceProvider";
+import { ToastProvider } from "./providers/ToastProvider";
 import { NavBar } from "./components/NavBar";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
@@ -61,10 +62,12 @@ export default function RootLayout({
       >
         <ErrorBoundary>
           <ThemeProvider>
-            <WorkspaceProvider>
-              <NavBar />
-              {children}
-            </WorkspaceProvider>
+            <ToastProvider>
+              <WorkspaceProvider>
+                <NavBar />
+                {children}
+              </WorkspaceProvider>
+            </ToastProvider>
           </ThemeProvider>
         </ErrorBoundary>
       </body>

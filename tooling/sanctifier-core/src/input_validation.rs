@@ -26,6 +26,17 @@ pub const MAX_SOURCE_BYTES: usize = 10 * 1024 * 1024;
 /// Minimum accepted source size (1 byte).
 pub const MIN_SOURCE_BYTES: usize = 1;
 
+/// Maximum accepted delimiter nesting depth.
+///
+/// The analysis engine (and `syn` itself) parses and walks the AST with
+/// recursive descent. Pathologically deep delimiter nesting — e.g. a few
+/// hundred unmatched `(((((…` — drives that recursion deep enough to overflow
+/// the thread stack and abort the process, a classic denial-of-service vector.
+/// Legitimate Soroban contracts never nest delimiters more than a few dozen
+/// levels, so we reject anything past this bound up front, turning a hard crash
+/// into a graceful validation error.
+pub const MAX_NESTING_DEPTH: usize = 256;
+
 /// Structured validation error returned by every guard.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ValidationError {
@@ -142,6 +153,46 @@ pub fn validate_path(path: &str) -> Result<(), ValidationError> {
 pub fn validate_source_all(source: &str) -> Result<(), ValidationError> {
     validate_source_size(source)?;
     validate_no_null_bytes(source)?;
+    validate_nesting_depth(source)?;
+    Ok(())
+}
+
+/// Validate that delimiter nesting stays within [`MAX_NESTING_DEPTH`].
+///
+/// Counts the running open-delimiter depth across `(`, `[`, and `{`. This is a
+/// conservative, O(n) guard: it also counts delimiters inside string and
+/// comment tokens, which only makes it stricter, never looser. It exists purely
+/// to stop deeply nested input from overflowing the recursive parser/analyzer
+/// stack before `syn` ever sees it.
+///
+/// # Errors
+/// - `EXCESSIVE_NESTING` — nesting depth exceeds [`MAX_NESTING_DEPTH`].
+pub fn validate_nesting_depth(source: &str) -> Result<(), ValidationError> {
+    let mut depth: usize = 0;
+    let mut max_depth: usize = 0;
+    for byte in source.bytes() {
+        match byte {
+            b'(' | b'[' | b'{' => {
+                depth += 1;
+                if depth > max_depth {
+                    max_depth = depth;
+                }
+            }
+            b')' | b']' | b'}' => {
+                depth = depth.saturating_sub(1);
+            }
+            _ => {}
+        }
+    }
+    if max_depth > MAX_NESTING_DEPTH {
+        return Err(ValidationError {
+            code: "EXCESSIVE_NESTING",
+            message: format!(
+                "Source nests delimiters {max_depth} levels deep; maximum allowed is {MAX_NESTING_DEPTH}. \
+                 This is rejected to prevent recursive-descent stack exhaustion."
+            ),
+        });
+    }
     Ok(())
 }
 

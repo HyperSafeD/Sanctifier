@@ -16,3 +16,141 @@ rules:
     tags:
       - auth
       - access-control
+
+  # ── ZK / Zero-Knowledge rules (Z001-Z014) ────────────────────────────────
+
+  - id: Z001
+    name: Missing Nullifier / Double-Spend Check
+    shortDescription: Detects proof-based claim flows that consume a verified proof without recording a nullifier, enabling double-spend
+    helpUri: https://docs.sanctifier.dev/rules/Z001
+    defaultSeverity: critical
+    tags:
+      - zk
+      - nullifier
+      - double-spend
+
+  - id: Z002
+    name: Insecure or Predictable Randomness as Circuit Input
+    shortDescription: Detects on-chain pseudo-randomness (ledger timestamp, sequence) used as entropy for a circuit input
+    helpUri: https://docs.sanctifier.dev/rules/Z002
+    defaultSeverity: high
+    tags:
+      - zk
+      - randomness
+
+  - id: Z003
+    name: Missing Public-Input Binding (Proof Malleability)
+    shortDescription: Detects verifier calls whose public inputs omit a security-relevant value used after verification, letting a valid proof be paired with attacker-chosen inputs
+    helpUri: https://docs.sanctifier.dev/rules/Z003
+    defaultSeverity: critical
+    tags:
+      - zk
+      - malleability
+      - proof-integrity
+
+  - id: Z004
+    name: Unverified Trusted-Setup Parameters
+    shortDescription: Detects hardcoded verifying-key material with no adjacent reference to an auditable ceremony transcript
+    helpUri: https://docs.sanctifier.dev/rules/Z004
+    defaultSeverity: critical
+    tags:
+      - zk
+      - trusted-setup
+
+  - id: Z005
+    name: Missing Verifying-Key Integrity Check
+    shortDescription: Detects verifier calls using a storage-loaded verifying key without checking it against a known-good hash
+    helpUri: https://docs.sanctifier.dev/rules/Z005
+    defaultSeverity: high
+    tags:
+      - zk
+      - trusted-setup
+      - verifying-key
+
+  - id: Z006
+    name: Missing Proof Nonce / Uniqueness Enforcement
+    shortDescription: Detects verifiers that accept previously-used proofs without a nonce or domain-separating context binding
+    helpUri: https://docs.sanctifier.dev/rules/Z006
+    defaultSeverity: high
+    tags:
+      - zk
+      - replay
+
+  - id: Z007
+    name: Under-Constrained Circuit Inputs
+    shortDescription: Detects circuit inputs that are never range-checked against the scalar field modulus, allowing arbitrary witness assignment
+    helpUri: https://docs.sanctifier.dev/rules/Z007
+    defaultSeverity: critical
+    tags:
+      - zk
+      - soundness
+      - circom
+
+  - id: Z008
+    name: Curve / Field Mismatch
+    shortDescription: Detects an on-chain verifier whose curve or field parameters do not match the off-chain circuit
+    helpUri: https://docs.sanctifier.dev/rules/Z008
+    defaultSeverity: critical
+    tags:
+      - zk
+      - soundness
+      - verifying-key
+
+  - id: Z009
+    name: Unbounded Proof-Verification Loop
+    shortDescription: Detects proof-verification loops over caller-supplied unbounded collections, enabling DoS
+    helpUri: https://docs.sanctifier.dev/rules/Z009
+    defaultSeverity: high
+    tags:
+      - zk
+      - dos
+      - resource-exhaustion
+
+  - id: Z010
+    name: Verifying-Key Rotation Without Access Control
+    shortDescription: Detects VK-rotation functions callable by any account, allowing an attacker to swap the verifying key
+    helpUri: https://docs.sanctifier.dev/rules/Z010
+    defaultSeverity: critical
+    tags:
+      - zk
+      - access-control
+      - verifying-key
+
+  - id: Z011
+    name: Commitment Reuse Without Domain Separation
+    shortDescription: Detects a commitment scheme reused across distinct domains without a separating tag, allowing cross-domain confusion
+    helpUri: https://docs.sanctifier.dev/rules/Z011
+    defaultSeverity: high
+    tags:
+      - zk
+      - cryptography
+      - domain-separation
+
+  - id: Z012
+    name: ZK Property Leak via Public-Output Over-Exposure
+    shortDescription: Detects shielded contracts that publish more on-chain data than their stated privacy model allows
+    helpUri: https://docs.sanctifier.dev/rules/Z012
+    defaultSeverity: medium
+    tags:
+      - zk
+      - privacy
+
+  - id: Z013
+    name: Insufficient Batch-Validation in ZK-Rollup Transitions
+    shortDescription: Detects rollup-style batch state transitions that are applied without validating every proof in the batch
+    helpUri: https://docs.sanctifier.dev/rules/Z013
+    defaultSeverity: critical
+    tags:
+      - zk
+      - rollup
+      - proof-integrity
+
+  - id: Z014
+    name: Missing Merkle-Root Inclusion-Proof Verification
+    shortDescription: Detects membership claims accepted without verifying the Merkle inclusion proof against the contract's committed root
+    helpUri: https://docs.sanctifier.dev/rules/Z014
+    defaultSeverity: critical
+    tags:
+      - zk
+      - merkle
+      - proof-integrity

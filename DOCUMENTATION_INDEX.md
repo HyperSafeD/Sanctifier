@@ -69,6 +69,14 @@
 - Cross-contract message wire format stability
 - Local reproduction recipes
 
+### Fuzz-Harness Generator
+
+**[docs/fuzz-harness-generator.md](docs/fuzz-harness-generator.md)** - `sanctifier harness` CLI command
+
+- Generates native `afl.rs` / `honggfuzz` fuzz-target scaffolds from a contract's ABI
+- Bridges static analysis (AST-level function/parameter extraction) to dynamic analysis
+- `SorobanArbitrary`-based input generation, crate auto-detection, usage examples
+
 ### Technical Architecture
 
 **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and components
@@ -84,6 +92,21 @@
 ---
 
 ## 🛠️ Component Documentation
+
+### sanctifier-core: Parser + Contract Discovery
+
+**[tooling/sanctifier-core/src/parser.rs](tooling/sanctifier-core/src/parser.rs)** — shared source parsing with input validation
+- `parse_source(source: &str) -> Result<ParsedSource, ParseError>` — single canonical entry point for all rules
+- Runs all guards from `input_validation` (size, null bytes) before any AST work
+- Returns `ParseError::Validation` or `ParseError::Syntax` on failure
+
+**[tooling/sanctifier-core/src/contract_discovery.rs](tooling/sanctifier-core/src/contract_discovery.rs)** — Soroban contract discovery
+- `discover_contracts(file: &syn::File) -> Vec<DiscoveredContract>` — maps `#[contract]` structs to their `#[contractimpl]` blocks
+- Collects public functions per contract and `#[contracttype]` storage types
+- `DiscoveredFunction.is_reserved` flags `__constructor` / `__check_auth` entry-points
+- `DiscoveredContract::public_functions()` iterator excludes reserved entry-points
+- Unit tests in each module; integration tests in `tests/parser_contract_discovery_test.rs`
+- Fixtures: `tests/fixtures/minimal_contract.rs`, `multi_contract.rs`, `contract_with_storage_types.rs`
 
 ### Contract ABI / Interface Reference
 **[docs/contract-interfaces.md](docs/contract-interfaces.md)** - Public ABI for all contracts in `contracts/*`
@@ -101,6 +124,15 @@
 - Security best practices and monitoring
 - Integration examples for contract developers
 
+### Live Testnet Status Widget
+
+**[LIVE_TESTNET.md](LIVE_TESTNET.md)** — deployed contract addresses and on-chain verification
+- Three live Soroban Testnet contracts with real-time status
+- Live widget available at `/` (home page) via the `TestnetStatusWidget` component
+  ([frontend/app/components/TestnetStatusWidget.tsx](frontend/app/components/TestnetStatusWidget.tsx))
+- API route: `GET /api/testnet-status` — polls Soroban RPC + Stellar Expert, cached 30 s
+- See also: [docs/soroban-deployment.md](docs/soroban-deployment.md) for re-deployment instructions
+
 ### Runtime Guard Wrapper Contract
 
 **[contracts/runtime-guard-wrapper/README.md](contracts/runtime-guard-wrapper/README.md)**
@@ -117,6 +149,17 @@
 - Security considerations
 - Integration examples
 - Troubleshooting
+
+### VS Code Extension
+
+**Location:** [`vscode-extension/`](vscode-extension/)
+
+- **API stability** — `activate()` returns a typed `SanctifierExtensionApi` (`version`, `getFindings(uri)`) that other extensions can consume via `vscode.extensions.getExtension(...).exports`
+- **`sanctifier.minSeverity`** — filter in-editor diagnostics to `error`, `warning` (default), or `information`
+- **`sanctifier.toggleEnable`** — toggle the extension on/off from the command palette or status bar click
+- **`sanctifier.showOutput`** — reveal the persistent output channel
+- **`sanctifier.analyzeWorkspace`** — run the CLI and stream results to the output channel (respects `minSeverity`)
+- Status bar item shows live finding count; click to toggle
 
 ### Sanctifier CLI Deploy Command
 
@@ -137,6 +180,65 @@
 - Testing fixtures and CI validation
 - Severity guidelines and output stability
 - Contribution checklist for rule PRs
+
+### Finding Code Documentation
+
+**[docs/rules/s003-arithmetic-overflow.md](docs/rules/s003-arithmetic-overflow.md)** - S003: Arithmetic Overflow / Underflow Detection
+
+- Unchecked arithmetic operation detection (+, -, *, /, %, compound assignments)
+- Custom math method detection (mul_div, fixed_point_*)
+- Test code and index expression exclusions
+- Comprehensive remediation guidance with checked/saturating alternatives
+- Deduplication strategy and output formats
+- Known limitations and configuration options
+
+**[docs/rules/s001-auth-gap.md](docs/rules/s001-auth-gap.md)** - S001: Missing Authorization Guard (`auth_gap`)
+
+- What constitutes a privileged operation (storage mutation, external call)
+- Vulnerable vs fixed code examples
+- Input validation behaviour (null bytes, oversized source)
+- Auto-fix notes and suppression guidance
+
+**[docs/rules/s012-sep41-interface.md](docs/rules/s012-sep41-interface.md)** - S012: SEP-41 Token Interface Compliance
+
+- Complete SEP-41 standard interface verification
+- All 10 required function signatures
+- Authorization pattern checking
+- Issue types: MissingFunction, SignatureMismatch, AuthorizationMismatch
+- Examples and remediation guidance
+- Reference implementations and test coverage
+
+### Rule Engine Orchestration — Integration/E2E Coverage
+
+**[specs/rule-engine-behavior.md](specs/rule-engine-behavior.md)**
+
+- Formal specification: discovery order, filtering, deduplication, exit codes
+- Integration/e2e test suite: [`tooling/sanctifier-core/tests/rule_engine_orchestration_test.rs`](tooling/sanctifier-core/tests/rule_engine_orchestration_test.rs)
+  - Registry population and deduplication
+  - Per-rule firing and `run_all` consistency
+  - Determinism across repeated calls
+  - Custom regex rule execution
+  - Registry extensibility without breaking existing rules
+  - End-to-end multi-file scan pipeline
+  - Output format (`RuleViolation`) JSON stability
+- CI job: `rule-engine-e2e` in [`.github/workflows/rust.yml`](.github/workflows/rust.yml)
+
+### Z3 Backend Invariants (S011) — Module Boundaries
+
+**Finding code:** `S011` — see [`docs/error-codes.md`](docs/error-codes.md)
+
+**Module layout** (`tooling/sanctifier-core/src/smt/`):
+
+| Sub-module | File | Responsibility |
+|---|---|---|
+| `types` | [`src/smt/types.rs`](tooling/sanctifier-core/src/smt/types.rs) | All shared data types and error enums |
+| `invariants` | [`src/smt/invariants.rs`](tooling/sanctifier-core/src/smt/invariants.rs) | `#[invariant]` AST parsing + Z3 verification |
+| `backend` | [`src/smt/backend.rs`](tooling/sanctifier-core/src/smt/backend.rs) | `SmtVerifier`, fixed-point proof dispatch |
+| `benchmark` | [`src/smt/benchmark.rs`](tooling/sanctifier-core/src/smt/benchmark.rs) | Latency micro-benchmark for CI artifact |
+| `mod` | [`src/smt/mod.rs`](tooling/sanctifier-core/src/smt/mod.rs) | Public re-export facade (zero breaking surface) |
+
+- Integration/boundary test suite: [`tooling/sanctifier-core/tests/smt_module_boundaries_test.rs`](tooling/sanctifier-core/tests/smt_module_boundaries_test.rs)
+- CI job: `smt-module-boundaries` in [`.github/workflows/rust.yml`](.github/workflows/rust.yml)
 
 ### WASM Module Versioning & Input Validation
 
@@ -188,6 +290,7 @@
 - Threat model and operational guarantees: [docs/release-artifacts-threat-model.md](docs/release-artifacts-threat-model.md)
 - How to verify a downloaded artifact: [docs/provenance-verification.md](docs/provenance-verification.md)
 - Canonical artifact list: [data/release-manifest.json](data/release-manifest.json)
+- Packaging and Installation Guide: [docs/PACKAGING_AND_INSTALL.md](docs/PACKAGING_AND_INSTALL.md)
 
 ---
 

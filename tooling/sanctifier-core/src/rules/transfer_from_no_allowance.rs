@@ -143,7 +143,10 @@ fn count_address_params(sig: &syn::Signature) -> usize {
 }
 
 fn has_balance_mutation(body: &str) -> bool {
-    (body.contains(".set(") || body.contains(".update("))
+    (body.contains(".set(")
+        || body.contains(". set (")
+        || body.contains(".update(")
+        || body.contains(". update ("))
         && (body.to_lowercase().contains("balance") || body.contains("from"))
 }
 
@@ -193,7 +196,10 @@ mod tests {
             }
         "#;
         let v = rule.check(source);
-        assert!(v.is_empty(), "function with allowance check must not be flagged");
+        assert!(
+            v.is_empty(),
+            "function with allowance check must not be flagged"
+        );
     }
 
     #[test]
@@ -226,7 +232,10 @@ mod tests {
             }
         "#;
         let v = rule.check(source);
-        assert!(v.is_empty(), "direct transfer with only from+to must not be flagged");
+        assert!(
+            v.is_empty(),
+            "direct transfer with only from+to must not be flagged"
+        );
     }
 
     #[test]

@@ -45,7 +45,6 @@ impl LedgerSizeRule {
     }
 }
 
-/// Severity of a ledger-size issue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizeWarningLevel {
     /// Estimated size exceeds the hard limit.

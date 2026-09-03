@@ -18,7 +18,7 @@ inputs:
     required: false
     default: ""
   min-severity:
-    description: Minimum severity to report (critical|high|medium|low|info)
+    description: Minimum severity to report (critical|high|medium|low)
     required: false
     default: high
   format:
@@ -35,6 +35,10 @@ inputs:
     default: sanctifier-results.sarif
   debug:
     description: Enable verbose debug logging for the action steps (safe-by-default; no secrets)
+    required: false
+    default: "false"
+  use-docker:
+    description: Run sanctifier via the ghcr.io/hypersafed/sanctifier Docker image instead of installing via cargo
     required: false
     default: "false"
 
@@ -60,6 +64,7 @@ runs:
         cat "$RUNNER_TEMP/sanctifier_action_inputs" >> "$GITHUB_ENV"
 
     - name: Install Sanctifier CLI
+      if: ${{ inputs.use-docker != 'true' }}
       shell: bash
       run: |
         python "${{ github.action_path }}/scripts/resolve_action_version.py" \
@@ -79,7 +84,8 @@ runs:
           cargo install sanctifier-cli --locked
         fi
 
-    - name: Analyze project
+    - name: Analyze project (native)
+      if: ${{ inputs.use-docker != 'true' }}
       shell: bash
       run: |
         if [ "${SANCTIFIER_ACTION_DEBUG:-false}" = "true" ]; then
@@ -93,6 +99,42 @@ runs:
             --exit-code > "$SANCTIFIER_ACTION_SARIF_OUTPUT"
         else
           sanctifier analyze "$SANCTIFIER_ACTION_PATH" \
+            --format "$SANCTIFIER_ACTION_FORMAT" \
+            --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
+            --exit-code
+        fi
+
+    - name: Analyze project (Docker)
+      if: ${{ inputs.use-docker == 'true' }}
+      shell: bash
+      run: |
+        DOCKER_TAG="${{ inputs.version }}"
+        if [ -z "$DOCKER_TAG" ]; then
+          DOCKER_TAG="latest"
+        fi
+
+        SCAN_ABS_PATH="$(realpath "$SANCTIFIER_ACTION_PATH" 2>/dev/null || cd "$SANCTIFIER_ACTION_PATH" && pwd)"
+        IMAGE_OWNER=$(echo "${{ github.action_repository }}" | cut -d'/' -f1 | tr '[:upper:]' '[:lower:]')
+        IMAGE="ghcr.io/${IMAGE_OWNER}/sanctifier:${DOCKER_TAG}"
+
+        if [ "${SANCTIFIER_ACTION_DEBUG:-false}" = "true" ]; then
+          echo "[sanctifier-action][debug] scan path=$SCAN_ABS_PATH format=$SANCTIFIER_ACTION_FORMAT min_severity=$SANCTIFIER_ACTION_MIN_SEVERITY docker_image=$IMAGE"
+        fi
+
+        if [ "$SANCTIFIER_ACTION_FORMAT" = "sarif" ]; then
+          mkdir -p "$(dirname "$SANCTIFIER_ACTION_SARIF_OUTPUT")"
+          docker run --rm \
+            -v "${SCAN_ABS_PATH}:/workspace" \
+            "${IMAGE}" \
+            analyze /workspace \
+            --format sarif \
+            --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
+            --exit-code > "$SANCTIFIER_ACTION_SARIF_OUTPUT"
+        else
+          docker run --rm \
+            -v "${SCAN_ABS_PATH}:/workspace" \
+            "${IMAGE}" \
+            analyze /workspace \
             --format "$SANCTIFIER_ACTION_FORMAT" \
             --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
             --exit-code
@@ -113,6 +155,6 @@ runs:
         ${{ env.SANCTIFIER_ACTION_FORMAT == 'sarif'
           && env.SANCTIFIER_ACTION_UPLOAD_SARIF == 'true'
           && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
-      uses: github/codeql-action/upload-sarif@v3
+      uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
       with:
         sarif_file: ${{ env.SANCTIFIER_ACTION_SARIF_OUTPUT }}

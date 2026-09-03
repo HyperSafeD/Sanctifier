@@ -3,12 +3,113 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      override_mainnet_gate:
+        description: "Justification to override mainnet readiness gate"
+        required: false
+        type: string
 
-permissions: {}
+permissions:
+  contents: write
+  issues: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  mainnet-readiness-gate:
+    name: Check Mainnet Readiness
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') && contains(github.ref, '-mainnet') && github.event.inputs.override_mainnet_gate == ''
+    steps:
+      - name: Check open milestone issues
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          OPEN_ISSUES=$(gh issue list --repo ${{ github.repository }} --milestone "Mainnet Launch Readiness" --state open --json number,title --jq length)
+          if [ "$OPEN_ISSUES" -gt 0 ]; then
+            echo "::error::There are $OPEN_ISSUES open issues in the 'Mainnet Launch Readiness' milestone."
+            gh issue list --repo ${{ github.repository }} --milestone "Mainnet Launch Readiness" --state open
+            exit 1
+          fi
+
+  generate-changelog:
+    name: Generate Changelog
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
+      - name: Generate changelog section for this tag
+        id: git-cliff
+        run: |
+          # Generate changelog section for the current tag only
+          git-cliff --config cliff.toml \
+            --tag "${{ github.ref_name }}" \
+            --strip header \
+            --output changelog-section.md
+          echo "Generated changelog section:"
+          cat changelog-section.md
+
+      - name: Upload changelog section artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: changelog-section
+          path: changelog-section.md
+          retention-days: 7
+
+      - name: Prepend new section to CHANGELOG.md
+        run: |
+          if [ -s changelog-section.md ]; then
+            # Create updated CHANGELOG.md with new section prepended
+            HEADER_LINE=$(grep -n "^# " CHANGELOG.md | head -1 | cut -d: -f1)
+            # Extract the header (lines before first version section) and insert new section after it
+            if [ -n "$HEADER_LINE" ]; then
+              head -n $HEADER_LINE CHANGELOG.md > updated-changelog.md
+              echo "" >> updated-changelog.md
+              cat changelog-section.md >> updated-changelog.md
+              echo "" >> updated-changelog.md
+              tail -n +$((HEADER_LINE + 1)) CHANGELOG.md >> updated-changelog.md
+            else
+              cat changelog-section.md > updated-changelog.md
+              echo "" >> updated-changelog.md
+              cat CHANGELOG.md >> updated-changelog.md
+            fi
+            mv updated-changelog.md CHANGELOG.md
+            echo "CHANGELOG.md updated successfully"
+          else
+            echo "No changelog section generated; skipping CHANGELOG.md update"
+          fi
+
+      - name: Commit updated CHANGELOG.md
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          if ! git diff --staged --quiet; then
+            git commit -m "chore(release): update CHANGELOG.md for ${{ github.ref_name }}
+            
+            [skip ci]"
+            git push
+            echo "Committed and pushed updated CHANGELOG.md"
+          else
+            echo "CHANGELOG.md unchanged; nothing to commit"
+          fi
+
   build-and-release:
-    name: Build and Release Binary
+    name: Build (${{ matrix.target }})
+    needs: [mainnet-readiness-gate, generate-changelog]
+    if: always() && needs.mainnet-readiness-gate.result != 'failure'
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -22,7 +123,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             artifact_name: sanctifier-linux-amd64
             asset_name: sanctifier-linux-amd64
-          - os: macos-latest
+          - os: macos-13
             target: x86_64-apple-darwin
             artifact_name: sanctifier-macos-amd64
             asset_name: sanctifier-macos-amd64
@@ -34,10 +135,14 @@ jobs:
             target: x86_64-pc-windows-msvc
             artifact_name: sanctifier-windows-amd64.exe
             asset_name: sanctifier-windows-amd64.exe
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            artifact_name: sanctifier-linux-amd64-musl
+            asset_name: sanctifier-linux-amd64-musl
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -53,6 +158,10 @@ jobs:
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libdbus-1-dev
 
+      - name: Install musl target deps (Linux musl only)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get install -y musl-tools
+
       - name: Build sanctifier-cli (Release)
         run: cargo build --release --target ${{ matrix.target }} -p sanctifier-cli
 
@@ -64,15 +173,224 @@ jobs:
         if: runner.os == 'Windows'
         run: mv target/${{ matrix.target }}/release/sanctifier.exe ${{ matrix.artifact_name }}
 
+      - name: Generate SHA256 for binary
+        if: runner.os != 'Windows'
+        run: sha256sum ${{ matrix.artifact_name }} >> ${{ matrix.artifact_name }}.sha256
+
+      - name: Generate SHA256 for binary (Windows)
+        if: runner.os == 'Windows'
+        run: certutil -hashfile ${{ matrix.artifact_name }} SHA256 | findstr /v "hash" > ${{ matrix.artifact_name }}.sha256
+
       - name: Generate build provenance (SLSA)
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v3
         with:
           subject-path: ${{ matrix.artifact_name }}
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_name }}
+          retention-days: 7
+
+      - name: Download changelog section
+        uses: actions/download-artifact@v6
+        with:
+          name: changelog-section
+          path: .
 
       - name: Release
         uses: softprops/action-gh-release@v2
         with:
-          files: ${{ matrix.artifact_name }}
-          generate_release_notes: true
+          files: |
+            ${{ matrix.artifact_name }}
+            ${{ matrix.artifact_name }}.sha256
+          body_path: changelog-section.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  sha256sums:
+    name: Generate SHA256SUMS
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    permissions:
+      contents: write
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v6
+        with:
+          path: artifacts
+        continue-on-error: true
+
+      - name: Wait for release
+        run: sleep 30
+
+      - name: Generate SHA256SUMS from release assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          REPO="${{ github.repository }}"
+          gh release download "$TAG" --repo "$REPO" --dir ./release
+          cd release
+          sha256sum * > SHA256SUMS
+          gh release upload "$TAG" SHA256SUMS --repo "$REPO" --clobber
+
+  docker:
+    name: Build and push Docker image
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download musl binary artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: sanctifier-linux-amd64-musl
+          path: .
+
+      - name: Set image name
+        run: |
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=ghcr.io/${OWNER}/sanctifier" >> $GITHUB_ENV
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.ci
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+
+  npm-publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish @hypersafed/sanctifier-cli
+        working-directory: packages/sanctifier-cli-npm
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  homebrew-update:
+    name: Update Homebrew formula
+    runs-on: ubuntu-latest
+    needs: build-and-release
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download macOS binaries from release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p binaries
+          gh release download "$TAG" --repo "$REPO" --pattern 'sanctifier-macos-amd64' --dir binaries
+          gh release download "$TAG" --repo "$REPO" --pattern 'sanctifier-macos-arm64' --dir binaries
+
+      - name: Calculate SHA256 checksums
+        id: shas
+        run: |
+          echo "amd64=$(sha256sum binaries/sanctifier-macos-amd64 | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "arm64=$(sha256sum binaries/sanctifier-macos-arm64 | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      - name: Generate updated formula
+        run: |
+          VERSION="${{ github.ref_name }}"
+          VERSION="${VERSION#v}"
+          AMD64_SHA="${{ steps.shas.outputs.amd64 }}"
+          ARM64_SHA="${{ steps.shas.outputs.arm64 }}"
+
+          python3 -c "
+          import re
+
+          with open('homebrew/sanctifier.rb', 'r') as f:
+              content = f.read()
+
+          content = re.sub(r'version \"[^\"]*\"', f'version \"{VERSION}\"', content)
+          content = re.sub(
+              r'url \"https://github\.com/HyperSafeD/Sanctifier/releases/download/v[^\"]*/sanctifier-macos-arm64\"',
+              f'url \"https://github.com/HyperSafeD/Sanctifier/releases/download/v{VERSION}/sanctifier-macos-arm64\"',
+              content
+          )
+          content = re.sub(
+              r'url \"https://github\.com/HyperSafeD/Sanctifier/releases/download/v[^\"]*/sanctifier-macos-amd64\"',
+              f'url \"https://github.com/HyperSafeD/Sanctifier/releases/download/v{VERSION}/sanctifier-macos-amd64\"',
+              content
+          )
+          content = re.sub(
+              r'url \"https://github\.com/HyperSafeD/Sanctifier/releases/download/v[^\"]*/sanctifier-linux-amd64-musl\"',
+              f'url \"https://github.com/HyperSafeD/Sanctifier/releases/download/v{VERSION}/sanctifier-linux-amd64-musl\"',
+              content
+          )
+          content = re.sub(r'sha256 \"[a-f0-9]{64}\"', f'sha256 \"{ARM64_SHA}\"', content, count=1)
+          content = re.sub(r'sha256 \"[a-f0-9]{64}\"', f'sha256 \"{AMD64_SHA}\"', content, count=1)
+
+          with open('homebrew/sanctifier.rb', 'w') as f:
+              f.write(content)
+          "
+
+          echo "Generated homebrew/sanctifier.rb:"
+          cat homebrew/sanctifier.rb
+
+      - name: Checkout Homebrew tap repo and push formula
+        env:
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "HOMEBREW_TAP_TOKEN is not set; skipping Homebrew tap push."
+            echo "Set up this secret to auto-update Homebrew formula on release."
+            exit 0
+          fi
+
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/HyperSafeD/homebrew-sanctifier.git" /tmp/homebrew-tap
+
+          cp homebrew/sanctifier.rb /tmp/homebrew-tap/
+
+          cd /tmp/homebrew-tap
+
+          if git diff --quiet sanctifier.rb; then
+            echo "Formula already up to date; nothing to push."
+          else
+            git add sanctifier.rb
+            git commit -m "Update sanctifier to ${TAG}"
+            git push origin main
+            echo "Pushed updated formula to HyperSafeD/homebrew-sanctifier"
+          fi

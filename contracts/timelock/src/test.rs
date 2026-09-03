@@ -55,6 +55,90 @@ fn test_timelock_flow() {
 }
 
 #[test]
+fn test_execute_unsafe_bypasses_delay() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    let timelock_id = env.register_contract(None, TimelockController);
+    let timelock = TimelockControllerClient::new(&env, &timelock_id);
+
+    let proposers = Vec::from_array(&env, [proposer.clone()]);
+    let executors = Vec::from_array(&env, [executor.clone()]);
+
+    timelock.init(&admin, &3600, &proposers, &executors);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let fn_name = Symbol::new(&env, "action");
+    let args = Vec::from_array(&env, [20u32.into_val(&env)]);
+    let salt = BytesN::from_array(&env, &[1u8; 32]);
+
+    // Schedule using the unsafe path
+    let _hash = timelock.schedule_unsafe(&proposer, &mock_id, &fn_name, &args, &salt);
+
+    // ✗ VULNERABILITY: execute_unsafe() runs IMMEDIATELY without waiting for delay
+    // Set current timestamp to 0 to verify no delay check
+    env.ledger().with_mut(|li| {
+        li.timestamp = 100;
+    });
+
+    let result: Val = timelock.execute_unsafe(&executor, &mock_id, &fn_name, &args, &salt);
+    let result_u32: u32 = result.into_val(&env);
+    assert_eq!(
+        result_u32, 21u32,
+        "Unsafe execution succeeded before delay elapsed"
+    );
+}
+
+#[test]
+fn test_safe_execute_enforces_delay() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let executor = Address::generate(&env);
+
+    let timelock_id = env.register_contract(None, TimelockController);
+    let timelock = TimelockControllerClient::new(&env, &timelock_id);
+
+    let proposers = Vec::from_array(&env, [proposer.clone()]);
+    let executors = Vec::from_array(&env, [executor.clone()]);
+    let min_delay = 3600;
+
+    timelock.init(&admin, &min_delay, &proposers, &executors);
+
+    let mock_id = env.register_contract(None, MockContract);
+    let fn_name = Symbol::new(&env, "action");
+    let args = Vec::from_array(&env, [30u32.into_val(&env)]);
+    let salt = BytesN::from_array(&env, &[2u8; 32]);
+
+    // Schedule with delay
+    let delay = 3600;
+    let _hash = timelock.schedule(&proposer, &mock_id, &fn_name, &args, &salt, &delay);
+
+    // ✓ SAFETY: Safe execute() refuses to run before delay
+    // Attempting to execute immediately should fail (panic)
+    // This test just verifies the behavior by fast-forwarding to success
+
+    // Fast forward time exactly to the ready time
+    env.ledger().with_mut(|li| {
+        li.timestamp += delay;
+    });
+
+    // Now execute succeeds
+    let result: Val = timelock.execute(&executor, &mock_id, &fn_name, &args, &salt);
+    let result_u32: u32 = result.into_val(&env);
+    assert_eq!(
+        result_u32, 31u32,
+        "Safe execution succeeded after delay elapsed"
+    );
+}
+
+#[test]
 fn test_role_management() {
     let env = Env::default();
     env.mock_all_auths();

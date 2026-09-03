@@ -45,8 +45,7 @@ export async function GET(request: NextRequest) {
 
       child.stdout.on("data", (chunk: Buffer) => {
         buffer += chunk.toString();
-        const lines = buffer.split("
-");
+        const lines = buffer.split("\n");
         buffer = lines.pop() ?? "";
         for (const line of lines) {
           const trimmed = line.trim();

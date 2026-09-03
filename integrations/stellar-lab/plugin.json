@@ -1,0 +1,8 @@
+{
+  "name": "sanctifier-stellar-lab",
+  "title": "Sanctifier for Stellar Laboratory",
+  "description": "Paste Soroban contract source and analyze it through the Sanctifier hosted API.",
+  "version": "0.1.0",
+  "author": "HyperSafeD",
+  "entry": "index.html"
+}

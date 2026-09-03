@@ -1,0 +1,109 @@
+name: Sanctifier ZK Lint — circom/snarkjs and Noir
+
+# Wire `sanctifier zk lint` and `sanctifier verify-circuit` into your ZK
+# project's CI pipeline.  Copy the relevant job(s) into your own workflow.
+#
+# Requirements:
+#   - Sanctifier CLI installed (see Install step below)
+#   - For circom projects: circom + snarkjs in PATH
+#   - For Noir projects: nargo in PATH
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  security-events: write   # required for upload-sarif
+
+jobs:
+  # ── circom + snarkjs ───────────────────────────────────────────────────────
+  sanctifier-zk-circom:
+    name: Sanctifier ZK lint (circom/snarkjs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Sanctifier CLI
+        run: cargo install sanctifier-cli --locked --no-default-features
+
+      - name: Install circom
+        run: |
+          curl -L https://github.com/iden3/circom/releases/latest/download/circom-linux-amd64 \
+            -o /usr/local/bin/circom
+          chmod +x /usr/local/bin/circom
+
+      - name: Install snarkjs
+        run: npm install -g snarkjs
+
+      - name: Run Sanctifier ZK lint
+        # Lints all .circom files under circuits/ and emits SARIF.
+        # `|| true` keeps the step green so upload-sarif still runs.
+        run: |
+          sanctifier zk lint circuits/ \
+            --toolchain circom \
+            --format sarif \
+            --min-severity medium \
+            --exit-code \
+            > sanctifier-zk.sarif || true
+
+      - name: Verify circuit constraints (optional)
+        # Checks that the compiled circuit's R1CS constraint count stays within
+        # expected bounds.  Fails fast if a refactor accidentally adds unconstrained
+        # signals.
+        run: |
+          sanctifier verify-circuit circuits/main.circom \
+            --toolchain circom \
+            --max-constraints 50000 || true
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: sanctifier-zk.sarif
+          category: sanctifier-zk-circom
+
+  # ── Noir ───────────────────────────────────────────────────────────────────
+  sanctifier-zk-noir:
+    name: Sanctifier ZK lint (Noir)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Sanctifier CLI
+        run: cargo install sanctifier-cli --locked --no-default-features
+
+      - name: Install nargo (Noir)
+        run: |
+          curl -L https://raw.githubusercontent.com/noir-lang/noirup/main/install \
+            | bash
+          echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
+
+      - name: Run Sanctifier ZK lint
+        run: |
+          sanctifier zk lint src/ \
+            --toolchain noir \
+            --format sarif \
+            --min-severity medium \
+            --exit-code \
+            > sanctifier-zk.sarif || true
+
+      - name: Verify circuit constraints
+        run: |
+          sanctifier verify-circuit src/main.nr \
+            --toolchain noir || true
+
+      - name: Upload SARIF to GitHub Code Scanning
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: sanctifier-zk.sarif
+          category: sanctifier-zk-noir

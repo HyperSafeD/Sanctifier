@@ -1,8 +1,8 @@
 #![allow(dead_code)]
 use crate::commands::analyze::{analyze_single_file, collect_rs_files, run_with_timeout};
+use crate::commands::color as c;
 use crate::vulndb::VulnDatabase;
 use clap::Args;
-use colored::*;
 use rayon::prelude::*;
 use sanctifier_core::{Analyzer, SanctifyConfig};
 use serde::Deserialize;
@@ -19,7 +19,8 @@ use toml;
 
 #[derive(Args, Debug)]
 pub struct WorkspaceArgs {
-    /// Path to the workspace root (must contain a Cargo.toml with [workspace])
+    /// Path to the workspace root (must contain a Cargo.toml with [workspace]).
+    /// If not specified, walks up from the current directory to find one.
     #[arg(default_value = ".")]
     pub path: PathBuf,
 
@@ -112,31 +113,78 @@ fn classify_member(member_dir: &Path) -> WorkspaceMember {
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
+fn find_workspace_root(start: &Path) -> Option<PathBuf> {
+    let mut current = if start.is_file() {
+        start
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| start.to_path_buf())
+    } else {
+        start.to_path_buf()
+    };
+
+    loop {
+        let cargo_path = current.join("Cargo.toml");
+        if cargo_path.exists() {
+            if let Ok(content) = fs::read_to_string(&cargo_path) {
+                if let Ok(manifest) = toml::from_str::<CargoManifest>(&content) {
+                    if manifest.workspace.is_some() {
+                        return Some(current);
+                    }
+                }
+            }
+        }
+        if !current.pop() {
+            return None;
+        }
+    }
+}
+
 pub fn exec(args: WorkspaceArgs) -> anyhow::Result<()> {
     let is_json = args.format == "json";
-    let workspace_root = args.path.canonicalize().unwrap_or(args.path.clone());
+    let specified = args
+        .path
+        .canonicalize()
+        .unwrap_or_else(|_| args.path.clone());
+    let workspace_cargo = specified.join("Cargo.toml");
+
+    // Determine workspace root: if the specified path already has a Cargo.toml with [workspace],
+    // use it directly. Otherwise walk up parent directories to find one.
+    let workspace_root = if workspace_cargo.exists() {
+        let manifest_str = fs::read_to_string(&workspace_cargo)?;
+        let manifest: CargoManifest = toml::from_str(&manifest_str)
+            .map_err(|e| anyhow::anyhow!("Failed to parse {:?}: {}", workspace_cargo, e))?;
+        if manifest.workspace.is_some() {
+            specified
+        } else {
+            // Has Cargo.toml but no [workspace] — walk up
+            find_workspace_root(&specified).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "No Cargo.toml with [workspace] section found at {:?} or any parent directory. \
+                     Pass the workspace root explicitly.",
+                    specified
+                )
+            })?
+        }
+    } else {
+        find_workspace_root(&specified).ok_or_else(|| {
+            anyhow::anyhow!(
+                "No Cargo.toml found at {:?} or any parent directory. \
+                 Pass the workspace root explicitly.",
+                specified
+            )
+        })?
+    };
+
     let workspace_cargo = workspace_root.join("Cargo.toml");
-
-    if !workspace_cargo.exists() {
-        anyhow::bail!(
-            "No Cargo.toml found at {:?}. Pass the workspace root.",
-            workspace_root
-        );
-    }
-
     let manifest_str = fs::read_to_string(&workspace_cargo)?;
     let manifest: CargoManifest = toml::from_str(&manifest_str)
         .map_err(|e| anyhow::anyhow!("Failed to parse {:?}: {}", workspace_cargo, e))?;
 
-    let workspace_section = manifest.workspace.ok_or_else(|| {
-        anyhow::anyhow!(
-            "{:?} does not contain a [workspace] section.",
-            workspace_cargo
-        )
-    })?;
+    let workspace_section = manifest.workspace.unwrap();
 
     if workspace_section.members.is_empty() {
-        println!("{} Workspace has no members.", "ℹ️".blue());
+        println!("{} Workspace has no members.", c::blue("ℹ️"));
         return Ok(());
     }
 
@@ -159,15 +207,15 @@ pub fn exec(args: WorkspaceArgs) -> anyhow::Result<()> {
     if !is_json {
         println!(
             "\n{} Workspace: {} contract(s), {} shared lib(s)",
-            "🔍".cyan(),
+            c::cyan("🔍"),
             contracts.len(),
             shared_libs.len()
         );
         for lib in &shared_libs {
-            println!("   {} Shared lib: {}", "📦".blue(), lib.name);
+            println!("   {} Shared lib: {}", c::blue("📦"), lib.name);
         }
         for c in &contracts {
-            println!("   {} Contract:   {}", "📜".yellow(), c.name);
+            println!("   {} Contract:   {}", c::yellow("📜"), c.name);
         }
         println!();
     }
@@ -206,7 +254,13 @@ pub fn exec(args: WorkspaceArgs) -> anyhow::Result<()> {
         let total_files = rs_files.len();
         let counter = Arc::new(AtomicUsize::new(0));
 
-        let results: Vec<_> = rs_files
+        // Tally per-file counts via a parallel fold/reduce instead of
+        // collecting every `FileAnalysisResult` (which owns several `Vec`s
+        // of findings each) into a `Vec` for the whole contract at once.
+        // For workspaces with many/large files that intermediate Vec was
+        // the dominant memory cost even though only aggregate counts are
+        // ever read back out of it — see #1419.
+        let tally: FindingTally = rs_files
             .par_iter()
             .map(|file_path| {
                 let idx = counter.fetch_add(1, Ordering::Relaxed) + 1;
@@ -215,57 +269,53 @@ pub fn exec(args: WorkspaceArgs) -> anyhow::Result<()> {
                 }
                 let content = match fs::read_to_string(file_path) {
                     Ok(c) => c,
-                    Err(_) => return Default::default(),
+                    Err(_) => return FindingTally::default(),
                 };
                 let file_name = file_path.display().to_string();
                 let analyzer = Arc::clone(&analyzer);
                 let vuln_db = Arc::clone(&vuln_db);
                 let file_name_clone = file_name.clone();
-                run_with_timeout(timeout_dur, move || {
+                let result = run_with_timeout(timeout_dur, move || {
                     analyze_single_file(&analyzer, &vuln_db, &content, &file_name_clone)
                 })
-                .unwrap_or_default()
+                .unwrap_or_default();
+                FindingTally::from_result(&result)
             })
-            .collect();
+            .fold(FindingTally::default, FindingTally::merge)
+            .reduce(FindingTally::default, FindingTally::merge);
 
-        let finding_count: usize = results.iter().map(count_findings).sum();
+        let finding_count = tally.finding_count;
         grand_total += finding_count;
         all_findings.push((contract.name.clone(), finding_count));
 
         if !is_json {
             let icon = if finding_count == 0 {
-                "✅".green()
+                c::green("✅")
             } else {
-                "⚠️".yellow()
+                c::yellow("⚠️")
             };
             println!(
                 "{} {} — {} finding(s)",
                 icon,
-                contract.name.bold(),
+                c::bold(&contract.name),
                 finding_count
             );
 
             // Print per-category summaries.
-            let auth: usize = results.iter().map(|r| r.auth_gaps.len()).sum();
-            let arith: usize = results.iter().map(|r| r.arithmetic_issues.len()).sum();
-            let panics: usize = results.iter().map(|r| r.panic_issues.len()).sum();
-            let unhandled: usize = results.iter().map(|r| r.unhandled_results.len()).sum();
-            let collisions: usize = results.iter().map(|r| r.collisions.len()).sum();
-
-            if auth > 0 {
-                println!("      auth gaps:        {}", auth);
+            if tally.auth > 0 {
+                println!("      auth gaps:        {}", tally.auth);
             }
-            if arith > 0 {
-                println!("      arithmetic:       {}", arith);
+            if tally.arith > 0 {
+                println!("      arithmetic:       {}", tally.arith);
             }
-            if panics > 0 {
-                println!("      panic/unwrap:     {}", panics);
+            if tally.panics > 0 {
+                println!("      panic/unwrap:     {}", tally.panics);
             }
-            if unhandled > 0 {
-                println!("      unhandled result: {}", unhandled);
+            if tally.unhandled > 0 {
+                println!("      unhandled result: {}", tally.unhandled);
             }
-            if collisions > 0 {
-                println!("      key collisions:   {}", collisions);
+            if tally.collisions > 0 {
+                println!("      key collisions:   {}", tally.collisions);
             }
         }
     }
@@ -283,7 +333,7 @@ pub fn exec(args: WorkspaceArgs) -> anyhow::Result<()> {
     } else {
         println!(
             "\n{} Grand total: {} finding(s) across {} contract(s)",
-            "📊".cyan(),
+            c::cyan("📊"),
             grand_total,
             contracts.len()
         );
@@ -313,14 +363,58 @@ fn count_findings(r: &crate::commands::analyze::FileAnalysisResult) -> usize {
         + r.timed_out as usize
 }
 
+/// Aggregate finding counts for one contract's file set. Used instead of
+/// keeping every file's full `FileAnalysisResult` (several owned `Vec`s of
+/// findings each) alive in memory at once — see #1419.
+#[derive(Default, Clone, Copy)]
+struct FindingTally {
+    finding_count: usize,
+    auth: usize,
+    arith: usize,
+    panics: usize,
+    unhandled: usize,
+    collisions: usize,
+}
+
+impl FindingTally {
+    fn from_result(r: &crate::commands::analyze::FileAnalysisResult) -> Self {
+        Self {
+            finding_count: count_findings(r),
+            auth: r.auth_gaps.len(),
+            arith: r.arithmetic_issues.len(),
+            panics: r.panic_issues.len(),
+            unhandled: r.unhandled_results.len(),
+            collisions: r.collisions.len(),
+        }
+    }
+
+    fn merge(mut self, other: Self) -> Self {
+        self.finding_count += other.finding_count;
+        self.auth += other.auth;
+        self.arith += other.arith;
+        self.panics += other.panics;
+        self.unhandled += other.unhandled;
+        self.collisions += other.collisions;
+        self
+    }
+}
+
 fn load_config_for(path: &Path) -> SanctifyConfig {
     let mut current = path.to_path_buf();
     loop {
         let config_path = current.join(".sanctify.toml");
         if config_path.exists() {
             if let Ok(content) = fs::read_to_string(&config_path) {
-                if let Ok(config) = toml::from_str(&content) {
-                    return config;
+                match toml::from_str(&content) {
+                    Ok(config) => return config,
+                    Err(e) => {
+                        eprintln!(
+                            "Error: Invalid configuration file at {}\n{}",
+                            config_path.display(),
+                            e
+                        );
+                        std::process::exit(1);
+                    }
                 }
             }
         }

@@ -2,20 +2,32 @@
 
 use clap::{CommandFactory, Parser, Subcommand};
 use clap_complete::{generate, Shell};
-use sanctifier_core::SanctifyConfig;
-use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
-use tracing::error;
 
-mod commands;
-mod logging;
-pub mod vulndb;
+use sanctifier_cli::commands;
+use sanctifier_cli::logging;
 
 #[derive(Parser)]
-#[command(name = "sanctifier")]
-#[command(version, about = "Stellar Soroban Security & Formal Verification Suite", long_about = None)]
+#[command(
+    name = "sanctifier",
+    version,
+    about = "Soroban smart contract security analyzer"
+)]
 struct Cli {
+    /// Disable coloured output (also respects NO_COLOR env var)
+    #[arg(long, global = true)]
+    pub no_color: bool,
+
+    /// Opt-in to anonymous telemetry reporting for this invocation.
+    /// Not global: the `init` subcommand has its own `--telemetry <mode>` option.
+    #[arg(long)]
+    pub telemetry: bool,
+
+    /// Target network (testnet, futurenet, mainnet).
+    /// Overrides SOROBAN_NETWORK env var. Default: testnet.
+    #[arg(short = 'n', long, global = true, default_value = "testnet")]
+    pub network: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -24,42 +36,38 @@ struct Cli {
 pub enum Commands {
     /// Analyze a Soroban contract for vulnerabilities
     Analyze(commands::analyze::AnalyzeArgs),
-    /// Compare current scan results against a baseline to find only NEW vulnerabilities
-    Diff(commands::diff::DiffArgs),
-    /// Generate a dynamic Sanctifier status badge
-    Badge(commands::badge::BadgeArgs),
-    /// Generate a Markdown or HTML security report
+    /// Initialize a .sanctify.toml configuration file
+    Init(commands::init::InitArgs),
+    /// Language Server Protocol (LSP) for editor integration
+    Lsp(commands::lsp::LspArgs),
+    /// Generate a security report
     Report(commands::report::ReportArgs),
     /// Estimate gas / instruction costs for a contract source file or workspace
     Gas(commands::gas::GasArgs),
     /// Detect potential storage key collisions in Soroban contracts
     Storage(commands::storage::StorageArgs),
-    /// Initialize Sanctifier in a new project
-    Init(commands::init::InitArgs),
+    /// Install git hooks (pre-commit, pre-push) to run Sanctifier automatically
+    InstallHooks(commands::install_hooks::InstallHooksArgs),
     /// Show per-contract complexity metrics (cyclomatic complexity, nesting, LOC)
     Complexity(commands::complexity::ComplexityArgs),
-    /// Generate a Graphviz DOT call graph of cross-contract calls (env.invoke_contract)
-    Callgraph {
-        /// Path to a contract directory, workspace directory, or a single .rs file
-        #[arg(default_value = ".")]
-        path: PathBuf,
-
-        /// Output format: text | json | junit
-        #[arg(short, long, default_value = "text")]
-        format: String,
-
-        /// Output DOT file path
-        #[arg(short, long, default_value = "callgraph.dot")]
-        output: PathBuf,
-    },
     /// Apply auto-fix patches to a contract; use --interactive to review each patch
     Fix(commands::fix::FixArgs),
+    /// Explain a finding code (e.g. S001, S003) with details and remediation
+    Explain(commands::explain::ExplainArgs),
     /// Check for and download the latest Sanctifier binary
-    Update,
+    Update {
+        /// Report what would be updated without invoking `cargo install`
+        #[arg(long)]
+        dry_run: bool,
+    },
+    /// Self-update with checksum verification via GitHub Releases
+    Upgrade(commands::upgrade::UpgradeArgs),
     /// Detect reentrancy vulnerabilities (state mutation before external call)
     Reentrancy(commands::reentrancy::ReentrancyArgs),
     /// Verify local source against on-chain bytecode
     Verify(commands::verify::VerifyArgs),
+    /// Verify an on-chain deployment matches expected local source or a pinned hash
+    VerifyDeployment(commands::verify_deployment::VerifyDeploymentArgs),
     /// Analyze an entire Cargo workspace (multiple contracts/libs)
     Workspace(commands::workspace::WorkspaceArgs),
     /// Watch for file changes and auto-rerun analysis
@@ -76,229 +84,102 @@ pub enum Commands {
     Serve(commands::serve::ServeArgs),
     /// Run the analyser on a contract corpus and emit a per-rule performance table
     Benchmark(commands::benchmark::BenchmarkArgs),
+    /// Generate a DOT call-graph of cross-contract invoke_contract calls
+    Callgraph(commands::callgraph::CallgraphArgs),
+    /// Run environment sanity checks (rustc, soroban-cli, z3, cargo-expand)
+    Doctor(commands::doctor::DoctorArgs),
+    /// Export analysis findings to CSV
+    Export(commands::export::ExportArgs),
+    /// Generate a security badge SVG from a Sanctifier JSON report
+    Badge(commands::badge::BadgeArgs),
+    /// Compare two scan results and show new/resolved findings
+    Diff(commands::diff::DiffArgs),
+    /// Generate native AFL/honggfuzz fuzz-harness scaffolds from a contract's ABI
+    Harness(commands::harness::HarnessArgs),
 }
 
 fn main() {
     if let Err(err) = run() {
         eprintln!("Error: {}", err);
-        std::process::exit(2);
+        std::process::exit(sanctifier_cli::exit_codes::ERROR);
     }
 }
 
 fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
-    let log_output = match &cli.command {
-        Commands::Analyze(args) if args.format == "json" => logging::LogOutput::Json,
-        Commands::Diff(args) if args.format == "json" => logging::LogOutput::Json,
-        Commands::Gas(args) if args.format == commands::gas::OutputFormat::Json => {
-            logging::LogOutput::Json
-        }
-        Commands::Storage(args) if args.format == commands::storage::OutputFormat::Json => {
+
+    if cli.no_color {
+        commands::color::set_no_color(true);
+    }
+
+    // Print network indicator banner
+    let network_badge = match cli.network.as_str() {
+        "mainnet" => format!("{}", commands::color::red_bold("[ MAINNET ]")),
+        "futurenet" => format!("{}", commands::color::yellow_bold("[ FUTURENET ]")),
+        _ => format!("{}", commands::color::green_bold("[ TESTNET ]")),
+    };
+    eprintln!(
+        "{} Sanctifier — {}",
+        network_badge,
+        commands::color::dimmed(&cli.network)
+    );
+
+    // Initialize structured logging before dispatching
+    let log_format = match &cli.command {
+        Commands::Analyze(args) if args.format == "json" || args.format == "sarif" => {
             logging::LogOutput::Json
         }
         _ => logging::LogOutput::Text,
     };
-    logging::init(log_output)?;
+    if let Err(e) = logging::init(log_format) {
+        eprintln!("Warning: failed to init logging: {e}");
+    }
+
+    // Print network indicator banner (suppressed in JSON log mode so stderr
+    // stays machine-parseable).
+    if log_format != logging::LogOutput::Json {
+        let network_badge = match cli.network.as_str() {
+            "mainnet" => commands::color::red_bold("[ MAINNET ]").to_string(),
+            "futurenet" => commands::color::yellow_bold("[ FUTURENET ]").to_string(),
+            _ => commands::color::green_bold("[ TESTNET ]").to_string(),
+        };
+        eprintln!(
+            "{} Sanctifier — {}",
+            network_badge,
+            commands::color::dimmed(&cli.network)
+        );
+    }
 
     match cli.command {
-        Commands::Analyze(args) => commands::analyze::exec(args)?,
-        Commands::Diff(args) => commands::diff::exec(args)?,
-        Commands::Badge(args) => {
-            commands::badge::exec(args)?;
-        }
-        Commands::Complexity(args) => {
-            commands::complexity::exec(args)?;
-        }
-        Commands::Report(args) => {
-            commands::report::exec(args)?;
-        }
-        Commands::Gas(args) => {
-            commands::gas::exec(args)?;
-        }
-        Commands::Storage(args) => {
-            commands::storage::exec(args)?;
-        }
-        Commands::Init(args) => {
-            let path = Some(args.path.clone());
-            commands::init::exec(args, path)?;
-        }
-        Commands::Callgraph {
-            path,
-            format,
-            output,
-        } => {
-            use sanctifier_core::{callgraph_to_dot, Analyzer};
-            let config = load_config(&path);
-            let analyzer = Analyzer::new(config.clone());
-            let is_json = format == "json";
-
-            let mut rs_files: Vec<PathBuf> = Vec::new();
-            if path.is_dir() {
-                collect_rs_files(&path, &config, &mut rs_files);
-            } else {
-                rs_files.push(path.clone());
-            }
-
-            let mut edges = Vec::new();
-            for f in rs_files {
-                if f.extension().and_then(|s| s.to_str()) != Some("rs") {
-                    continue;
-                }
-                let content = match fs::read_to_string(&f) {
-                    Ok(c) => c,
-                    Err(_) => continue,
-                };
-                let caller = infer_contract_name(&content).unwrap_or_else(|| {
-                    f.file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("<unknown>")
-                        .to_string()
-                });
-                let file_label = f.display().to_string();
-                edges.extend(analyzer.scan_invoke_contract_calls(&content, &caller, &file_label));
-            }
-
-            if is_json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&edges).unwrap_or_else(|_| "[]".to_string())
-                );
-            } else {
-                let dot = callgraph_to_dot(&edges);
-                if let Err(e) = fs::write(&output, dot) {
-                    error!(
-                        target: "sanctifier",
-                        output = %output.display(),
-                        error = %e,
-                        "Failed to write DOT file"
-                    );
-                    std::process::exit(1);
-                }
-                println!(
-                    "✅ Wrote call graph to {:?} ({} edges)",
-                    output,
-                    edges.len()
-                );
-            }
-        }
-        Commands::Fix(args) => {
-            commands::fix::exec(args)?;
-        }
-        Commands::Update => {
-            commands::update::exec()?;
-        }
-        Commands::Reentrancy(args) => {
-            commands::reentrancy::exec(args)?;
-        }
-        Commands::Verify(args) => {
-            commands::verify::exec(args)?;
-        }
-        Commands::Workspace(args) => {
-            commands::workspace::exec(args)?;
-        }
-        Commands::Watch(args) => {
-            commands::watch::exec(args)?;
-        }
+        Commands::Analyze(args) => commands::analyze::exec(args),
+        Commands::Init(args) => commands::init::exec(args, None),
+        Commands::Lsp(args) => commands::lsp::exec(args),
+        Commands::Report(args) => commands::report::exec(args),
+        Commands::Gas(args) => commands::gas::exec(args),
+        Commands::Storage(args) => commands::storage::exec(args),
+        Commands::InstallHooks(args) => commands::install_hooks::exec(args),
+        Commands::Complexity(args) => commands::complexity::exec(args),
+        Commands::Fix(args) => commands::fix::exec(args),
+        Commands::Explain(args) => commands::explain::exec(args),
+        Commands::Update { dry_run } => commands::update::exec(dry_run),
+        Commands::Upgrade(args) => commands::upgrade::exec(args),
+        Commands::Reentrancy(args) => commands::reentrancy::exec(args),
+        Commands::Verify(args) => commands::verify::exec(args),
+        Commands::VerifyDeployment(args) => commands::verify_deployment::exec(args),
+        Commands::Workspace(args) => commands::workspace::exec(args),
+        Commands::Watch(args) => commands::watch::exec(args),
         Commands::Completions { shell } => {
-            let mut cmd = Cli::command();
-            generate(shell, &mut cmd, "sanctifier", &mut io::stdout());
+            generate(shell, &mut Cli::command(), "sanctifier", &mut io::stdout());
+            Ok(())
         }
-        Commands::Suppress(args) => {
-            commands::suppress::exec(args)?;
-        }
-        Commands::Serve(args) => {
-            commands::serve::exec(args)?;
-        }
-        Commands::Benchmark(args) => {
-            commands::benchmark::exec(args)?;
-        }
+        Commands::Suppress(args) => commands::suppress::exec(args),
+        Commands::Serve(args) => commands::serve::exec(args),
+        Commands::Benchmark(args) => commands::benchmark::exec(args),
+        Commands::Callgraph(args) => commands::callgraph::exec(args),
+        Commands::Doctor(args) => commands::doctor::exec(args),
+        Commands::Export(args) => commands::export::exec(args),
+        Commands::Badge(args) => commands::badge::exec(args),
+        Commands::Diff(args) => commands::diff::exec(args),
+        Commands::Harness(args) => commands::harness::exec(args),
     }
-
-    Ok(())
-}
-
-fn collect_rs_files(dir: &Path, config: &SanctifyConfig, out: &mut Vec<PathBuf>) {
-    let entries = match fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-        if path.is_dir() {
-            if config.ignore_paths.iter().any(|p| name.contains(p)) {
-                continue;
-            }
-            collect_rs_files(&path, config, out);
-        } else if path.extension().and_then(|s| s.to_str()) == Some("rs") {
-            out.push(path);
-        }
-    }
-}
-
-fn infer_contract_name(source: &str) -> Option<String> {
-    let mut saw_contract_attr = false;
-    for line in source.lines() {
-        let l = line.trim();
-        if l.starts_with("#[contract]") {
-            saw_contract_attr = true;
-            continue;
-        }
-        if saw_contract_attr {
-            if let Some(rest) = l.strip_prefix("pub struct ") {
-                return Some(
-                    rest.trim_end_matches(';')
-                        .split_whitespace()
-                        .next()?
-                        .to_string(),
-                );
-            }
-            if let Some(rest) = l.strip_prefix("struct ") {
-                return Some(
-                    rest.trim_end_matches(';')
-                        .split_whitespace()
-                        .next()?
-                        .to_string(),
-                );
-            }
-        }
-    }
-    None
-}
-
-fn load_config(path: &Path) -> SanctifyConfig {
-    let mut current = if path.is_file() {
-        path.parent()
-            .map(|p| p.to_path_buf())
-            .unwrap_or_else(|| PathBuf::from("."))
-    } else {
-        path.to_path_buf()
-    };
-
-    loop {
-        let config_path = current.join(".sanctify.toml");
-        if config_path.exists() {
-            if let Ok(content) = fs::read_to_string(&config_path) {
-                match toml::from_str(&content) {
-                    Ok(config) => return config,
-                    Err(e) => {
-                        eprintln!(
-                            "Error: Found .sanctify.toml at {} but it could not be parsed:\n  {}\n\
-                             \n\
-                             Run 'sanctifier init' to regenerate a valid config, or check the schema at:\n\
-                             https://github.com/HyperSafeD/Sanctifier/blob/main/schemas/sanctify-config.schema.json",
-                            config_path.display(),
-                            e
-                        );
-                        std::process::exit(1);
-                    }
-                }
-            }
-        }
-        if !current.pop() {
-            break;
-        }
-    }
-    SanctifyConfig::default()
 }

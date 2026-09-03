@@ -1,5 +1,6 @@
 use security_disclaimers::{
-    security_disclaimer, DisclaimerCategory, SecurityDisclaimer, SecurityLevel,
+    get_disclaimer, get_testing_requirements, requires_audit, security_disclaimer,
+    validate_security_config, DisclaimerCategory, SecurityLevel,
 };
 use soroban_sdk::Env;
 
@@ -30,24 +31,12 @@ fn test_audit_requirements() {
     let env = Env::default();
 
     // Critical and High levels require audits
-    assert!(SecurityDisclaimer::requires_audit(
-        env.clone(),
-        SecurityLevel::Critical
-    ));
-    assert!(SecurityDisclaimer::requires_audit(
-        env.clone(),
-        SecurityLevel::High
-    ));
+    assert!(requires_audit(env.clone(), SecurityLevel::Critical));
+    assert!(requires_audit(env.clone(), SecurityLevel::High));
 
     // Medium and Low levels don't require audits
-    assert!(!SecurityDisclaimer::requires_audit(
-        env.clone(),
-        SecurityLevel::Medium
-    ));
-    assert!(!SecurityDisclaimer::requires_audit(
-        env.clone(),
-        SecurityLevel::Low
-    ));
+    assert!(!requires_audit(env.clone(), SecurityLevel::Medium));
+    assert!(!requires_audit(env.clone(), SecurityLevel::Low));
 }
 
 #[test]
@@ -55,25 +44,25 @@ fn test_security_config_validation() {
     let env = Env::default();
 
     // Critical level requires both admin and upgrade
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::Critical,
         true,
         true
     ));
-    assert!(!SecurityDisclaimer::validate_security_config(
+    assert!(!validate_security_config(
         env.clone(),
         SecurityLevel::Critical,
         true,
         false
     ));
-    assert!(!SecurityDisclaimer::validate_security_config(
+    assert!(!validate_security_config(
         env.clone(),
         SecurityLevel::Critical,
         false,
         true
     ));
-    assert!(!SecurityDisclaimer::validate_security_config(
+    assert!(!validate_security_config(
         env.clone(),
         SecurityLevel::Critical,
         false,
@@ -81,25 +70,25 @@ fn test_security_config_validation() {
     ));
 
     // High level requires admin
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::High,
         true,
         false
     ));
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::High,
         true,
         true
     ));
-    assert!(!SecurityDisclaimer::validate_security_config(
+    assert!(!validate_security_config(
         env.clone(),
         SecurityLevel::High,
         false,
         true
     ));
-    assert!(!SecurityDisclaimer::validate_security_config(
+    assert!(!validate_security_config(
         env.clone(),
         SecurityLevel::High,
         false,
@@ -107,25 +96,25 @@ fn test_security_config_validation() {
     ));
 
     // Medium and Low levels have no requirements
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::Medium,
         false,
         false
     ));
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::Medium,
         true,
         true
     ));
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::Low,
         false,
         false
     ));
-    assert!(SecurityDisclaimer::validate_security_config(
+    assert!(validate_security_config(
         env.clone(),
         SecurityLevel::Low,
         true,
@@ -137,26 +126,22 @@ fn test_security_config_validation() {
 fn test_audit_disclaimers() {
     let env = Env::default();
 
-    let critical_audit = SecurityDisclaimer::get_disclaimer(
+    let critical_audit = get_disclaimer(
         env.clone(),
         SecurityLevel::Critical,
         DisclaimerCategory::Audit,
-    );
-    let high_audit = SecurityDisclaimer::get_disclaimer(
-        env.clone(),
-        SecurityLevel::High,
-        DisclaimerCategory::Audit,
-    );
-    let medium_audit = SecurityDisclaimer::get_disclaimer(
+    )
+    .to_string();
+    let high_audit =
+        get_disclaimer(env.clone(), SecurityLevel::High, DisclaimerCategory::Audit).to_string();
+    let medium_audit = get_disclaimer(
         env.clone(),
         SecurityLevel::Medium,
         DisclaimerCategory::Audit,
-    );
-    let low_audit = SecurityDisclaimer::get_disclaimer(
-        env.clone(),
-        SecurityLevel::Low,
-        DisclaimerCategory::Audit,
-    );
+    )
+    .to_string();
+    let low_audit =
+        get_disclaimer(env.clone(), SecurityLevel::Low, DisclaimerCategory::Audit).to_string();
 
     // All should contain the basic audit warning
     assert!(critical_audit.contains("SECURITY WARNING"));
@@ -183,16 +168,14 @@ fn test_audit_disclaimers() {
 fn test_usage_disclaimers() {
     let env = Env::default();
 
-    let critical_usage = SecurityDisclaimer::get_disclaimer(
+    let critical_usage = get_disclaimer(
         env.clone(),
         SecurityLevel::Critical,
         DisclaimerCategory::Usage,
-    );
-    let high_usage = SecurityDisclaimer::get_disclaimer(
-        env.clone(),
-        SecurityLevel::High,
-        DisclaimerCategory::Usage,
-    );
+    )
+    .to_string();
+    let high_usage =
+        get_disclaimer(env.clone(), SecurityLevel::High, DisclaimerCategory::Usage).to_string();
 
     // All should contain the production warning
     assert!(critical_usage.contains("PRODUCTION WARNING"));
@@ -209,26 +192,26 @@ fn test_usage_disclaimers() {
 fn test_upgrade_disclaimers() {
     let env = Env::default();
 
-    let critical_upgrade = SecurityDisclaimer::get_disclaimer(
+    let critical_upgrade = get_disclaimer(
         env.clone(),
         SecurityLevel::Critical,
         DisclaimerCategory::Upgrade,
-    );
-    let high_upgrade = SecurityDisclaimer::get_disclaimer(
+    )
+    .to_string();
+    let high_upgrade = get_disclaimer(
         env.clone(),
         SecurityLevel::High,
         DisclaimerCategory::Upgrade,
-    );
-    let medium_upgrade = SecurityDisclaimer::get_disclaimer(
+    )
+    .to_string();
+    let medium_upgrade = get_disclaimer(
         env.clone(),
         SecurityLevel::Medium,
         DisclaimerCategory::Upgrade,
-    );
-    let low_upgrade = SecurityDisclaimer::get_disclaimer(
-        env.clone(),
-        SecurityLevel::Low,
-        DisclaimerCategory::Upgrade,
-    );
+    )
+    .to_string();
+    let low_upgrade =
+        get_disclaimer(env.clone(), SecurityLevel::Low, DisclaimerCategory::Upgrade).to_string();
 
     // All should contain the upgrade warning
     assert!(critical_upgrade.contains("UPGRADE WARNING"));
@@ -250,21 +233,23 @@ fn test_upgrade_disclaimers() {
 fn test_emergency_disclaimers() {
     let env = Env::default();
 
-    let emergency = SecurityDisclaimer::get_disclaimer(
+    let emergency = get_disclaimer(
         env.clone(),
         SecurityLevel::Critical,
         DisclaimerCategory::Emergency,
-    );
+    )
+    .to_string();
 
     // All emergency disclaimers should be the same regardless of level
     assert!(emergency.contains("EMERGENCY"));
     assert!(emergency.contains("contact development team immediately"));
 
-    let emergency_medium = SecurityDisclaimer::get_disclaimer(
+    let emergency_medium = get_disclaimer(
         env.clone(),
         SecurityLevel::Medium,
         DisclaimerCategory::Emergency,
-    );
+    )
+    .to_string();
     assert_eq!(emergency, emergency_medium);
 }
 
@@ -272,12 +257,10 @@ fn test_emergency_disclaimers() {
 fn test_testing_requirements() {
     let env = Env::default();
 
-    let critical_reqs =
-        SecurityDisclaimer::get_testing_requirements(env.clone(), SecurityLevel::Critical);
-    let high_reqs = SecurityDisclaimer::get_testing_requirements(env.clone(), SecurityLevel::High);
-    let medium_reqs =
-        SecurityDisclaimer::get_testing_requirements(env.clone(), SecurityLevel::Medium);
-    let low_reqs = SecurityDisclaimer::get_testing_requirements(env.clone(), SecurityLevel::Low);
+    let critical_reqs = get_testing_requirements(env.clone(), SecurityLevel::Critical).to_string();
+    let high_reqs = get_testing_requirements(env.clone(), SecurityLevel::High).to_string();
+    let medium_reqs = get_testing_requirements(env.clone(), SecurityLevel::Medium).to_string();
+    let low_reqs = get_testing_requirements(env.clone(), SecurityLevel::Low).to_string();
 
     // Critical should require formal verification
     assert!(critical_reqs.contains("Formal verification"));
@@ -314,7 +297,7 @@ fn test_edge_cases() {
             DisclaimerCategory::Emergency,
         ] {
             let env_clone = env.clone();
-            let disclaimer = SecurityDisclaimer::get_disclaimer(env_clone, level, category);
+            let disclaimer = get_disclaimer(env_clone, level, category).to_string();
 
             // All disclaimers should be non-empty
             assert!(!disclaimer.is_empty());
@@ -345,7 +328,7 @@ fn test_contract_disclaimer_formatting() {
     assert!(disclaimer.contains("Professional audit"));
 
     // Should contain security warning
-    assert!(disclaimer.contains("SECURITY WARNING"));
+    assert!(disclaimer.contains("Security Warning"));
 }
 
 #[test]

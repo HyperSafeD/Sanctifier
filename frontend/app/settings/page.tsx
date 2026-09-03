@@ -5,6 +5,8 @@ import { useState, useEffect, FormEvent } from "react";
 interface Settings {
   analyzerPath: string;
   sanctifyToml: string;
+  customRulesPath: string;
+  apiEndpoint: string;
   aiProvider: "stub" | "anthropic" | "openai" | "local";
   aiApiKey: string;
   dailyCostCap: string;
@@ -15,6 +17,8 @@ interface Settings {
 const DEFAULT_SETTINGS: Settings = {
   analyzerPath: "",
   sanctifyToml: "",
+  customRulesPath: "",
+  apiEndpoint: "",
   aiProvider: "stub",
   aiApiKey: "",
   dailyCostCap: "10.00",
@@ -141,6 +145,50 @@ export default function SettingsPage() {
                   placeholder="[rules]&#10;enabled = true"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="apiEndpoint"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                >
+                  API Endpoint
+                </label>
+                <input
+                  type="text"
+                  id="apiEndpoint"
+                  value={settings.apiEndpoint}
+                  onChange={(e) =>
+                    setSettings({ ...settings, apiEndpoint: e.target.value })
+                  }
+                  placeholder="https://api.sanctifier.dev/v1"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Custom API endpoint for report submission
+                </p>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="customRulesPath"
+                  className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                >
+                  Custom Rules File Path
+                </label>
+                <input
+                  type="text"
+                  id="customRulesPath"
+                  value={settings.customRulesPath}
+                  onChange={(e) =>
+                    setSettings({ ...settings, customRulesPath: e.target.value })
+                  }
+                  placeholder="/etc/sanctifier/custom-rules.yaml"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Path to custom rules YAML file (SANCTIFIER_CUSTOM_RULES)
+                </p>
               </div>
 
               <div>

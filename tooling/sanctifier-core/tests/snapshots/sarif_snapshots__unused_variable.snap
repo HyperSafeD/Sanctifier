@@ -1,0 +1,23 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "5",
+    "message": "Unused local variable: 'extra'",
+    "patches": [
+      {
+        "description": "Prefix unused variable 'extra' with underscore",
+        "end_column": 25,
+        "end_line": 5,
+        "replacement": "_extra",
+        "start_column": 20,
+        "start_line": 5
+      }
+    ],
+    "rule_name": "unused_variable",
+    "severity": "Warning",
+    "suggestion": "Prefix with underscore: '_extra'"
+  }
+]

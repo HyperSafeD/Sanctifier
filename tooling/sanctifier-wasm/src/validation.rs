@@ -3,6 +3,7 @@
 //! Each function returns `Ok(())` on success or `Err(String)` with a
 //! human-readable message that is forwarded directly to JS callers via
 //! [`ErrorResponse`](crate::types::ErrorResponse).
+#![allow(dead_code)]
 
 use crate::constants::{
     MAX_CONFIG_SIZE, MAX_SOURCE_SIZE, MAX_SOURCE_SIZE_BROWSER, MAX_SOURCE_SIZE_NODE,

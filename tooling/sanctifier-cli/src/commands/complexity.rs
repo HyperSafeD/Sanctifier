@@ -1,6 +1,6 @@
 use clap::Args;
 use sanctifier_core::complexity::ContractMetrics;
-use sanctifier_core::{analyze_complexity_from_source, render_text_report};
+use sanctifier_core::complexity::{analyze_complexity_from_source, render_text_report};
 use std::fs;
 use std::path::PathBuf;
 

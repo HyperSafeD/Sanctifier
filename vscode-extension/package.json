@@ -30,24 +30,46 @@
         "sanctifier.enable": {
           "type": "boolean",
           "default": true,
-          "description": "Run Soroban security analysis in the editor."
+          "description": "Run Soroban security analysis in the editor.",
+          "markdownDescription": "Enable or disable in-editor Soroban security diagnostics (S001–S006)."
         },
         "sanctifier.debounceMs": {
           "type": "number",
           "default": 400,
           "minimum": 100,
           "maximum": 5000,
-          "description": "Delay after typing before re-running analysis."
+          "description": "Delay after typing before re-running analysis.",
+          "markdownDescription": "Milliseconds to wait after the last keystroke before re-running analysis. Lower values give faster feedback; higher values reduce CPU usage on large files."
         },
         "sanctifier.sanctifierPath": {
           "type": "string",
           "default": "",
-          "description": "Optional path to the `sanctifier` CLI executable. When set, the extension can run a full project scan (see command palette)."
+          "scope": "machine-overridable",
+          "description": "Optional path to the sanctifier CLI executable.",
+          "markdownDescription": "Absolute path to the `sanctifier` CLI binary used for full workspace scans.\n\n**Security:** Only set this to a binary you trust. The extension will ask for confirmation before running a binary located outside the current workspace folder."
         },
         "sanctifier.onlyInSorobanWorkspace": {
           "type": "boolean",
           "default": true,
-          "description": "If true, only activate in workspaces whose Cargo.toml references soroban-sdk."
+          "description": "If true, only activate in workspaces whose Cargo.toml references soroban-sdk.",
+          "markdownDescription": "When enabled, diagnostics only appear in workspaces that contain a `Cargo.toml` referencing `soroban-sdk`. Disable to run in any Rust project."
+        },
+        "sanctifier.minSeverity": {
+          "type": "string",
+          "enum": ["error", "warning", "information"],
+          "enumDescriptions": [
+            "Show only errors.",
+            "Show warnings and errors (recommended).",
+            "Show all findings including informational hints."
+          ],
+          "default": "warning",
+          "description": "Minimum severity level to surface in the editor. Findings below this threshold are silently suppressed."
+        },
+        "sanctifier.telemetry.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Send anonymous usage telemetry (scan count, finding count by rule, extension version, VS Code version). No source code or file paths are ever sent.",
+          "markdownDescription": "When enabled, Sanctifier sends anonymous usage data to help prioritize improvements. **No source code, file paths, or personal data is ever collected.** See the [privacy policy](https://github.com/HyperSafeD/Sanctifier/blob/main/vscode-extension/PRIVACY.md) for details."
         }
       }
     },
@@ -55,17 +77,52 @@
       {
         "command": "sanctifier.analyzeWorkspace",
         "title": "Sanctifier: Analyze workspace with CLI (JSON)"
+      },
+      {
+        "command": "sanctifier.exportSarif",
+        "title": "Sanctifier: Export findings as SARIF"
+      },
+      {
+        "command": "sanctifier.importSarif",
+        "title": "Sanctifier: Import SARIF file"
+      },
+      {
+        "command": "sanctifier.toggleEnable",
+        "title": "Sanctifier: Toggle enable/disable"
+      },
+      {
+        "command": "sanctifier.showOutput",
+        "title": "Sanctifier: Show output channel"
+      },
+      {
+        "command": "sanctifier.openSarifViewer",
+        "title": "Sanctifier: Open Full Report in SARIF Viewer"
+      },
+      {
+        "command": "sanctifier.suppressFinding",
+        "title": "Sanctifier: Suppress finding"
       }
     ]
   },
   "scripts": {
+    "license-check": "license-checker --production --json --out license-report.json",
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./"
+    "watch": "tsc -watch -p ./",
+    "test": "jest --passWithNoTests",
+    "lint": "eslint src --ext .ts --max-warnings 0"
   },
   "devDependencies": {
+    "license-checker": "^25.0.1",
+    "@types/jest": "^29.5.12",
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
-    "typescript": "^5.3.0"
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.3.0",
+    "vitest": "^1.6.0"
   }
 }

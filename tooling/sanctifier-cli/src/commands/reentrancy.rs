@@ -1,7 +1,7 @@
 //! `sanctifier reentrancy` — run the reentrancy detector on a contract file.
 
+use crate::commands::color as c;
 use clap::Args;
-use colored::*;
 use sanctifier_core::rules::reentrancy::ReentrancyRule;
 use sanctifier_core::rules::{Rule, Severity};
 use std::fs;
@@ -45,20 +45,20 @@ pub fn exec(args: ReentrancyArgs) -> anyhow::Result<()> {
 
     // ── Text output ──────────────────────────────────────────────────────────
     if violations.is_empty() {
-        println!("{} No reentrancy vulnerabilities found.", "✅".green());
+        println!("{} No reentrancy vulnerabilities found.", c::green_check());
     } else {
         println!(
             "\n{} Found {} reentrancy vulnerability(ies)!",
-            "❌".red(),
+            c::red_cross(),
             violations.len()
         );
         for v in &violations {
             let sev_icon = match v.severity {
-                Severity::Error => "❌".red(),
-                Severity::Warning => "⚠️".yellow(),
-                Severity::Info | _ => "ℹ️".blue(),
+                Severity::Error => c::red("❌"),
+                Severity::Warning => c::yellow("⚠️"),
+                Severity::Info | _ => c::blue("ℹ️"),
             };
-            println!("   {} [S013] {}", sev_icon, v.message.bold());
+            println!("   {} [S013] {}", sev_icon, c::bold(&v.message));
             println!("      Location: {}", v.location);
             if let Some(suggestion) = &v.suggestion {
                 println!("      Suggestion: {}", suggestion);
@@ -69,9 +69,9 @@ pub fn exec(args: ReentrancyArgs) -> anyhow::Result<()> {
     if args.fix {
         let patches = rule.fix(&source);
         if patches.is_empty() {
-            println!("\n{} No auto-fix patches available.", "ℹ️".blue());
+            println!("\n{} No auto-fix patches available.", c::blue_info());
         } else {
-            println!("\n{} Auto-fix patches ({}):", "🔧".cyan(), patches.len());
+            println!("\n🔧 Auto-fix patches ({}):", patches.len());
             for patch in &patches {
                 println!("   • {} (line {})", patch.description, patch.start_line);
             }

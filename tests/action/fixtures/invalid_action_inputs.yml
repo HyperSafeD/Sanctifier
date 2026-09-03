@@ -1,0 +1,104 @@
+# Fixture: invalid action input combinations
+# Each entry documents an input that must raise ValueError from validate_inputs().
+# The error_fragment field is a substring that must appear in the error message.
+
+cases:
+
+  - id: unknown_format
+    description: format value not in allowed set
+    inputs:
+      path: "."
+      min_severity: "high"
+      format: "xml"
+      upload_sarif: "true"
+      sarif_output: "out.sarif"
+      debug: "false"
+    error_fragment: "format must be one of"
+
+  - id: unknown_severity
+    description: min-severity value not in allowed set
+    inputs:
+      path: "."
+      min_severity: "urgent"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "out.sarif"
+      debug: "false"
+    error_fragment: "min-severity must be one of"
+
+  - id: path_traversal_scan_path
+    description: scan path containing .. segment
+    inputs:
+      path: "../outside"
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "out.sarif"
+      debug: "false"
+    error_fragment: "path traversal"
+
+  - id: path_traversal_sarif_output
+    description: sarif-output containing .. segment
+    inputs:
+      path: "."
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "../results.sarif"
+      debug: "false"
+    error_fragment: "path traversal"
+
+  - id: absolute_sarif_output
+    description: sarif-output given as an absolute path
+    inputs:
+      path: "."
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "/tmp/results.sarif"
+      debug: "false"
+    error_fragment: "must be relative"
+
+  - id: missing_scan_path
+    description: scan path that does not exist on disk
+    inputs:
+      path: "nonexistent-contract-dir"
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "out.sarif"
+      debug: "false"
+    error_fragment: "does not exist"
+
+  - id: sarif_extension_missing_for_sarif_format
+    description: sarif-output without .sarif extension when format is sarif
+    inputs:
+      path: "."
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "results.json"
+      debug: "false"
+    error_fragment: ".sarif"
+
+  - id: invalid_bool_upload_sarif
+    description: upload-sarif value that is not a recognised boolean
+    inputs:
+      path: "."
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "maybe"
+      sarif_output: "out.sarif"
+      debug: "false"
+    error_fragment: "true or false"
+
+  - id: invalid_bool_debug
+    description: debug value that is not a recognised boolean
+    inputs:
+      path: "."
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "out.sarif"
+      debug: "verbose"
+    error_fragment: "true or false"

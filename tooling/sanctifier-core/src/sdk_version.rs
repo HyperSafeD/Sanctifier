@@ -41,6 +41,11 @@ pub fn detect_sdk_version(cargo_toml_path: &Path) -> SdkVersionInfo {
     }
 }
 
+/// Parse the major version number out of a semver string (e.g. `"22.1.0"` → `Some(22)`).
+pub fn parse_major_version(version: &str) -> Option<u32> {
+    version.split('.').next()?.parse().ok()
+}
+
 fn extract_soroban_sdk_version(cargo_toml: &str) -> Option<String> {
     // Parse TOML to find soroban-sdk version
     for line in cargo_toml.lines() {
