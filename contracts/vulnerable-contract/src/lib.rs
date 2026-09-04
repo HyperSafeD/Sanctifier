@@ -89,9 +89,7 @@ impl VulnerableContract {
             .get(&StorageKey::Admin)
             .expect("Admin not set");
         // env.require_auth(&admin); // Assume we can verify this if it were an Address
-        env.storage()
-            .instance()
-            .set(&StorageKey::Admin, &new_admin);
+        env.storage().instance().set(&StorageKey::Admin, &new_admin);
         env.events().publish(
             (symbol_short!("admin_set"),),
             AdminSetEvent {

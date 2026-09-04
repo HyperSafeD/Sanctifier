@@ -195,7 +195,11 @@ pub struct SecurityDisclaimer;
 
 impl SecurityDisclaimer {
     /// See [`get_disclaimer`].
-    pub fn get_disclaimer(env: Env, level: SecurityLevel, category: DisclaimerCategory) -> soroban_sdk::String {
+    pub fn get_disclaimer(
+        env: Env,
+        level: SecurityLevel,
+        category: DisclaimerCategory,
+    ) -> soroban_sdk::String {
         get_disclaimer(env, level, category)
     }
 

@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "oracle-contract"
 version = "0.1.0"
 edition = "2021"

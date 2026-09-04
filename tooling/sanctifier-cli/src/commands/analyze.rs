@@ -13,8 +13,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::warn;
+use tracing::{info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
 pub enum SeverityLevel {
@@ -163,7 +164,7 @@ fn resolve_exit(
         Some(AnalysisProfile::Strict) => found_issues,
         Some(AnalysisProfile::Lenient) | Some(AnalysisProfile::Audit) => false,
         Some(AnalysisProfile::Ci) => found_issues,
-        None => exit_code_flag && found_issues,
+        None => found_issues || exit_code_flag,
     }
 }
 
@@ -182,6 +183,8 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
         return stream_ndjson(&args);
     }
 
+    let start = Instant::now();
+    let telemetry_enabled = false;
     let path = normalize_cli_path(args.path.clone());
     if !path.exists() {
         anyhow::bail!("path does not exist: {}", path.display());
@@ -200,9 +203,9 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
 
     let mut config = load_config(&path);
     config.ledger_limit = args.limit;
-    let analyzer = Arc::new(Analyzer::new(config));
+    let _analyzer = Arc::new(Analyzer::new(config.clone()));
 
-    let vuln_db = Arc::new(match &args.vuln_db {
+    let _vuln_db = Arc::new(match &args.vuln_db {
         Some(db_path) => {
             info!(target: "sanctifier", path = %db_path.display(), "Loading custom vulnerability database");
             VulnDatabase::load(db_path)?
@@ -240,7 +243,7 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
                 if args.format == "json" || args.format == "sarif" {
                     tracing::info!(target: "sanctifier", "Analyzing {}", file_str);
                 } else {
-                    eprintln!("Analyzing {}", file_str);
+                    println!("Analyzing {}", file_str);
                 }
                 tracing::debug!(target: "sanctifier", "Scanning Rust source file: {}", file_str);
                 let violations = registry.run_all(&content);
@@ -317,8 +320,9 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
             .map(|(file, v)| {
                 serde_json::json!({
                     "file": file,
+                    "rule": v.rule_name,
                     "rule_name": v.rule_name,
-                    "severity": format!("{:?}", v.severity),
+                    "severity": format!("{:?}", v.severity).to_lowercase(),
                     "message": v.message,
                     "location": v.location,
                     "suggestion": v.suggestion,
@@ -329,6 +333,7 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
                 "schema_version": "1.0.0",
+                "findings": rule_violations,
                 "rule_violations": rule_violations,
                 "error_codes": finding_codes::all_finding_codes(),
                 "summary": {
@@ -351,6 +356,13 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
                     Some(s) => format!("{} — {}", v.message, s),
                     None => v.message.clone(),
                 };
+                let line_num: u64 = v
+                    .location
+                    .rsplit(':')
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(1);
+
                 serde_json::json!({
                     "ruleId": v.rule_name,
                     "level": level,
@@ -360,6 +372,9 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
                             "artifactLocation": {
                                 "uri": file,
                                 "uriBaseId": "%SRCROOT%"
+                            },
+                            "region": {
+                                "startLine": line_num
                             }
                         }
                     }]

@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "reentrancy-guard-fuzz"
 version = "0.0.0"
 authors = ["Automatically generated"]

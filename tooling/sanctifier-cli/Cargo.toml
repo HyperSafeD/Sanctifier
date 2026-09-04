@@ -38,6 +38,14 @@ warp = "0.3"
 tempfile = "3.8"
 md5 = "0.7"
 futures-util = "0.3"
+syn = { version = "2.0", features = ["full", "extra-traits", "visit"] }
+quote = "1.0"
+dialoguer = { version = "0.11", features = ["fuzzy-select"] }
+jsonschema = "0.18"
+flate2 = "1.0"
+tar = "0.4"
+walkdir = "2.4"
+num_cpus = "1.16"
 
 
 [dev-dependencies]

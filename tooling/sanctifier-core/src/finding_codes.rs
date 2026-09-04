@@ -71,6 +71,35 @@ pub const RAW_INVOKE_CONTRACT: &str = "S022";
 pub const SHALLOW_TEST: &str = "S023";
 /// transfer_from-style function consumes 'from' balance without allowance check.
 pub const TRANSFER_FROM_NO_ALLOWANCE: &str = "S024";
+/// Missing extend_ttl call on written storage entry.
+pub const MISSING_TTL_BUMP: &str = "S025";
+/// Taint propagation from untrusted source to sensitive sink.
+pub const TAINT_PROPAGATION: &str = "S026";
+/// Static reentrancy detected.
+pub const STATIC_REENTRANCY: &str = "S027";
+/// Deprecated Soroban SDK usage.
+pub const DEPRECATED_SDK_USAGE: &str = "S028";
+/// Block timestamp used for randomness.
+pub const TIMESTAMP_RANDOMNESS: &str = "S029";
+/// Function with multiple Address parameters uses require_auth instead of require_auth_for_args.
+pub const REQUIRE_AUTH_FOR_ARGS: &str = "S030";
+/// Unbounded loop deriving from user input.
+pub const GAS_EXHAUSTION_RISK: &str = "S031";
+
+/// Missing nullifier check in ZK circuit / contract verification.
+pub const ZK_MISSING_NULLIFIER: &str = "Z001";
+/// Insecure randomness in ZK proof generation.
+pub const ZK_INSECURE_RANDOMNESS: &str = "Z002";
+/// Missing public-input binding in ZK proof.
+pub const ZK_MISSING_PUBLIC_INPUT_BINDING: &str = "Z003";
+/// Hardcoded trusted setup parameters in ZK verification.
+pub const ZK_HARDCODED_TRUSTED_SETUP: &str = "Z004";
+/// Missing verifying-key integrity check.
+pub const ZK_MISSING_VK_INTEGRITY_CHECK: &str = "Z005";
+/// Unprotected verifying-key rotation function.
+pub const ZK_UNPROTECTED_VK_ROTATION: &str = "Z010";
+/// Missing Merkle tree inclusion proof.
+pub const ZK_MISSING_MERKLE_INCLUSION: &str = "Z014";
 
 /// A single finding-code entry with machine-readable code, category, and
 /// human-readable description.
@@ -323,6 +352,10 @@ pub fn all_finding_codes() -> Vec<FindingCode> {
             code: SHALLOW_TEST,
             category: "test_quality",
             description: "#[test] function never references a ContractClient, bypassing serialization and auth paths exercised by the Soroban host-function boundary",
+            title: "Shallow Test Detection",
+            severity: FindingSeverity::Low,
+            remediation: "Test contract interactions through generated ContractClient to exercise host function boundaries and authentication logic",
+            doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules/shallow-test.md",
         },
         FindingCode {
             code: TRANSFER_FROM_NO_ALLOWANCE,

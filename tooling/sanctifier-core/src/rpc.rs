@@ -45,7 +45,11 @@ pub enum RpcError {
 
     /// An RPC provider returned an HTTP error status.
     #[error("HTTP error {status_code} from {url}: {message}")]
-    HttpError { url: String, status_code: u16, message: String },
+    HttpError {
+        url: String,
+        status_code: u16,
+        message: String,
+    },
 }
 
 /// Resilient RPC client with automatic failover across multiple providers.
@@ -79,13 +83,11 @@ impl RpcFailoverClient {
 
         for (idx, provider) in self.providers.iter().enumerate() {
             let was_fallback = idx > 0;
-            let timeout_dur = Duration::from_millis(
-                if provider.timeout_ms > 0 {
-                    provider.timeout_ms
-                } else {
-                    self.default_timeout_ms
-                },
-            );
+            let timeout_dur = Duration::from_millis(if provider.timeout_ms > 0 {
+                provider.timeout_ms
+            } else {
+                self.default_timeout_ms
+            });
 
             let client = match reqwest::blocking::Client::builder()
                 .timeout(timeout_dur)
@@ -108,8 +110,13 @@ impl RpcFailoverClient {
                 Ok(response) => {
                     let status = response.status().as_u16();
                     if !response.status().is_success() {
-                        let msg = response.text().unwrap_or_else(|_| "Unknown HTTP error".to_string());
-                        error_log.push(format!("{}: HTTP status {}", provider.url, status));
+                        let msg = response
+                            .text()
+                            .unwrap_or_else(|_| "Unknown HTTP error".to_string());
+                        error_log.push(format!(
+                            "{}: HTTP status {} - {}",
+                            provider.url, status, msg
+                        ));
                         continue;
                     }
 
@@ -122,12 +129,14 @@ impl RpcFailoverClient {
                     };
 
                     // Validate JSON payload
-                    let json_val: serde_json::Result<serde_json::Value> = serde_json::from_str(&text_body);
+                    let json_val: serde_json::Result<serde_json::Value> =
+                        serde_json::from_str(&text_body);
                     match json_val {
                         Ok(val) => {
                             // Check if payload contains JSON-RPC error field
                             if let Some(err_obj) = val.get("error") {
-                                error_log.push(format!("{}: JSON-RPC Error: {}", provider.url, err_obj));
+                                error_log
+                                    .push(format!("{}: JSON-RPC Error: {}", provider.url, err_obj));
                                 continue;
                             }
 
@@ -139,14 +148,19 @@ impl RpcFailoverClient {
                             });
                         }
                         Err(err) => {
-                            error_log.push(format!("{}: Malformed JSON syntax: {}", provider.url, err));
+                            error_log
+                                .push(format!("{}: Malformed JSON syntax: {}", provider.url, err));
                             continue;
                         }
                     }
                 }
                 Err(err) => {
                     if err.is_timeout() {
-                        error_log.push(format!("{}: Timeout after {}ms", provider.url, timeout_dur.as_millis()));
+                        error_log.push(format!(
+                            "{}: Timeout after {}ms",
+                            provider.url,
+                            timeout_dur.as_millis()
+                        ));
                     } else {
                         error_log.push(format!("{}: Connection failure ({})", provider.url, err));
                     }

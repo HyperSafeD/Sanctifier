@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Args;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use toml_edit::{value, Array, DocumentMut, InlineTable, Item, Table, Value};
 
 #[derive(Args)]

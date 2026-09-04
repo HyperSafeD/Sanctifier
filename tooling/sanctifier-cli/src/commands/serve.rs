@@ -1,12 +1,11 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use futures_util::StreamExt;
-use sanctifier_core::{analysis_cache::AnalysisCache, RuleViolation, Analyzer, SanctifyConfig};
+use sanctifier_core::{
+    analysis_cache::AnalysisCache, rules::RuleRegistry, Analyzer, RuleViolation, SanctifyConfig,
+};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use tokio::fs;
-use tokio::io::AsyncWriteExt;
-use warp::{multipart::FormData, Buf, Filter, Rejection, Reply};
+use warp::{Filter, Rejection, Reply};
 
 #[derive(Args)]
 pub struct ServeArgs {
@@ -19,12 +18,19 @@ pub struct ServeArgs {
     bind: String,
 }
 
+#[derive(serde::Serialize, Clone)]
+struct AnalyzeResponse {
+    auth_gaps: Vec<String>,
+    panic_issues: Vec<sanctifier_core::PanicIssue>,
+    findings: Vec<RuleViolation>,
+}
+
 #[derive(Clone)]
 struct AppState {
     #[allow(dead_code)]
     registry: Arc<RuleRegistry>,
     analyzer: Arc<Analyzer>,
-    cache: Arc<Mutex<AnalysisCache<Vec<RuleViolation>>>>,
+    cache: Arc<Mutex<AnalysisCache<AnalyzeResponse>>>,
 }
 
 pub fn exec(args: ServeArgs) -> Result<()> {
@@ -71,63 +77,41 @@ async fn serve_async(args: ServeArgs) -> Result<()> {
     Ok(())
 }
 
-async fn handle_analyze(
-    body: serde_json::Value,
-    state: AppState,
-) -> Result<impl Reply, Rejection> {
-    // Extract contract source from multipart form
-    let parts: Vec<_> = form.collect().await;
-    
-    let mut contract_source = None;
-    for part in parts {
-        let mut part = part.map_err(|_| warp::reject::reject())?;
-        if part.name() == "contract" {
-            let mut bytes = part
-                .data()
-                .await
-                .ok_or_else(|| warp::reject::reject())?
-                .map_err(|_| warp::reject::reject())?;
-            let remaining = bytes.remaining();
-            contract_source = Some(
-                String::from_utf8(bytes.copy_to_bytes(remaining).to_vec())
-                    .map_err(|_| warp::reject::reject())?
-            );
-            break;
-        }
-    }
-
-    let source = contract_source.ok_or_else(|| warp::reject::reject())?;
-
-    // Write to temp file
-    let temp_dir = tempfile::tempdir().map_err(|_| warp::reject::reject())?;
-    let contract_path = temp_dir.path().join("contract.rs");
-
-    let mut file = fs::File::create(&contract_path)
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    file.write_all(source.as_bytes())
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    file.flush().await.map_err(|_| warp::reject::reject())?;
+async fn handle_analyze(body: serde_json::Value, state: AppState) -> Result<impl Reply, Rejection> {
+    let source = body
+        .get("source")
+        .or_else(|| body.get("contract"))
+        .or_else(|| body.get("code"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+        .ok_or_else(|| warp::reject::reject())?;
 
     // Check cache
     let cache_key = format!("{:x}", md5::compute(&source));
     if let Ok(mut cache) = state.cache.lock() {
         if cache.is_cached(&cache_key, &source) {
-            let cached = cache.get_or_analyze(&cache_key, &source, Vec::new);
+            let cached = cache.get_or_analyze(&cache_key, &source, || unreachable!());
             return Ok(warp::reply::json(&cached));
         }
     }
 
     // Analyze
-    let findings = state.analyzer.run_rules(&source);
+    let auth_gaps = state.analyzer.scan_auth_gaps(&source);
+    let panic_issues = state.analyzer.scan_panics(&source);
+    let findings = state.registry.run_all(&source);
+
+    let response = AnalyzeResponse {
+        auth_gaps,
+        panic_issues,
+        findings,
+    };
 
     // Cache result
     if let Ok(mut cache) = state.cache.lock() {
-        cache.get_or_analyze(&cache_key, &source, || findings.clone());
+        cache.get_or_analyze(&cache_key, &source, || response.clone());
     }
 
-    Ok(warp::reply::json(&findings))
+    Ok(warp::reply::json(&response))
 }
 
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {

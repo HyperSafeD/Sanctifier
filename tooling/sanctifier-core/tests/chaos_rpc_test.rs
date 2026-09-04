@@ -101,7 +101,10 @@ fn test_chaos_scenario_2_partial_outage_failover() {
     let client = RpcFailoverClient::new(providers, 1000);
     let result = client.query(r#"{"jsonrpc":"2.0","method":"getHealth","id":1}"#);
 
-    assert!(result.is_ok(), "Expected transparent failover to secondary provider");
+    assert!(
+        result.is_ok(),
+        "Expected transparent failover to secondary provider"
+    );
     let response = result.unwrap();
     assert!(response.was_fallback, "Should be flagged as fallback");
     assert_eq!(response.status_code, 200);
@@ -144,8 +147,14 @@ fn test_chaos_scenario_3_slow_response_timeout() {
 
     assert!(result.is_ok(), "Expected failover after primary timeout");
     let response = result.unwrap();
-    assert!(response.was_fallback, "Should fallback to secondary provider after primary timeout");
-    assert!(elapsed < Duration::from_millis(1500), "Request completed without hanging indefinitely");
+    assert!(
+        response.was_fallback,
+        "Should fallback to secondary provider after primary timeout"
+    );
+    assert!(
+        elapsed < Duration::from_millis(1500),
+        "Request completed without hanging indefinitely"
+    );
 }
 
 #[test]
@@ -179,8 +188,14 @@ fn test_chaos_scenario_4_malformed_response() {
     let client = RpcFailoverClient::new(providers, 1000);
     let result = client.query(r#"{"jsonrpc":"2.0","method":"getHealth","id":1}"#);
 
-    assert!(result.is_ok(), "Expected failover when primary returns malformed JSON");
+    assert!(
+        result.is_ok(),
+        "Expected failover when primary returns malformed JSON"
+    );
     let response = result.unwrap();
-    assert!(response.was_fallback, "Should fallback to secondary when primary JSON is corrupted");
+    assert!(
+        response.was_fallback,
+        "Should fallback to secondary when primary JSON is corrupted"
+    );
     assert!(response.payload.contains("healthy"));
 }

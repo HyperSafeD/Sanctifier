@@ -109,13 +109,8 @@ impl Rule for ArithmeticOverflowRule {
             .into_iter()
             .map(|issue| {
                 let message = format_arithmetic_error(&issue.operation, &issue.function_name);
-                RuleViolation::new(
-                    self.name(),
-                    Severity::Warning,
-                    message,
-                    issue.location,
-                )
-                .with_suggestion(issue.suggestion)
+                RuleViolation::new(self.name(), Severity::Warning, message, issue.location)
+                    .with_suggestion(issue.suggestion)
             })
             .collect()
     }
@@ -145,24 +140,24 @@ impl ArithmeticOverflowRule {
     ///
     /// ```rust,no_run
     /// use sanctifier_core::rules::arithmetic_overflow::ArithmeticOverflowRule;
-    /// 
+    ///
     /// let rule = ArithmeticOverflowRule::new();
     /// let sources = vec!["contract1.rs", "contract2.rs"];
     /// let violations = rule.check_parallel(&sources);
     /// ```
     pub fn check_parallel(&self, sources: &[&str]) -> Vec<RuleViolation> {
         let mut violations = Vec::new();
-        
+
         for source in sources {
             let file_violations = self.check(source);
             if !file_violations.is_empty() {
                 violations.extend(file_violations);
             }
         }
-        
+
         violations
     }
-    
+
     /// Check multiple files from paths in parallel.
     ///
     /// Reads files concurrently and analyzes them in parallel for
@@ -182,33 +177,34 @@ impl ArithmeticOverflowRule {
     /// ```rust,no_run
     /// use sanctifier_core::rules::arithmetic_overflow::ArithmeticOverflowRule;
     /// use std::path::Path;
-    /// 
+    ///
     /// let rule = ArithmeticOverflowRule::new();
     /// let paths: Vec<&Path> = vec![Path::new("src/lib.rs"), Path::new("src/main.rs")];
     /// let violations = rule.check_files_parallel(&paths);
     /// ```
     pub fn check_files_parallel(&self, paths: &[&std::path::Path]) -> Vec<RuleViolation> {
         let mut violations = Vec::new();
-        
+
         for path in paths {
             if let Ok(source) = std::fs::read_to_string(path) {
                 let mut file_violations = self.check(&source);
-                
+
                 // Add file path to location for better error reporting
-                let file_name = path.file_name()
+                let file_name = path
+                    .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("unknown");
-                    
+
                 for violation in &mut file_violations {
                     violation.location = format!("{}:{}", file_name, violation.location);
                 }
-                
+
                 if !file_violations.is_empty() {
                     violations.extend(file_violations);
                 }
             }
         }
-        
+
         violations
     }
 }
@@ -220,23 +216,23 @@ impl ArithmeticOverflowRule {
 fn format_arithmetic_error(operation: &str, function_name: &str) -> String {
     match operation {
         "+" | "+=" => format!(
-            "Unchecked addition in '{}': possible overflow of accumulated values",
+            "Unchecked '+' operation in '{}': possible overflow of accumulated values",
             function_name
         ),
         "-" | "-=" => format!(
-            "Unchecked subtraction in '{}': possible underflow causing incorrect balances",
+            "Unchecked '-' operation in '{}': possible underflow causing incorrect balances",
             function_name
         ),
         "*" | "*=" => format!(
-            "Unchecked multiplication in '{}': intermediate value overflow risk",
+            "Unchecked '*' operation in '{}': intermediate value overflow risk",
             function_name
         ),
         "/" | "/=" => format!(
-            "Unchecked division in '{}': runtime panic risk from divide-by-zero",
+            "Unchecked '/' operation in '{}': runtime panic risk from divide-by-zero",
             function_name
         ),
         "%" | "%=" => format!(
-            "Unchecked modulo in '{}': runtime panic risk from modulo-by-zero",
+            "Unchecked '%' operation in '{}': runtime panic risk from modulo-by-zero",
             function_name
         ),
         method => format!(
@@ -262,8 +258,6 @@ pub(crate) struct ArithVisitor {
     /// When >0, we skip all arithmetic detection to avoid false positives in tests.
     pub(crate) test_mod_depth: u32,
 }
-
-// Redundant ArithmeticIssue struct removed
 
 impl ArithVisitor {
     /// Checks if an expression is a compile-time constant.
@@ -631,7 +625,10 @@ fn is_string_literal(expr: &syn::Expr) -> bool {
 /// Test code often uses arithmetic that would be flagged but is intentional
 /// for testing edge cases.
 fn has_test_attr(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(|a| a.path().is_ident("test"))
+    attrs.iter().any(|a| {
+        let s = quote::quote!(#a).to_string();
+        s.contains("test")
+    })
 }
 
 /// Returns true if the item has a `#[cfg(test)]` attribute.
@@ -640,9 +637,10 @@ fn has_test_attr(attrs: &[syn::Attribute]) -> bool {
 /// This is a broader exclusion than `has_test_attr()` which only excludes
 /// individual functions.
 fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
-    attrs
-        .iter()
-        .any(|a| a.path().is_ident("cfg") && quote::quote!(#a).to_string().contains("test"))
+    attrs.iter().any(|a| {
+        let s = quote::quote!(#a).to_string();
+        s.contains("cfg") && s.contains("test")
+    })
 }
 
 #[cfg(test)]

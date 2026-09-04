@@ -38,11 +38,31 @@ use std::sync::Arc;
 ///
 /// Uses `Arc` for cheap cloning and sharing across threads during parallel
 /// analysis. Fields are ordered by size to minimize padding.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// Shared configuration data (Arc for zero-cost clones)
-    #[serde(flatten)]
     inner: Arc<ConfigInner>,
+}
+
+impl Serialize for Config {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.inner.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Config {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let inner = ConfigInner::deserialize(deserializer)?;
+        Ok(Config {
+            inner: Arc::new(inner),
+        })
+    }
 }
 
 /// Inner configuration data with memory-optimized layout.
@@ -54,39 +74,39 @@ struct ConfigInner {
     /// Paths to analyze (interned strings reduce duplicates in monorepos)
     #[serde(default)]
     paths: Box<[PathBuf]>,
-    
+
     /// Rules to enable (uses HashSet for O(1) lookups, Box for fixed size)
     #[serde(default)]
     enabled_rules: Box<HashSet<Cow<'static, str>>>,
-    
+
     /// Rules to disable (same optimization as enabled_rules)
     #[serde(default)]
     disabled_rules: Box<HashSet<Cow<'static, str>>>,
-    
+
     /// Custom rule paths (boxed slice for fixed-size overhead)
     #[serde(default)]
     custom_rule_paths: Box<[PathBuf]>,
-    
+
     /// Output format (using Cow for zero-copy when default)
     #[serde(default = "default_output_format")]
     output_format: Cow<'static, str>,
-    
+
     /// Output path (Option<Box> reduces size when None)
     #[serde(default)]
     output_path: Option<Box<Path>>,
-    
+
     /// Severity threshold (using enum is more memory efficient than String)
     #[serde(default)]
     severity_threshold: SeverityThreshold,
-    
+
     /// Maximum parallel jobs (u16 is sufficient, saves 6 bytes vs usize)
     #[serde(default = "default_max_jobs")]
     max_parallel_jobs: u16,
-    
+
     /// Cache configuration (lazily loaded, Option reduces memory when unused)
     #[serde(default)]
     cache: Option<Box<CacheConfig>>,
-    
+
     /// Flags packed into a single byte for memory efficiency
     #[serde(default)]
     flags: ConfigFlags,
@@ -107,11 +127,11 @@ impl ConfigFlags {
     const COLOR: u8 = 0b0000_1000;
     const INCREMENTAL: u8 = 0b0001_0000;
     const PARALLEL: u8 = 0b0010_0000;
-    
+
     fn new() -> Self {
         Self(0)
     }
-    
+
     fn set(&mut self, flag: u8, value: bool) {
         if value {
             self.0 |= flag;
@@ -119,7 +139,7 @@ impl ConfigFlags {
             self.0 &= !flag;
         }
     }
-    
+
     fn get(&self, flag: u8) -> bool {
         (self.0 & flag) != 0
     }
@@ -149,15 +169,15 @@ impl Default for SeverityThreshold {
 pub struct CacheConfig {
     /// Cache directory (Box reduces indirection)
     cache_dir: Box<Path>,
-    
+
     /// Max cache size in MB (u32 sufficient for cache sizes)
     #[serde(default = "default_cache_size")]
     max_size_mb: u32,
-    
+
     /// Cache TTL in seconds (u32 = ~136 years)
     #[serde(default = "default_cache_ttl")]
     ttl_seconds: u32,
-    
+
     /// Enable cache (single byte)
     #[serde(default = "default_true")]
     enabled: bool,
@@ -176,11 +196,11 @@ fn default_max_jobs() -> u16 {
 }
 
 fn default_cache_size() -> u32 {
-    1024  // 1GB default
+    1024 // 1GB default
 }
 
 fn default_cache_ttl() -> u32 {
-    86400  // 24 hours
+    86400 // 24 hours
 }
 
 fn default_true() -> bool {
@@ -212,7 +232,7 @@ impl Config {
         Self::from_str(&contents)
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
     }
-    
+
     /// Parse configuration from a string with optimized memory allocation.
     ///
     /// # Memory Optimization
@@ -226,7 +246,7 @@ impl Config {
             inner: Arc::new(inner),
         })
     }
-    
+
     /// Create a default configuration with minimal allocations.
     ///
     /// Only allocates memory for empty collections, deferring
@@ -247,7 +267,7 @@ impl Config {
             }),
         }
     }
-    
+
     /// Get paths to analyze with zero-copy access.
     ///
     /// Returns a slice reference with O(1) access time.
@@ -255,7 +275,7 @@ impl Config {
     pub fn paths(&self) -> &[PathBuf] {
         &self.inner.paths
     }
-    
+
     /// Check if a rule is enabled with O(1) lookup.
     ///
     /// Uses HashSet for constant-time membership testing.
@@ -266,73 +286,73 @@ impl Config {
         }
         self.inner.enabled_rules.is_empty() || self.inner.enabled_rules.contains(rule)
     }
-    
+
     /// Get enabled rules with zero-copy access.
     #[inline]
     pub fn enabled_rules(&self) -> &HashSet<Cow<'static, str>> {
         &self.inner.enabled_rules
     }
-    
+
     /// Get output format with zero-copy access.
     #[inline]
     pub fn output_format(&self) -> &str {
         &self.inner.output_format
     }
-    
+
     /// Get output path with minimal overhead.
     #[inline]
     pub fn output_path(&self) -> Option<&Path> {
         self.inner.output_path.as_deref()
     }
-    
+
     /// Get severity threshold (copy is free for enum).
     #[inline]
     pub fn severity_threshold(&self) -> SeverityThreshold {
         self.inner.severity_threshold
     }
-    
+
     /// Get max parallel jobs.
     #[inline]
     pub fn max_parallel_jobs(&self) -> usize {
         self.inner.max_parallel_jobs as usize
     }
-    
+
     /// Check verbose flag with bitflag access (single byte read).
     #[inline]
     pub fn is_verbose(&self) -> bool {
         self.inner.flags.get(ConfigFlags::VERBOSE)
     }
-    
+
     /// Check quiet flag.
     #[inline]
     pub fn is_quiet(&self) -> bool {
         self.inner.flags.get(ConfigFlags::QUIET)
     }
-    
+
     /// Check fail-on-warning flag.
     #[inline]
     pub fn fail_on_warn(&self) -> bool {
         self.inner.flags.get(ConfigFlags::FAIL_ON_WARN)
     }
-    
+
     /// Check color output flag.
     #[inline]
     pub fn use_color(&self) -> bool {
         self.inner.flags.get(ConfigFlags::COLOR)
     }
-    
+
     /// Check incremental mode flag.
     #[inline]
     pub fn is_incremental(&self) -> bool {
         self.inner.flags.get(ConfigFlags::INCREMENTAL)
     }
-    
+
     /// Check parallel processing flag.
     #[inline]
     pub fn is_parallel(&self) -> bool {
         self.inner.flags.get(ConfigFlags::PARALLEL)
     }
-    
+
     /// Get cache configuration with lazy access.
     ///
     /// Returns None if cache is not configured, avoiding allocation.
@@ -389,31 +409,31 @@ impl ConfigBuilder {
             flags: ConfigFlags::new(),
         }
     }
-    
+
     /// Add a path to analyze.
     pub fn add_path(mut self, path: PathBuf) -> Self {
         self.paths.push(path);
         self
     }
-    
+
     /// Enable a rule (uses Cow for potential string interning).
     pub fn enable_rule(mut self, rule: impl Into<Cow<'static, str>>) -> Self {
         self.enabled_rules.insert(rule.into());
         self
     }
-    
+
     /// Set verbose flag.
     pub fn verbose(mut self, verbose: bool) -> Self {
         self.flags.set(ConfigFlags::VERBOSE, verbose);
         self
     }
-    
+
     /// Set parallel processing flag.
     pub fn parallel(mut self, parallel: bool) -> Self {
         self.flags.set(ConfigFlags::PARALLEL, parallel);
         self
     }
-    
+
     /// Build the final Config with optimized memory layout.
     ///
     /// Converts Vecs to boxed slices to reduce memory overhead.
@@ -444,37 +464,37 @@ impl Default for ConfigBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_default_config_minimal_memory() {
         let config = Config::default_optimized();
         assert!(config.paths().is_empty());
         assert_eq!(config.output_format(), "json");
     }
-    
+
     #[test]
     fn test_config_clone_is_cheap() {
         let config = Config::default_optimized();
-        let _clone = config.clone();  // Arc clone is just a pointer copy
-        // Both configs share the same Arc, memory usage doesn't double
+        let _clone = config.clone(); // Arc clone is just a pointer copy
+                                     // Both configs share the same Arc, memory usage doesn't double
     }
-    
+
     #[test]
     fn test_rule_lookup_is_fast() {
         let mut builder = ConfigBuilder::default();
         builder = builder.enable_rule(Cow::Borrowed("arithmetic_overflow"));
         let config = builder.build();
-        
+
         assert!(config.is_rule_enabled("arithmetic_overflow"));
         assert!(!config.is_rule_enabled("nonexistent_rule"));
     }
-    
+
     #[test]
     fn test_bitflags_memory_efficiency() {
         let mut builder = ConfigBuilder::default();
         builder = builder.verbose(true).parallel(true);
         let config = builder.build();
-        
+
         assert!(config.is_verbose());
         assert!(config.is_parallel());
         assert!(!config.is_quiet());

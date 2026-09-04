@@ -112,18 +112,6 @@ fn run() -> anyhow::Result<()> {
         commands::color::set_no_color(true);
     }
 
-    // Print network indicator banner
-    let network_badge = match cli.network.as_str() {
-        "mainnet" => format!("{}", commands::color::red_bold("[ MAINNET ]")),
-        "futurenet" => format!("{}", commands::color::yellow_bold("[ FUTURENET ]")),
-        _ => format!("{}", commands::color::green_bold("[ TESTNET ]")),
-    };
-    eprintln!(
-        "{} Sanctifier — {}",
-        network_badge,
-        commands::color::dimmed(&cli.network)
-    );
-
     // Initialize structured logging before dispatching
     let log_format = match &cli.command {
         Commands::Analyze(args) if args.format == "json" || args.format == "sarif" => {
