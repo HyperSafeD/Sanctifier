@@ -64,7 +64,7 @@ soroban --version   # e.g. soroban 20.x.x
 
 ### Install with Cargo
 
-Install the Sanctifier CLI directly from crates.io:
+Install the Sanctifier CLI directly from crates.io (Rust 1.78+ required):
 
 ```bash
 cargo install sanctifier-cli --locked
@@ -73,8 +73,13 @@ cargo install sanctifier-cli --locked
 > **Note:** Ensure `~/.cargo/bin` is on your `PATH`. If not, add it to your shell profile:
 >
 > ```bash
+> # Linux/macOS
 > echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
 > source ~/.bashrc
+> 
+> # Windows PowerShell
+> $PROFILE | ForEach-Object { if (!(Test-Path $_)) { New-Item -ItemType File -Path $_ -Force } }
+> Add-Content -Path $PROFILE -Value '[Environment]::SetEnvironmentVariable("PATH", "$Env:PATH;$Env:USERPROFILE\.cargo\bin")'
 > ```
 
 Verify the installation succeeded:
@@ -88,6 +93,11 @@ Update to the latest Sanctifier binary at any time:
 ```bash
 cargo install sanctifier-cli --locked --force
 ```
+
+**Troubleshooting installation:**
+- If you see `error: could not compile 'sanctifier-cli'`, ensure your Rust toolchain is up-to-date: `rustup update stable`
+- On macOS/Linux with Z3 linker errors, install: `brew install z3` (macOS) or `sudo apt install libz3-dev` (Ubuntu)
+- To skip Z3 compilation: `cargo install sanctifier-cli --locked --no-default-features`
 
 ### Pre-built Binaries
 

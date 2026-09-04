@@ -325,6 +325,39 @@ sanctifier update
 
 ---
 
+## Troubleshooting
+
+### Installation Issues
+
+| Issue | Solution |
+|-------|----------|
+| `cargo: command not found` | Install Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+| `failed to run custom build command for 'soroban-sdk'` | Update Rust: `rustup update stable` |
+| `error: no such command: 'install'` | Restart shell or run: `source ~/.cargo/env` |
+| `sanctifier: command not found` | Add to PATH: `echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc` |
+| Z3/libz3 compilation errors | Install dev libs: `brew install z3` (macOS) or `sudo apt install libz3-dev` (Linux) |
+| Windows: VCRUNTIME140.dll error | Install [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) |
+
+### Runtime Issues
+
+| Issue | Solution |
+|-------|----------|
+| `No Soroban project found at "..."` | Ensure target directory has `Cargo.toml` with `soroban-sdk` dependency |
+| `Findings look stale after fixing` | File wasn't saved, or you're pointing at wrong path; re-run with exact path you edited |
+| `error[E0463]: can't find crate for 'core'` | Missing WASM target: `rustup target add wasm32-unknown-unknown` |
+| `sanctifier analyze` hangs | Use `--timeout 0` to disable timeout, or `--timeout 5` for 5-second limit |
+| Empty findings on valid contract | Ensure rules are enabled in `.sanctify.toml` (check `enabled_rules` list) |
+
+### Dashboard Issues
+
+| Issue | Solution |
+|-------|----------|
+| `npm ERR! Node version too old` | Requires Node.js 20+; update via [nodejs.org](https://nodejs.org) |
+| Port 3000 already in use | Kill process on port: `lsof -ti:3000 \| xargs kill -9`, then `npm run dev` |
+| Dashboard won't load JSON report | Ensure report format matches schema; validate with: `jq . report.json` |
+
+---
+
 ## CLI reference
 
 ```bash
