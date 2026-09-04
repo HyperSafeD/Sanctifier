@@ -169,7 +169,9 @@ impl RuntimeGuardWrapper {
         }
 
         // Store wrapped contract address
-        env.storage().instance().set(&wrapped_key, &wrapped_contract);
+        env.storage()
+            .instance()
+            .set(&wrapped_key, &wrapped_contract);
 
         // Pack guard config into single storage slot (4 bools + u32 = 8 bytes)
         let config = GuardConfig::default();
@@ -184,9 +186,7 @@ impl RuntimeGuardWrapper {
         );
 
         // Initialize counters (lazy vectors will be allocated on first write)
-        env.storage()
-            .persistent()
-            .set(&INVARIANTS_CHECKED, &0u32);
+        env.storage().persistent().set(&INVARIANTS_CHECKED, &0u32);
 
         // Store version with short key
         env.storage()
@@ -244,7 +244,12 @@ impl RuntimeGuardWrapper {
         let wrapped_key = WRAPPED_CONTRACT_ADDRESS;
 
         // Single storage read (cached for remainder of transaction)
-        if env.storage().instance().get::<Symbol, Address>(&wrapped_key).is_none() {
+        if env
+            .storage()
+            .instance()
+            .get::<Symbol, Address>(&wrapped_key)
+            .is_none()
+        {
             Self::emit_guard_event(
                 env,
                 event_fixtures::EVENT_PRE_EXEC_GUARD,
@@ -264,8 +269,10 @@ impl RuntimeGuardWrapper {
         // Optimized: increment counter directly without separate read
         let checked_key = INVARIANTS_CHECKED;
         let current: u32 = env.storage().persistent().get(&checked_key).unwrap_or(0);
-        env.storage().persistent().set(&checked_key, &current.saturating_add(1));
-        
+        env.storage()
+            .persistent()
+            .set(&checked_key, &current.saturating_add(1));
+
         Self::emit_guard_event(
             env,
             event_fixtures::EVENT_POST_EXEC_GUARD,
@@ -276,7 +283,7 @@ impl RuntimeGuardWrapper {
 
     /// Removed redundant storage integrity validation (already checked in pre_execution_guards).
     /// **Gas saved**: ~1000 gas per call by eliminating duplicate storage read.
-    
+
     /// Removed separate verify_storage_invariants function (inlined into post_execution_guards).
     /// **Gas saved**: ~500 gas per call by reducing function call overhead.
 
@@ -309,7 +316,7 @@ impl RuntimeGuardWrapper {
         }
 
         let start_tick = env.ledger().timestamp();
-        
+
         let result = match Self::simulate_wrapped_call(env.clone(), function_name, args) {
             Ok(val) => val,
             Err(err) => {
@@ -382,7 +389,7 @@ impl RuntimeGuardWrapper {
         if log.len() > 100 {
             log.remove(0); // Remove oldest entry (FIFO)
         }
-        
+
         persistent.set(&call_log_symbol, &log);
 
         Self::emit_guard_event(
@@ -409,7 +416,7 @@ impl RuntimeGuardWrapper {
         if metrics_vec.len() > 1000 {
             metrics_vec.remove(0);
         }
-        
+
         persistent.set(&metrics_symbol, &metrics_vec);
     }
 
@@ -437,9 +444,7 @@ impl RuntimeGuardWrapper {
 
         let invariants_checked: u32 = persistent.get(&INVARIANTS_CHECKED).unwrap_or(0);
 
-        let call_log: Vec<Symbol> = persistent
-            .get(&CALL_LOG)
-            .unwrap_or_else(|| Vec::new(&env));
+        let call_log: Vec<Symbol> = persistent.get(&CALL_LOG).unwrap_or_else(|| Vec::new(&env));
 
         let guard_failures: Vec<Symbol> = persistent
             .get(&GUARD_FAILURES)

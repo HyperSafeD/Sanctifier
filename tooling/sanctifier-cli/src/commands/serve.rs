@@ -1,13 +1,11 @@
 use anyhow::{Context, Result};
 use clap::Args;
-use sanctifier_core::analysis_cache::AnalysisCache;
-use sanctifier_core::rules::RuleRegistry;
-use sanctifier_core::{Analyzer, SanctifyConfig};
+use sanctifier_core::{
+    analysis_cache::AnalysisCache, rules::RuleRegistry, Analyzer, RuleViolation, SanctifyConfig,
+};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use tokio::fs;
-use tokio::io::AsyncWriteExt;
-use warp::Filter;
+use warp::{Filter, Rejection, Reply};
 
 #[derive(Args)]
 pub struct ServeArgs {
@@ -20,12 +18,19 @@ pub struct ServeArgs {
     bind: String,
 }
 
+#[derive(serde::Serialize, Clone)]
+struct AnalyzeResponse {
+    auth_gaps: Vec<String>,
+    panic_issues: Vec<sanctifier_core::PanicIssue>,
+    findings: Vec<RuleViolation>,
+}
+
 #[derive(Clone)]
 struct AppState {
     #[allow(dead_code)]
     registry: Arc<RuleRegistry>,
     analyzer: Arc<Analyzer>,
-    cache: Arc<Mutex<AnalysisCache<serde_json::Value>>>,
+    cache: Arc<Mutex<AnalysisCache<AnalyzeResponse>>>,
 }
 
 pub fn exec(args: ServeArgs) -> Result<()> {
@@ -72,70 +77,41 @@ async fn serve_async(args: ServeArgs) -> Result<()> {
     Ok(())
 }
 
-async fn handle_analyze(
-    body: serde_json::Value,
-    state: AppState,
-) -> Result<impl warp::Reply, warp::Rejection> {
+async fn handle_analyze(body: serde_json::Value, state: AppState) -> Result<impl Reply, Rejection> {
     let source = body
-        .get("contract")
+        .get("source")
+        .or_else(|| body.get("contract"))
+        .or_else(|| body.get("code"))
         .and_then(|v| v.as_str())
-        .ok_or_else(warp::reject::reject)?;
+        .map(|s| s.to_string())
+        .ok_or_else(|| warp::reject::reject())?;
 
-    // Write to temp file
-    let temp_dir = tempfile::tempdir().map_err(|_| warp::reject::reject())?;
-    let contract_path = temp_dir.path().join("contract.rs");
+    // Check cache
+    let cache_key = format!("{:x}", md5::compute(&source));
+    if let Ok(mut cache) = state.cache.lock() {
+        if cache.is_cached(&cache_key, &source) {
+            let cached = cache.get_or_analyze(&cache_key, &source, || unreachable!());
+            return Ok(warp::reply::json(&cached));
+        }
+    }
 
-    let mut file = fs::File::create(&contract_path)
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    file.write_all(source.as_bytes())
-        .await
-        .map_err(|_| warp::reject::reject())?;
-    file.flush().await.map_err(|_| warp::reject::reject())?;
+    // Analyze
+    let auth_gaps = state.analyzer.scan_auth_gaps(&source);
+    let panic_issues = state.analyzer.scan_panics(&source);
+    let findings = state.registry.run_all(&source);
 
-    // Check cache or analyze
-    let cache_key = format!("{:x}", md5::compute(source));
-    let analyzer = &state.analyzer;
-    let findings = {
-        let mut cache = state.cache.lock().unwrap();
-        cache.get_or_analyze(&cache_key, source, || {
-            let mut results = serde_json::Map::new();
-
-            let collisions = analyzer.scan_storage_collisions(source);
-            results.insert(
-                "storage_collisions".into(),
-                serde_json::to_value(collisions).unwrap_or_default(),
-            );
-
-            let size_warnings = analyzer.analyze_ledger_size(source);
-            results.insert(
-                "ledger_size_warnings".into(),
-                serde_json::to_value(size_warnings).unwrap_or_default(),
-            );
-
-            let unsafe_patterns = analyzer.analyze_unsafe_patterns(source);
-            results.insert(
-                "unsafe_patterns".into(),
-                serde_json::to_value(unsafe_patterns).unwrap_or_default(),
-            );
-
-            let auth_gaps = analyzer.scan_auth_gaps(source);
-            results.insert(
-                "auth_gaps".into(),
-                serde_json::to_value(auth_gaps).unwrap_or_default(),
-            );
-
-            let panic_issues = analyzer.scan_panics(source);
-            results.insert(
-                "panic_issues".into(),
-                serde_json::to_value(panic_issues).unwrap_or_default(),
-            );
-
-            serde_json::Value::Object(results)
-        })
+    let response = AnalyzeResponse {
+        auth_gaps,
+        panic_issues,
+        findings,
     };
 
-    Ok(warp::reply::json(&findings))
+    // Cache result
+    if let Ok(mut cache) = state.cache.lock() {
+        cache.get_or_analyze(&cache_key, &source, || response.clone());
+    }
+
+    Ok(warp::reply::json(&response))
 }
 
 async fn handle_rejection(err: warp::Rejection) -> Result<impl warp::Reply, warp::Rejection> {

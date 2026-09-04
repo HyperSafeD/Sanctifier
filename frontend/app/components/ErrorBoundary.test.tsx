@@ -54,7 +54,7 @@ describe("ErrorBoundary", () => {
     expect(alert).toBeInTheDocument();
   });
 
-  it("has proper focus management on reload button", () => {
+  it("has proper focus management on reload page button", () => {
     render(
       <ErrorBoundary>
         <ThrowError message="Test error" />

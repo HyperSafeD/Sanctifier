@@ -62,4 +62,4 @@ The reducer is exported as `dashboardReducer` and unit-tested directly in
 - [Report export (PDF/CSV/JSON)](docs/report-export.md)
 - [Offline and dev mode](docs/offline-dev-mode.md)
 - [Self-hosting guide](docs/self-hosting.md)
-- [Cookie & tracking audit](docs/COOKIE_AUDIT.md) - GDPR/ePrivacy compliance documentation
+- [Staged-rollout (canary) deployment strategy](docs/deployment-strategy.md)

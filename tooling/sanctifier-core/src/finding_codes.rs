@@ -71,54 +71,34 @@ pub const RAW_INVOKE_CONTRACT: &str = "S022";
 pub const SHALLOW_TEST: &str = "S023";
 /// transfer_from-style function consumes 'from' balance without allowance check.
 pub const TRANSFER_FROM_NO_ALLOWANCE: &str = "S024";
-/// Persistent or Temporary storage write without a corresponding TTL bump (extend_ttl).
+/// Missing extend_ttl call on written storage entry.
 pub const MISSING_TTL_BUMP: &str = "S025";
-/// Taint propagation finding — user-controlled data reaches a sensitive sink.
+/// Taint propagation from untrusted source to sensitive sink.
 pub const TAINT_PROPAGATION: &str = "S026";
-/// External call before state write without a reentrancy guard (static, complement to runtime guard).
+/// Static reentrancy detected.
 pub const STATIC_REENTRANCY: &str = "S027";
-/// Usage of storage/deployment APIs that were removed or renamed in Soroban SDK v22.
+/// Deprecated Soroban SDK usage.
 pub const DEPRECATED_SDK_USAGE: &str = "S028";
-/// Use of env.ledger().timestamp() as entropy for randomness.
+/// Block timestamp used for randomness.
 pub const TIMESTAMP_RANDOMNESS: &str = "S029";
-/// require_auth used instead of require_auth_for_args in multi-arg admin operations, enabling replay/scope-confusion attacks.
+/// Function with multiple Address parameters uses require_auth instead of require_auth_for_args.
 pub const REQUIRE_AUTH_FOR_ARGS: &str = "S030";
-/// Loop bound or iteration count derives from an unbounded user-controlled parameter, risking out-of-gas reverts.
+/// Unbounded loop deriving from user input.
 pub const GAS_EXHAUSTION_RISK: &str = "S031";
 
-// ── Z-series: ZK / circom integration rules ──────────────────────────────────
-//
-// The canonical Z-rule catalogue is `docs/rules/Z001.md` – `docs/rules/Z014.md`,
-// mirrored by `data/vulnerability-db.json` and `docs/zk-security-guide.md`.
-// Keep these constants in lock-step with those documents.
-
-/// Verified proof is consumed without recording a nullifier — double-spend possible.
+/// Missing nullifier check in ZK circuit / contract verification.
 pub const ZK_MISSING_NULLIFIER: &str = "Z001";
-/// Predictable on-chain entropy (timestamp, ledger sequence) used as a circuit input.
+/// Insecure randomness in ZK proof generation.
 pub const ZK_INSECURE_RANDOMNESS: &str = "Z002";
-/// Public inputs passed to the verifier are not bound to the transaction context.
+/// Missing public-input binding in ZK proof.
 pub const ZK_MISSING_PUBLIC_INPUT_BINDING: &str = "Z003";
-/// Trusted-setup / verifying-key material is hardcoded without ceremony provenance.
+/// Hardcoded trusted setup parameters in ZK verification.
 pub const ZK_HARDCODED_TRUSTED_SETUP: &str = "Z004";
-/// Verifying key is loaded from storage and used without an integrity check.
+/// Missing verifying-key integrity check.
 pub const ZK_MISSING_VK_INTEGRITY_CHECK: &str = "Z005";
-/// Proof accepted without a nonce / uniqueness check — replayable.
-pub const ZK_MISSING_PROOF_NONCE: &str = "Z006";
-/// Circuit inputs are not range-checked against the scalar field modulus.
-pub const ZK_UNDER_CONSTRAINED_INPUTS: &str = "Z007";
-/// On-chain verifier curve/field does not match the off-chain circuit.
-pub const ZK_CURVE_FIELD_MISMATCH: &str = "Z008";
-/// Proof-verification loop is bounded by an unbounded caller-supplied value.
-pub const ZK_UNBOUNDED_VERIFY_LOOP: &str = "Z009";
-/// Verifying-key rotation / upgrade path is missing an admin auth check.
+/// Unprotected verifying-key rotation function.
 pub const ZK_UNPROTECTED_VK_ROTATION: &str = "Z010";
-/// Commitment scheme reused across domains without domain separation.
-pub const ZK_COMMITMENT_REUSE_NO_DOMAIN_SEP: &str = "Z011";
-/// Shielded contract exposes more on-chain data than the privacy model claims.
-pub const ZK_PUBLIC_OUTPUT_OVEREXPOSURE: &str = "Z012";
-/// ZK-rollup style batch state transition is insufficiently validated.
-pub const ZK_INSUFFICIENT_BATCH_VALIDATION: &str = "Z013";
-/// Merkle inclusion proof is not verified against the contract's committed root.
+/// Missing Merkle tree inclusion proof.
 pub const ZK_MISSING_MERKLE_INCLUSION: &str = "Z014";
 
 /// A single finding-code entry with machine-readable code, category, and
@@ -372,10 +352,10 @@ pub fn all_finding_codes() -> Vec<FindingCode> {
             code: SHALLOW_TEST,
             category: "test_quality",
             description: "#[test] function never references a ContractClient, bypassing serialization and auth paths exercised by the Soroban host-function boundary",
-            title: "Shallow Test",
+            title: "Shallow Test Detection",
             severity: FindingSeverity::Low,
-            remediation: "Use a ContractClient in your test to exercise the full host-function boundary, including serialization and authentication paths",
-            doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/error-codes.md",
+            remediation: "Test contract interactions through generated ContractClient to exercise host function boundaries and authentication logic",
+            doc_url: "https://github.com/HyperSafeD/Sanctifier/blob/main/docs/rules/shallow-test.md",
         },
         FindingCode {
             code: TRANSFER_FROM_NO_ALLOWANCE,

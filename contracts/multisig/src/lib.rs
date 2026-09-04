@@ -309,8 +309,10 @@ impl MultisigWallet {
         Self::internal_set_threshold(&env, threshold);
     }
 
-    // ── Recovery with timelock ────────────────────────────────────────────────
+    // ── Recovery with timelock (issue #831) ──────────────────────────────────
 
+    /// Set the guardian address that can initiate stuck-state recovery.
+    /// Must be called via contract self-auth (i.e. through a passed proposal).
     pub fn set_recovery_guardian(env: Env, guardian: Address) {
         env.current_contract_address().require_auth();
         env.storage()
@@ -318,6 +320,8 @@ impl MultisigWallet {
             .set(&DataKey::RecoveryGuardian, &guardian);
     }
 
+    /// Guardian initiates a recovery: proposes new signers + threshold with a
+    /// 7-day timelock. Only one pending recovery at a time.
     pub fn initiate_recovery(
         env: Env,
         guardian: Address,
@@ -338,6 +342,7 @@ impl MultisigWallet {
         if new_threshold == 0 || new_threshold as usize > new_signers.len() as usize {
             env.panic_with_error(Error::InvalidThreshold);
         }
+        // 7-day timelock (7 * 24 * 60 * 60 seconds)
         let unlock_at = env.ledger().timestamp() + 7 * 24 * 60 * 60;
         let req = RecoveryRequest {
             new_signers,
@@ -349,6 +354,8 @@ impl MultisigWallet {
             .set(&DataKey::RecoveryRequest, &req);
     }
 
+    /// Execute a pending recovery after the timelock has expired.
+    /// Anyone can call this once the timelock passes.
     pub fn execute_recovery(env: Env) {
         let req: RecoveryRequest = env
             .storage()
@@ -367,6 +374,7 @@ impl MultisigWallet {
         env.storage().instance().remove(&DataKey::RecoveryRequest);
     }
 
+    /// Cancel a pending recovery (guardian or contract self-auth).
     pub fn cancel_recovery(env: Env, caller: Address) {
         caller.require_auth();
         let guardian: Option<Address> = env.storage().instance().get(&DataKey::RecoveryGuardian);
@@ -378,6 +386,7 @@ impl MultisigWallet {
         env.storage().instance().remove(&DataKey::RecoveryRequest);
     }
 
+    /// View the pending recovery request, if any.
     pub fn get_recovery_request(env: Env) -> Option<RecoveryRequest> {
         env.storage().instance().get(&DataKey::RecoveryRequest)
     }

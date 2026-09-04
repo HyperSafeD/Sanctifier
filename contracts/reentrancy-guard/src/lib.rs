@@ -72,7 +72,12 @@ impl<'a> ReentrancyGuard<'a> {
     /// Enter a reentrancy-protected section.
     /// Panics if reentrancy is detected.
     pub fn enter(&self) {
-        let status: u32 = self.env.storage().instance().get(&StorageKey::Guard).unwrap_or(0);
+        let status: u32 = self
+            .env
+            .storage()
+            .instance()
+            .get(&StorageKey::Guard)
+            .unwrap_or(0);
         let current = GuardStatus::from_u32(status);
 
         match enter_pure(current) {

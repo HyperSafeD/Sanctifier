@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "runtime-guard-wrapper-fuzz"
 version = "0.0.0"
 authors = ["Automatically generated"]

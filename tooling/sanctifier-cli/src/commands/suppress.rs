@@ -90,13 +90,13 @@ fn add_suppression(
         .as_array_mut()
         .context("suppression entry must be an array")?;
 
-    // Create suppression entry
+    // Create suppression entry as InlineTable
     let mut entry = InlineTable::new();
-    entry.insert("file", Value::from(file.display().to_string()));
-    entry.insert("line", Value::from(line as i64));
-    entry.insert("reason", Value::from(reason.to_owned()));
+    entry.insert("file", file.display().to_string().into());
+    entry.insert("line", (line as i64).into());
+    entry.insert("reason", reason.into());
 
-    code_array.push(toml_edit::Value::InlineTable(entry));
+    code_array.push(Value::InlineTable(entry));
 
     // Write back
     fs::write(config_path, doc.to_string())
@@ -137,21 +137,20 @@ fn list_suppressions(config_path: &Path) -> Result<()> {
         };
 
         for entry in array.iter() {
-            let Some(table) = entry.as_inline_table() else {
-                continue;
-            };
-
-            let file: &str = table
-                .get("file")
-                .and_then(|f: &toml_edit::Value| f.as_str())
+            let file = entry
+                .as_inline_table()
+                .and_then(|t| t.get("file"))
+                .and_then(|f| f.as_str())
                 .unwrap_or("<unknown>");
-            let line: i64 = table
-                .get("line")
-                .and_then(|l: &toml_edit::Value| l.as_integer())
+            let line = entry
+                .as_inline_table()
+                .and_then(|t| t.get("line"))
+                .and_then(|l| l.as_integer())
                 .unwrap_or(0);
-            let reason: &str = table
-                .get("reason")
-                .and_then(|r: &toml_edit::Value| r.as_str())
+            let reason = entry
+                .as_inline_table()
+                .and_then(|t| t.get("reason"))
+                .and_then(|r| r.as_str())
                 .unwrap_or("<no reason>");
 
             println!("  {} in {}:{}", code, file, line);
