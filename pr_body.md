@@ -8,7 +8,7 @@ This pull request addresses several issues across the Sanctifier contracts and t
 * **Documentation Formatting**: Restructured `README.md` to use better Markdown formatting, including tables and callouts.
 * **Vulnerable Contract Syntax**: Fixed a missing delimiter in `contracts/vulnerable-contract/src/lib.rs` which was breaking `cargo fmt`.
 
-## Related Issues
+## Related_Issues
 Closes #1401
 Closes #1402
 Closes #1403
