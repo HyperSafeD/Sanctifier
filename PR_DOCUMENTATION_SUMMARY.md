@@ -186,7 +186,7 @@ contracts/timelock/
 
 3. **Share quick reference** (`TIMELOCK_PR_QUICK.md`) with team
 
-4. **Once merged**, update the dashboard playground to link to this teaching contract
+4. **Once merged**, update the dashboard playground to link to this teaching contract.
 
 ---
 
