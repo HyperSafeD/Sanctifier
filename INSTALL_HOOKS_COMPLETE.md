@@ -1,4 +1,4 @@
-# Install Hooks Feature - Implementation Complete
+# Install Hooks Feature - Implementation Complete.
 
 ## Summary
 
