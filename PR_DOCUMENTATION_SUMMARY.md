@@ -14,7 +14,7 @@ Use this for the official GitHub PR description. Includes:
 - ✅ Files changed summary
 - ✅ Breaking changes statement (none)
 - ✅ Deployment notes for testnet
-- ✅ Reviewer guidance
+- ✅ Reviewer guidance.
 
 **Use case**: Paste directly into GitHub PR body for formal review.
 
