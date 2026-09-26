@@ -17,6 +17,9 @@ See [VERSIONING_POLICY.md](./VERSIONING_POLICY.md) for the detailed policy on wh
 
 ### Added
 
+- Frontend: breadcrumb navigation, a `/contracts` explorer (search, risk filter, sort, risk badges), a `/audit`
+  report page with PDF and SARIF export, and a global ⌘K / Ctrl+K command palette (#1672, #1674, #1675, #1677).
+
 - `AuthGapRule::check_many` / `AuthGapRule::fix_many` — rayon-backed batch APIs that analyse many
   sources concurrently, one task per source, with index-aligned results. Documented in
   [`docs/rules/s001-auth-gap.md`](docs/rules/s001-auth-gap.md).
