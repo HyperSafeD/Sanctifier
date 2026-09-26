@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { DashboardProvider } from "../providers/DashboardProvider";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 export const metadata: Metadata = {
   title: "Security Dashboard | Sanctifier",
@@ -12,5 +13,10 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <DashboardProvider>{children}</DashboardProvider>;
+  return (
+    <DashboardProvider>
+      <Breadcrumbs />
+      {children}
+    </DashboardProvider>
+  );
 }
