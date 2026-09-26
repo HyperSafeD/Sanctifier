@@ -14,7 +14,7 @@ const SEVERITY_COLORS: Record<string, [number, number, number]> = {
   low: [34, 197, 94],
 };
 
-function calculateScore(findings: Finding[]): number {
+export function calculateScore(findings: Finding[]): number {
   let score = 100;
   for (const f of findings) {
     score -= SEVERITY_WEIGHTS[f.severity] ?? 0;

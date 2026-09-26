@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import dynamic from "next/dynamic";
 import { AnalysisTerminal } from "../components/AnalysisTerminal";
 import { SanctityScore } from "../components/SanctityScore";
@@ -111,6 +111,31 @@ export default function ScanPage() {
       setIsAnalyzing(false);
     }
   }, [selectedFile, toast]);
+
+  // Pre-load a workspace contract when arriving from the Contracts Explorer (/scan?contract=<name>)
+  useEffect(() => {
+    const name = new URLSearchParams(window.location.search).get("contract");
+    if (!name) return;
+
+    let cancelled = false;
+    fetch(`/api/contracts/${encodeURIComponent(name)}/source`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Contract "${name}" was not found in the workspace`);
+        return (await res.json()) as { source: string };
+      })
+      .then(({ source }) => {
+        if (cancelled) return;
+        setSelectedFile(new File([source], `${name}.rs`, { type: "text/x-rust" }));
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load the selected contract");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 pb-20">

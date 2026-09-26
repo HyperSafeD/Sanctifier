@@ -13,6 +13,8 @@ export function NavBar() {
   const navLinks = [
     { name: "Scan", href: "/scan" },
     { name: "Dashboard", href: "/dashboard" },
+    { name: "Contracts", href: "/contracts" },
+    { name: "Audit", href: "/audit" },
     { name: "Playground", href: "/playground" },
     { name: "Terminal", href: "/terminal" },
   ];
@@ -22,7 +24,8 @@ export function NavBar() {
     { name: "Privacy Policy", href: "/privacy" },
   ];
 
-  const isActive = (path: string) => pathname === path;
+  const isActive = (path: string) =>
+    pathname === path || (path !== "/" && (pathname ?? "").startsWith(`${path}/`));
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md theme-high-contrast:bg-black theme-high-contrast:border-white">
