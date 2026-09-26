@@ -12,6 +12,7 @@ import { nextScanProgressPhase } from "../lib/scan-progress";
 import { getSettingsHeaders } from "../lib/settings";
 import type { Finding, Severity } from "../types";
 import Link from "next/link";
+import { useOptionalToast } from "../providers/ToastProvider";
 
 const CallGraph = dynamic(() => import("../components/CallGraph").then((m) => m.CallGraph), {
   ssr: false,
@@ -23,6 +24,7 @@ const CallGraph = dynamic(() => import("../components/CallGraph").then((m) => m.
 });
 
 export default function ScanPage() {
+  const toast = useOptionalToast();
   const [logs, setLogs] = useState<string[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [findings, setFindings] = useState<Finding[]>([]);
@@ -95,14 +97,20 @@ export default function ScanPage() {
       setHasRunScan(true);
       addLog(`Analysis complete. Found ${data.length} potential issues.`);
       addLog(`SUCCESS: Security report generated.`);
+      toast.success(
+        data.length === 0
+          ? "Scan complete: no issues found"
+          : `Scan complete: ${data.length} ${data.length === 1 ? "issue" : "issues"} found`,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Analysis failed";
       setError(msg);
       addLog(`ERROR: ${msg}`);
+      toast.error(`Scan failed: ${msg}`);
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFile]);
+  }, [selectedFile, toast]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 pb-20">
@@ -220,11 +228,15 @@ export default function ScanPage() {
                       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
                     </Link>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         const reportId = Math.random().toString(36).substring(7);
                         const shareUrl = `${window.location.origin}/share/${reportId}`;
-                        navigator.clipboard.writeText(shareUrl);
-                        alert(`Shareable link copied to clipboard: ${shareUrl}\n(Note: In a real system, this ID would be stored in the database with an expiry)`);
+                        try {
+                          await navigator.clipboard.writeText(shareUrl);
+                          toast.success("Share link copied to clipboard");
+                        } catch {
+                          toast.error("Could not copy the share link");
+                        }
                       }}
                       className="inline-flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium transition-colors"
                     >

@@ -960,14 +960,12 @@ describe("ScanPage", () => {
       const shareButton = screen.getByRole("button", { name: /Share Report/i });
       await user.click(shareButton);
 
-      // Check clipboard was called
+      // The link is copied, and feedback is a toast rather than a blocking alert()
       expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
-      
-      // Check alert was shown
-      expect(global.alert).toHaveBeenCalledTimes(1);
-      expect(global.alert).toHaveBeenCalledWith(
-        expect.stringContaining("Shareable link copied to clipboard")
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        expect.stringContaining("/share/")
       );
+      expect(global.alert).not.toHaveBeenCalled();
     });
 
     it("applies severity filtering to findings", async () => {
