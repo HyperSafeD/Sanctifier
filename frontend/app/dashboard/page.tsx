@@ -15,6 +15,9 @@ import {
   SAMPLE_JSON,
 } from "../lib/report-ingestion";
 import { exportToPdf } from "../lib/export-pdf";
+import { useOptionalToast } from "../providers/ToastProvider";
+import { TrendPanel } from "../components/TrendPanel";
+import { DashboardCardsSkeleton, FindingsListSkeleton } from "../components/Skeleton";
 import { copyShareLink, isShareLinkTooLarge } from "../lib/share-link";
 import { SeverityFilter } from "../components/SeverityFilter";
 import { FindingsList } from "../components/FindingsList";
@@ -47,6 +50,7 @@ export default function DashboardPage() {
   } = useDashboardState();
   const actions = useDashboardActions();
   const [isPending, startTransition] = useTransition();
+  const toast = useOptionalToast();
 
   const currentReport = selectedContract?.report;
   const currentContractName = selectedContract?.name ?? "default";
@@ -269,9 +273,24 @@ export default function DashboardPage() {
     if (!data) return;
     if (isShareLinkTooLarge(data as Parameters<typeof copyShareLink>[0])) {
       actions.setError("Report is too large to share via URL. Export as PDF instead.");
+      toast.error("Report is too large to share via URL. Export as PDF instead.");
       return;
     }
-    await copyShareLink(data as Parameters<typeof copyShareLink>[0]);
+    try {
+      await copyShareLink(data as Parameters<typeof copyShareLink>[0]);
+      toast.success("Share link copied to clipboard");
+    } catch {
+      toast.error("Could not copy the share link");
+    }
+  };
+
+  const handleExportPdf = async () => {
+    try {
+      await exportToPdf(findings);
+      toast.success("PDF report exported");
+    } catch {
+      toast.error("PDF export failed. Please try again.");
+    }
   };
 
   const hasData = currentReport !== null;
@@ -287,7 +306,7 @@ export default function DashboardPage() {
           loadReport={loadReport}
           handleFileUpload={handleFileUpload}
           onContractFiles={handleContractFiles}
-          exportToPdf={() => exportToPdf(findings)}
+          exportToPdf={handleExportPdf}
           shareReport={handleShareReport}
           hasData={hasData}
           isProcessing={isProcessing}
@@ -318,6 +337,13 @@ export default function DashboardPage() {
           <WorkspaceSidebar isOpen={sidebarOpen} onClose={() => actions.setSidebarOpen(false)} />
 
           <div className="flex-1 space-y-8">
+            {isProcessing && !hasData && (
+              <>
+                <DashboardCardsSkeleton />
+                <FindingsListSkeleton />
+              </>
+            )}
+
             {hasData && (
               <>
                 <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -332,6 +358,10 @@ export default function DashboardPage() {
                     />
                   </ErrorBoundary>
                 </section>
+
+                <ErrorBoundary>
+                  <TrendPanel records={trendRecords} />
+                </ErrorBoundary>
 
                 <div className="flex gap-2 border-b border-zinc-200 dark:border-zinc-700 theme-high-contrast:border-white" role="tablist" aria-label="Analysis view tabs">
                   <button
