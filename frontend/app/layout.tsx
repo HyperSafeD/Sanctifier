@@ -5,6 +5,7 @@ import { ThemeProvider } from "./providers/theme-provider";
 import { WorkspaceProvider } from "./providers/WorkspaceProvider";
 import { ToastProvider } from "./providers/ToastProvider";
 import { NavBar } from "./components/NavBar";
+import { CommandPalette } from "./components/CommandPalette";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 
 const geistSans = Geist({
@@ -65,6 +66,7 @@ export default function RootLayout({
             <ToastProvider>
               <WorkspaceProvider>
                 <NavBar />
+                <CommandPalette />
                 {children}
               </WorkspaceProvider>
             </ToastProvider>

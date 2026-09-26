@@ -137,3 +137,25 @@ body {
   border-left-color: #fca5a5;
   color: #fca5a5;
 }
+
+/* Command palette entrance animation */
+@keyframes palette-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.palette-panel {
+  animation: palette-in 0.15s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .palette-panel {
+    animation: none;
+  }
+}
