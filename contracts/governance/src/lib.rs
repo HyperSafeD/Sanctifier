@@ -86,6 +86,8 @@ pub enum Error {
     QuorumNotMet = 8,
     /// Proposer's token balance is below `proposal_threshold`.
     ProposalThresholdNotMet = 9,
+    /// `targets`, `functions`, and `args` do not all have the same length.
+    MismatchedProposalArrays = 10,
 }
 
 #[contracttype]
@@ -242,6 +244,8 @@ impl GovernorContract {
     ) -> Result<u32, Error> {
         proposer.require_auth();
 
+        validate_proposal_arrays(&targets, &functions, &args)?;
+
         let config = load_config(&env)?;
 
         let token_client = token::TokenClient::new(&env, &config.token);
@@ -351,6 +355,7 @@ impl GovernorContract {
         caller.require_auth_for_args((proposal_id,).into_val(&env));
 
         let mut proposal = load_proposal(&env, proposal_id)?;
+        validate_proposal_arrays(&proposal.targets, &proposal.functions, &proposal.args)?;
 
         if Self::state(env.clone(), proposal_id)? != ProposalState::Succeeded {
             return Err(Error::InvalidState);
@@ -423,6 +428,8 @@ impl GovernorContract {
         if (total_votes as u32) < config.min_quorum {
             return Err(Error::QuorumNotMet);
         }
+
+        validate_proposal_arrays(&proposal.targets, &proposal.functions, &proposal.args)?;
 
         let salt = env
             .crypto()
@@ -565,11 +572,25 @@ fn load_proposal(env: &Env, proposal_id: u32) -> Result<Proposal, Error> {
         .ok_or(Error::ProposalNotFound)
 }
 
+/// Ensures a proposal's `targets`, `functions`, and `args` vectors all have the
+/// same length, returning [`Error::MismatchedProposalArrays`] otherwise.
+fn validate_proposal_arrays(
+    targets: &Vec<Address>,
+    functions: &Vec<Symbol>,
+    args: &Vec<Vec<Val>>,
+) -> Result<(), Error> {
+    if targets.len() != functions.len() || targets.len() != args.len() {
+        return Err(Error::MismatchedProposalArrays);
+    }
+    Ok(())
+}
+
 /// Returns the `i`-th (target, function, args) action of a proposal, or
-/// [`Error::InvalidState`] if the three action vectors have mismatched lengths.
+/// [`Error::MismatchedProposalArrays`] if the three action vectors have
+/// mismatched lengths.
 fn proposal_action(proposal: &Proposal, i: u32) -> Result<(Address, Symbol, Vec<Val>), Error> {
-    let target = proposal.targets.get(i).ok_or(Error::InvalidState)?;
-    let function = proposal.functions.get(i).ok_or(Error::InvalidState)?;
-    let args = proposal.args.get(i).ok_or(Error::InvalidState)?;
+    let target = proposal.targets.get(i).ok_or(Error::MismatchedProposalArrays)?;
+    let function = proposal.functions.get(i).ok_or(Error::MismatchedProposalArrays)?;
+    let args = proposal.args.get(i).ok_or(Error::MismatchedProposalArrays)?;
     Ok((target, function, args))
 }
