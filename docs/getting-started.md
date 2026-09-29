@@ -1,6 +1,6 @@
 # Getting Started with Sanctifier
 
-Welcome to **Sanctifier** — the comprehensive security and formal verification suite for [Stellar Soroban](https://soroban.stellar.org/) smart contracts. This guide walks you through scanning your first Soroban contract in under 5 minutes.
+Welcome to **Sanctifier** — the comprehensive security and formal verification suite for [Stellar Soroban](https://soroban.stellar.org/) smart contracts. This guide walks you through scanning your first Soroban contract in under five minutes.
 
 > **Recording:** An asciinema walkthrough of this tutorial is available at
 > [`docs/assets/getting-started.cast`](./assets/getting-started.cast). Play it with
@@ -10,7 +10,7 @@ Welcome to **Sanctifier** — the comprehensive security and formal verification
 
 ## 1. Prerequisites
 
-Before installing Sanctifier, make sure the following are present on your system.
+Before installing Sanctifier, make sure the following tools are available on your system.
 
 ### Rust & Cargo
 
@@ -64,7 +64,7 @@ soroban --version   # e.g. soroban 20.x.x
 
 ### Install with Cargo
 
-Install the Sanctifier CLI directly from crates.io (Rust 1.78+ required):
+Install the Sanctifier CLI directly from crates.io (Rust 1.78 or later is required):
 
 ```bash
 cargo install sanctifier-cli --locked
@@ -88,20 +88,20 @@ Verify the installation succeeded:
 sanctifier --version
 ```
 
-Update to the latest Sanctifier binary at any time:
+Update to the latest Sanctifier binary at any time with:
 
 ```bash
 cargo install sanctifier-cli --locked --force
 ```
 
-**Troubleshooting installation:**
+**Installation troubleshooting:**
 - If you see `error: could not compile 'sanctifier-cli'`, ensure your Rust toolchain is up-to-date: `rustup update stable`
 - On macOS/Linux with Z3 linker errors, install: `brew install z3` (macOS) or `sudo apt install libz3-dev` (Ubuntu)
 - To skip Z3 compilation: `cargo install sanctifier-cli --locked --no-default-features`
 
 ### Pre-built Binaries
 
-Direct downloads for your platform (no Rust toolchain required):
+Download a prebuilt binary for your platform (no Rust toolchain is required):
 
 | Platform | Download |
 |----------|----------|
@@ -146,7 +146,7 @@ sha256sum -c sanctifier-linux-amd64.sha256
 
 ### Shell Completions
 
-Sanctifier supports shell completions for bash, zsh, fish, powershell, and elvish. Generate completions for your shell:
+Sanctifier supports shell completions for Bash, Zsh, Fish, PowerShell, and Elvish. Generate completions for your shell:
 
 **Bash:**
 ```bash
@@ -202,7 +202,7 @@ crate-type = ["cdylib"]
 soroban-sdk = { version = "21.7.0", features = ["testutils"] }
 ```
 
-Replace `src/lib.rs` with this intentionally vulnerable contract — it has three findings
+Replace `src/lib.rs` with this intentionally vulnerable contract. It contains three findings
 for Sanctifier to catch:
 
 ### Example Contract
@@ -258,7 +258,7 @@ Sanctifier will print findings for the three issues intentionally left in the co
    -> Function `increment`: Unchecked `+` (src/lib.rs:increment)
 ```
 
-### Other ways to invoke
+### Other ways to invoke Sanctifier
 
 | Target | Command |
 |--------|---------|
@@ -269,7 +269,7 @@ Sanctifier will print findings for the three issues intentionally left in the co
 
 ### Machine-readable output
 
-For scripting or CI, run with `--format json` instead of the default human-readable
+For scripts or CI, use `--format json` instead of the default human-readable
 terminal output:
 
 ```bash
@@ -312,7 +312,7 @@ Filter the JSON output with [`jq`](https://jqlang.org/) to show only critical fi
 sanctifier analyze ./my-contract --format json | jq '.rule_violations[] | select(.severity == "Critical")'
 ```
 
-A [SARIF](https://sarifweb.azurewebsites.net/) output format is also available for GitHub code scanning:
+SARIF output is also available for GitHub code scanning:
 
 ```bash
 sanctifier analyze ./my-contract --format sarif

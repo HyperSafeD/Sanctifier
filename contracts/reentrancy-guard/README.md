@@ -1,13 +1,15 @@
 # Reentrancy Guard
 
 `reentrancy-guard` is a small Soroban reference module that enforces a single
-contract-local mutex using the instance-storage key `RE_GRD`.
+contract-local mutex using the type-safe `StorageKey::Guard` `#[contracttype]`
+enum variant in instance storage.
 
 ## Invariant
 
 - At most one re-entrant call is possible; once the guard is locked, every
   subsequent nested call reverts until the current execution exits.
-- The mutex is stored under the short symbol `RE_GRD`.
+- The mutex uses `StorageKey::Guard`, avoiding string/symbol key collisions with
+  application-owned storage entries.
 - The protection is contract-local only. It is not a cross-contract lock and
   does not synchronize state across different contract addresses.
 
