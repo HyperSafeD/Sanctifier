@@ -48,6 +48,9 @@ impl UnsafePrngExample {
     }
 
     /// UNSAFE: Uses ledger timestamp as the sole source of randomness seed.
+    /// WARNING: Ledger timestamp and sequence are highly predictable by validators and
+    /// publicly visible. Never use them for on-chain randomness! Use `env.prng()` or 
+    /// a commit-reveal scheme instead.
     /// Flagged by the timestamp_randomness rule (S029).
     pub fn pick_winner_by_timestamp(env: Env, participants: Vec<Address>) -> Address {
         let seed = env.ledger().timestamp();
@@ -55,11 +58,27 @@ impl UnsafePrngExample {
         participants.get(idx as u32).unwrap()
     }
 
+    /// SAFE: Uses `env.prng()` to securely pick a winner.
+    /// This is the secure alternative to `pick_winner_by_timestamp`.
+    pub fn pick_winner_secure(env: Env, participants: Vec<Address>) -> Address {
+        let idx = env.prng().gen_range(0..participants.len() as u64);
+        participants.get(idx as u32).unwrap()
+    }
+
     /// UNSAFE: Timestamp used directly to derive a rand value.
+    /// WARNING: Ledger timestamp and sequence are highly predictable by validators and
+    /// publicly visible. Never use them for on-chain randomness! Use `env.prng()` or 
+    /// a commit-reveal scheme instead.
     /// Flagged by the timestamp_randomness rule (S029).
     pub fn rand_from_timestamp(env: Env) -> u64 {
         let rand = env.ledger().timestamp() % 1000;
         rand
+    }
+
+    /// SAFE: Uses `env.prng()` to securely generate a random value.
+    /// This is the secure alternative to `rand_from_timestamp`.
+    pub fn rand_secure(env: Env) -> u64 {
+        env.prng().gen_range(0..1000)
     }
 
     /// SAFE: Timestamp used only for deadline/expiry checks.
