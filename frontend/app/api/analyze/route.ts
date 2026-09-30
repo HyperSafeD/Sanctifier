@@ -5,7 +5,7 @@ import os from "os";
 import { mkdtemp, rm, writeFile } from "fs/promises";
 import { normalizeReport, transformReport } from "../../lib/transform";
 import { SANCTIFIER_BIN, RATE_LIMIT_REQUESTS_PER_MINUTE } from "../../lib/env";
-import { updateRecentFindings } from "../recent-findings/route";
+import { logger } from "../../../lib/logger";
 
 export const runtime = "nodejs";
 
@@ -71,21 +71,17 @@ type ProcessResult = {
   exitCode: number | null;
 };
 
-function runAnalyzeCommand(
-  contractPath: string,
-  timeoutMs: number,
-  settings?: { binPath?: string; customRulesPath?: string }
-): Promise<ProcessResult> {
+function runAnalyzeCommand(contractPath: string, timeoutMs: number, requestId?: string): Promise<ProcessResult> {
   return new Promise((resolve, reject) => {
-    const bin = settings?.binPath || SANCTIFIER_BIN;
-    const args = ["analyze", "--format", "json", contractPath];
-    if (settings?.customRulesPath) {
-      args.push("--custom-rules", settings.customRulesPath);
-    }
-    const cliProcess = spawn(bin, args, {
-      cwd: REPO_ROOT,
-      env: { ...process.env, FORCE_COLOR: "0" },
-    });
+    const reqId = requestId || `req-${Math.random().toString(36).substring(2, 11)}`;
+    const cliProcess = spawn(
+      SANCTIFIER_BIN,
+      ["analyze", "--format", "json", "--request-id", reqId, contractPath],
+      {
+        cwd: REPO_ROOT,
+        env: { ...process.env, SANCTIFIER_REQUEST_ID: reqId, FORCE_COLOR: "0" },
+      }
+    );
     let stdout = "";
     let stderr = "";
     let timeoutId: NodeJS.Timeout | null = null;
@@ -262,15 +258,33 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const requestId = request.headers.get("x-request-id") || `req-${Math.random().toString(36).substring(2, 11)}`;
+  const startTime = Date.now();
   const clientIP = getClientIP(request);
   const rateLimitResult = checkRateLimit(clientIP);
-  
+
+  logger.info("Received contract analysis request", {
+    request_id: requestId,
+    path: "/api/analyze",
+    method: "POST",
+    client_ip: clientIP,
+  });
+
   if (!rateLimitResult.allowed) {
+    logger.warn("Analysis request rate limited", {
+      request_id: requestId,
+      path: "/api/analyze",
+      client_ip: clientIP,
+      retry_after: rateLimitResult.retryAfter,
+    });
     return Response.json(
       { error: "Rate limit exceeded. Please try again later." },
       { 
         status: 429,
-        headers: { "Retry-After": rateLimitResult.retryAfter.toString() }
+        headers: {
+          "Retry-After": rateLimitResult.retryAfter.toString(),
+          "x-request-id": requestId,
+        }
       }
     );
   }
@@ -289,13 +303,16 @@ export async function POST(request: NextRequest) {
           : null;
 
       if (!source || !source.trim()) {
-        return Response.json({ error: "Provide JSON body as { source: string }." }, { status: 400 });
+        return Response.json(
+          { error: "Provide JSON body as { source: string }." },
+          { status: 400, headers: { "x-request-id": requestId } }
+        );
       }
 
       if (Buffer.byteLength(source, "utf8") > MAX_FILE_SIZE_BYTES) {
         return Response.json(
           { error: `Source exceeds limit of ${MAX_FILE_SIZE_BYTES / 1024} KB.` },
-          { status: 413 }
+          { status: 413, headers: { "x-request-id": requestId } }
         );
       }
 
@@ -304,35 +321,58 @@ export async function POST(request: NextRequest) {
       const formData = await request.formData();
       sourcePayload = await parseMultipartSource(formData);
       if (!sourcePayload) {
-        return Response.json({ error: "Attach a Rust .rs file in `contract` field." }, { status: 400 });
+        return Response.json(
+          { error: "Attach a Rust .rs file in `contract` field." },
+          { status: 400, headers: { "x-request-id": requestId } }
+        );
       }
     } else {
       return Response.json(
         { error: "Content-Type must be multipart/form-data or application/json." },
-        { status: 400 }
+        { status: 400, headers: { "x-request-id": requestId } }
       );
     }
 
-    // Capture file metadata for the audit record now that we have a parsed payload.
     if (!looksLikeSorobanContract(sourcePayload.source)) {
+      logger.warn("Uploaded source is not a valid Soroban contract", {
+        request_id: requestId,
+        path: "/api/analyze",
+        file_name: sourcePayload.fileName,
+      });
       return Response.json(
         { error: "Source is not a Soroban contract (missing soroban-sdk import)." },
-        { status: 422 }
+        { status: 422, headers: { "x-request-id": requestId } }
       );
     }
 
     const contractPath = path.join(tempDir, sourcePayload.fileName);
     await writeFile(contractPath, sourcePayload.source, "utf8");
 
-    const { stdout, stderr, exitCode } = await runAnalyzeCommand(contractPath, EXECUTION_TIMEOUT_MS, settingsFromHeaders);
+    const { stdout, stderr, exitCode } = await runAnalyzeCommand(contractPath, EXECUTION_TIMEOUT_MS, requestId);
     const report = parseJsonResponse(stdout);
+    const durationMs = Date.now() - startTime;
 
     if (report) {
-      const normalized = normalizeReport(report);
-      const findings = transformReport(normalized);
-      updateRecentFindings(findings);
-      return Response.json(normalized);
+      logger.info("Contract analysis completed successfully", {
+        request_id: requestId,
+        path: "/api/analyze",
+        status_code: 200,
+        duration_ms: durationMs,
+        file_name: sourcePayload.fileName,
+      });
+      return Response.json(normalizeReport(report), {
+        headers: { "x-request-id": requestId },
+      });
     }
+
+    logger.error("Contract analysis CLI execution failed", {
+      request_id: requestId,
+      path: "/api/analyze",
+      status_code: 500,
+      duration_ms: durationMs,
+      exit_code: exitCode,
+      stderr: stderr.trim(),
+    });
 
     return Response.json(
       {
@@ -341,7 +381,7 @@ export async function POST(request: NextRequest) {
           stdout.trim() ||
           `Contract analysis failed with exit code ${exitCode ?? "unknown"}.`,
       },
-      { status: 500 }
+      { status: 500, headers: { "x-request-id": requestId } }
     );
   } catch (error) {
     if (error instanceof Error && error.message.startsWith("PAYLOAD_TOO_LARGE:")) {

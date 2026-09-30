@@ -10,7 +10,7 @@ Get up and running with automated Soroban runtime guard deployment in 10 minutes
 - [ ] Environment configured
 - [ ] First deployment successful
 
-## 🚀 5-Minute Setup
+## 🚀 5-Minute Setup.
 
 ### Step 1: Get Your Secret Key (1 min)
 

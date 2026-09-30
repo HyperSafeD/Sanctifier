@@ -46,6 +46,10 @@ pub fn build_sarif_log(
     tool_version: &str,
     results: Vec<serde_json::Value>,
 ) -> serde_json::Value {
+    let network = std::env::var("SOROBAN_NETWORK")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "testnet".to_string());
     serde_json::json!({
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
         "version": "2.1.0",
@@ -55,6 +59,9 @@ pub fn build_sarif_log(
                     "name": tool_name,
                     "version": tool_version,
                     "informationUri": "https://github.com/HyperSafeD/Sanctifier",
+                    "properties": {
+                        "network": network
+                    },
                     "rules": []
                 }
             },

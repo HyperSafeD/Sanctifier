@@ -23,18 +23,26 @@ function applyTheme(theme: Theme) {
   const root = document.documentElement;
   const resolved = theme === "system" ? resolveSystemTheme() : theme;
 
-  // Remove all theme classes first
-  root.classList.remove("dark", "theme-high-contrast");
-  root.removeAttribute("data-theme");
+  const updateTheme = () => {
+    // Remove all theme classes first
+    root.classList.remove("dark", "theme-high-contrast");
+    root.removeAttribute("data-theme");
 
-  if (theme === "high-contrast") {
-    root.classList.add("theme-high-contrast");
-    root.dataset.theme = "high-contrast";
+    if (theme === "high-contrast") {
+      root.classList.add("theme-high-contrast");
+      root.dataset.theme = "high-contrast";
+    } else {
+      root.dataset.theme = resolved;
+      root.classList.toggle("dark", resolved === "dark");
+    }
+    root.style.colorScheme = theme === "high-contrast" ? "dark" : resolved;
+  };
+
+  if ("startViewTransition" in document) {
+    (document.startViewTransition as any)(updateTheme);
   } else {
-    root.dataset.theme = resolved;
-    root.classList.toggle("dark", resolved === "dark");
+    updateTheme();
   }
-  root.style.colorScheme = theme === "high-contrast" ? "dark" : resolved;
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {

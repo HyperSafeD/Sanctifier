@@ -1,17 +1,21 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import { AnalysisTerminal } from "../components/AnalysisTerminal";
 import { SanctityScore } from "../components/SanctityScore";
 import { FindingsList } from "../components/FindingsList";
-import { ZkFindingsPanel } from "../components/ZkFindingsPanel";
 import { SeverityFilter } from "../components/SeverityFilter";
 import { ErrorBoundary } from "../components/ErrorBoundary";
+import { ZkFindingsPanel } from "../components/ZkFindingsPanel";
 import { nextScanProgressPhase } from "../lib/scan-progress";
 import { getSettingsHeaders } from "../lib/settings";
-import type { Finding, Severity } from "../types";
+import { exportToPdf } from "../lib/export-pdf";
+import { onShortcut } from "../lib/keyboard-shortcuts";
+import type { Finding } from "../types";
 import Link from "next/link";
+import { useOptionalToast } from "../providers/ToastProvider";
+import { useScan } from "./ScanContext";
 
 const CallGraph = dynamic(() => import("../components/CallGraph").then((m) => m.CallGraph), {
   ssr: false,
@@ -23,31 +27,66 @@ const CallGraph = dynamic(() => import("../components/CallGraph").then((m) => m.
 });
 
 export default function ScanPage() {
-  const [logs, setLogs] = useState<string[]>([]);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [findings, setFindings] = useState<Finding[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [severityFilter, setSeverityFilter] = useState<Severity | "all">("all");
+  const toast = useOptionalToast();
+  const {
+    logs,
+    isAnalyzing,
+    findings,
+    error,
+    selectedFile,
+    severityFilter,
+    hasRunScan,
+    setHasRunScan,
+    addLog,
+    setLogs,
+    setIsAnalyzing,
+    setFindings,
+    setError,
+    setSelectedFile,
+    setSeverityFilter,
+    resetScan,
+  } = useScan();
 
-  const addLog = (text: string) => {
-    setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] ${text}`]);
-  };
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const isDraggingRef = useRef(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setSelectedFile(file);
-      setError(null);
-      setFindings([]);
-      setLogs([]);
+  const processFiles = useCallback((files: FileList | null) => {
+    if (!files) return;
+    const newFiles = Array.from(files).filter((f) => f.name.endsWith(".rs"));
+    if (newFiles.length > 0) {
+      setSelectedFile(newFiles[0]);
+      resetScan();
     }
-  };
+  }, [setSelectedFile, resetScan]);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    processFiles(e.target.files);
+  }, [processFiles]);
+
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingRef.current = true;
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingRef.current = false;
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent<HTMLLabelElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDraggingRef.current = false;
+    processFiles(e.dataTransfer.files);
+  }, [processFiles]);
 
   const runAnalysis = useCallback(async () => {
     if (!selectedFile) return;
 
     setIsAnalyzing(true);
+    setHasRunScan(false);
     setError(null);
     setFindings([]);
     setLogs([]);
@@ -59,39 +98,96 @@ export default function ScanPage() {
       const formData = new FormData();
       formData.append("contract", selectedFile);
 
-      // We start a "simulated" log stream since our POST is atomic
-      let phaseIndex = 0;
+      addLog(nextScanProgressPhase(0));
+      let phaseIndex = 1;
       const logsTimer = setInterval(() => {
         const phase = nextScanProgressPhase(phaseIndex);
         phaseIndex += 1;
-        setLogs((prev) => [...prev, `[${new Date().toLocaleTimeString()}] [INFO] ${phase}`]);
+        addLog(phase);
       }, 1500);
 
       const response = await fetch("/api/analyze", {
         method: "POST",
         body: formData,
-        headers: getSettingsHeaders() as Record<string, string>,
+        headers: getSettingsHeaders(),
       });
 
       clearInterval(logsTimer);
 
-      const data = await response.json();
+      let data: Finding[];
+      try {
+        data = await response.json();
+      } catch {
+        throw new Error("Analysis failed");
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || "Analysis failed");
+        throw new Error((data as unknown as { error?: string }).error ?? "Analysis failed");
       }
 
       setFindings(data);
-      addLog(`Analysis complete. Found ${data.length} potential issues.`);
+      setHasRunScan(true);
+      addLog(`Analysis complete for ${selectedFile.name}. Found ${data.length} potential issues.`);
+      addLog(`All analyses complete. Found ${data.length} potential issues total.`);
       addLog(`SUCCESS: Security report generated.`);
+      toast.success(
+        data.length === 0
+          ? "Scan complete: no issues found"
+          : `Scan complete: ${data.length} ${data.length === 1 ? "issue" : "issues"} found`,
+      );
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Analysis failed";
       setError(msg);
       addLog(`ERROR: ${msg}`);
+      toast.error(`Scan failed for ${selectedFile.name}: ${msg}`);
     } finally {
       setIsAnalyzing(false);
     }
-  }, [selectedFile]);
+  }, [selectedFile, addLog, setIsAnalyzing, setHasRunScan, setError, setFindings, setLogs, toast]);
+
+  // Keyboard shortcuts: ⌘U upload, ⌘↵ run, ⌘S export the report
+  useEffect(() => onShortcut("upload", () => fileInputRef.current?.click()), []);
+  useEffect(() => onShortcut("run", () => void runAnalysis()), [runAnalysis]);
+  useEffect(
+    () =>
+      onShortcut("save", async () => {
+        if (findings.length === 0) {
+          toast.info("Run a scan first — there is no report to export yet.");
+          return;
+        }
+        try {
+          await exportToPdf(findings, "Sanctifier Scan Report");
+        } catch {
+          toast.error("PDF export failed. Please try again.");
+        }
+      }),
+    [findings, toast],
+  );
+
+  // Pre-load a workspace contract when arriving from the Contracts Explorer (/scan?contract=<name>)
+  useEffect(() => {
+    const name = new URLSearchParams(window.location.search).get("contract");
+    if (!name) return;
+
+    let cancelled = false;
+    fetch(`/api/contracts/${encodeURIComponent(name)}/source`)
+      .then(async (res) => {
+        if (!res.ok) throw new Error(`Contract "${name}" was not found in the workspace`);
+        return (await res.json()) as { source: string };
+      })
+      .then(({ source }) => {
+        if (cancelled) return;
+        setSelectedFile(new File([source], `${name}.rs`, { type: "text/x-rust" }));
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return;
+        setError(err instanceof Error ? err.message : "Failed to load the selected contract");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setSelectedFile, setError]);
 
   return (
     <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 pb-20">
@@ -110,16 +206,25 @@ export default function ScanPage() {
         <section className="flex flex-col items-center gap-8">
           <div className="w-full max-w-2xl group relative">
             <div className={`absolute -inset-1 bg-gradient-to-r from-emerald-500 to-blue-500 rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-1000 ${isAnalyzing ? "animate-pulse" : ""}`} />
-            <label className={`relative block overflow-hidden rounded-2xl border-2 border-dashed transition-all cursor-pointer bg-white dark:bg-zinc-900 shadow-xl ${selectedFile
-              ? "border-emerald-500/50 bg-emerald-500/5"
-              : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
-              }`}>
+            <label
+              className={`relative block overflow-hidden rounded-2xl border-2 border-dashed transition-all cursor-pointer bg-white dark:bg-zinc-900 shadow-xl ${
+                selectedFile
+                  ? "border-emerald-500/50 bg-emerald-500/5"
+                  : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
+              }`}
+              aria-label="Choose a Soroban contract source file to scan"
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+            >
               <input
+                ref={fileInputRef}
                 type="file"
                 accept=".rs"
                 onChange={handleFileChange}
                 className="hidden"
                 disabled={isAnalyzing}
+                aria-label="Choose a Soroban contract source file to scan"
               />
               <div className="px-8 py-12 flex flex-col items-center text-center space-y-4">
                 <div className={`w-16 h-16 rounded-2xl flex items-center justify-center transition-colors ${selectedFile ? "bg-emerald-500/10 text-emerald-500" : "bg-zinc-100 dark:bg-zinc-800 text-zinc-400"}`}>
@@ -187,7 +292,7 @@ export default function ScanPage() {
         )}
 
         {/* Results Section */}
-        {findings.length > 0 && !isAnalyzing && (
+        {hasRunScan && !isAnalyzing && (
           <section className="space-y-12 animate-in fade-in duration-1000 pt-10 border-t border-zinc-200 dark:border-zinc-800">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <ErrorBoundary>
@@ -208,11 +313,15 @@ export default function ScanPage() {
                       <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
                     </Link>
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         const reportId = Math.random().toString(36).substring(7);
                         const shareUrl = `${window.location.origin}/share/${reportId}`;
-                        navigator.clipboard.writeText(shareUrl);
-                        alert(`Shareable link copied to clipboard: ${shareUrl}\n(Note: In a real system, this ID would be stored in the database with an expiry)`);
+                        try {
+                          await navigator.clipboard.writeText(shareUrl);
+                          toast.success("Share link copied to clipboard");
+                        } catch {
+                          toast.error("Could not copy the share link");
+                        }
                       }}
                       className="inline-flex items-center gap-2 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 font-medium transition-colors"
                     >
@@ -238,14 +347,13 @@ export default function ScanPage() {
             <div className="space-y-6 pt-10 border-t border-zinc-200 dark:border-zinc-800">
               <h2 className="text-2xl font-bold tracking-tight">System Integrity Map</h2>
               <ErrorBoundary>
-                <CallGraph nodes={[]} edges={[]} /> {/* Call graph would need more data from API if desired */}
+                <CallGraph nodes={[]} edges={[]} />
                 <p className="text-xs text-zinc-500 text-center italic mt-4">Note: Visualizing complex call structures requires multiple analysis passes.</p>
               </ErrorBoundary>
             </div>
           </section>
         )}
       </main>
-
     </div>
   );
 }

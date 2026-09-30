@@ -7,9 +7,9 @@ Sanctifier rule using the YAML rule format.
 
 ## Prerequisites
 
-- Sanctifier CLI installed (`cargo install sanctifier` or see [Getting Started](../getting-started.md))
-- A Soroban smart-contract project to lint
-- Basic familiarity with YAML
+- **Sanctifier CLI installed** — Install via `cargo install sanctifier-cli` (or see [Installation Options](../README.md#install-options))
+- **A Soroban smart-contract project** to lint
+- **Basic familiarity with YAML** syntax
 
 ---
 
@@ -105,7 +105,7 @@ panic!("unreachable"); // sanctifier: ignore[no_panic_in_contractimpl]
 | `method_call`       | `method`, `receiver?`                              | Method calls (`obj.method(...)`)     |
 | `storage_operation` | `operation` (`get`/`set`/`remove`), `key_pattern?` | DataStore read/write patterns        |
 
-See [`custom-rules.example.yaml`](../custom-rules.example.yaml) for one example of each type.
+See [`custom-rules.example.yaml`](../custom-rules.example.yaml) for an example of each type.
 
 ---
 
@@ -211,6 +211,14 @@ fn collect_pat_idents(pat: &Pat, out: &mut HashSet<String>) {
 
 Not handling `Pat::Tuple` / `Pat::Struct` is the most common source of false negatives
 in taint passes — taint silently disappears at the destructure boundary.
+
+## 8. ZK Rules (Z-series) Namespace
+
+Sanctifier introduces a dedicated `Z001-Z0NN` numbering convention for Zero-Knowledge (ZK)-specific vulnerability rules, operating alongside the existing `S0xx` static-rule namespace.
+
+When authoring ZK rules:
+- **Namespace:** All ZK rules MUST use the `Z` prefix (e.g., `Z001`, `Z002`).
+- **Severity Mapping:** ZK vulnerabilities often have different blast-radius characteristics than typical Soroban bugs. Explicit severity mapping guidance is required to ensure consistent rating by reviewers. Refer to `schemas/severity-taxonomy.schema.json` and `data/sarif/severity-map.yaml` for specific vulnerability classes (e.g., missing nullifier checks, weak fiat-shamir).
 
 ---
 

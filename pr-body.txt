@@ -23,7 +23,7 @@ Closes #1182
 Closes #1198
 Closes #1202
 
-## Files Created
+## Files-Created
 
 - .github/workflows/cross-network-tests.yml
 - CI_AND_ZK_RULES_IMPLEMENTATION_PLAN.md

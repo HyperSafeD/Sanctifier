@@ -4,6 +4,24 @@
 
 ---
 
+## 🆕 Recent Improvements
+
+### Rule Engine & Z3 Backend Hardening (Latest)
+
+**What's New:**
+- ✅ **Rule Engine Orchestration:** 20 new integration tests covering registry population, determinism, custom regex rules, and workspace-scale e2e scans
+- ✅ **Z3 Backend Refactor:** Modular architecture with clear boundaries (types, invariants, backend, benchmark) + 21 integration tests
+- ✅ **CI Coverage:** Dedicated `rule-engine-e2e` and `smt-module-boundaries` jobs ensure production reliability
+- ✅ **Documentation:** Complete formal specs and test suite references
+
+**Key Benefits:**
+- Production-ready rule engine with predictable outputs
+- Cleaner Z3 backend module boundaries for easier maintenance
+- Comprehensive test coverage in CI
+- Stable JSON output formats
+
+---
+
 ## 🚀 Getting Started (Start Here!)
 
 ### For Beginners
@@ -68,6 +86,14 @@
 - cargo-fuzz / cargo-bolero coverage-guided harness (nightly)
 - Cross-contract message wire format stability
 - Local reproduction recipes
+
+### Fuzz-Harness Generator
+
+**[docs/fuzz-harness-generator.md](docs/fuzz-harness-generator.md)** - `sanctifier harness` CLI command
+
+- Generates native `afl.rs` / `honggfuzz` fuzz-target scaffolds from a contract's ABI
+- Bridges static analysis (AST-level function/parameter extraction) to dynamic analysis
+- `SorobanArbitrary`-based input generation, crate auto-detection, usage examples
 
 ### Technical Architecture
 

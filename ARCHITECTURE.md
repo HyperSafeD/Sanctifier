@@ -409,13 +409,7 @@ Day 1-N: Continuous Monitoring
 └─ health_check() every 6 hours
    ├─ Contract state verified
    ├─ Metrics collected
-   └─ Manifest updated
 
-Day N+: Reporting
-├─ Review .deployment-manifest.json
-├─ Analyze .deployment.log
-├─ Check GitHub Actions artifacts
-└─ Generate compliance report
 ```
 
 ---

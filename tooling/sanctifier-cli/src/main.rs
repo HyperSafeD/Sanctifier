@@ -23,6 +23,11 @@ struct Cli {
     #[arg(long)]
     pub telemetry: bool,
 
+    /// Target network (testnet, futurenet, mainnet).
+    /// Overrides SOROBAN_NETWORK env var. Default: testnet.
+    #[arg(short = 'n', long, global = true, default_value = "testnet")]
+    pub network: String,
+
     #[command(subcommand)]
     command: Commands,
 }
@@ -63,6 +68,8 @@ pub enum Commands {
     Verify(commands::verify::VerifyArgs),
     /// Verify an on-chain deployment matches expected local source or a pinned hash
     VerifyDeployment(commands::verify_deployment::VerifyDeploymentArgs),
+    /// Show version information
+    Version(commands::version::VersionArgs),
     /// Analyze an entire Cargo workspace (multiple contracts/libs)
     Workspace(commands::workspace::WorkspaceArgs),
     /// Watch for file changes and auto-rerun analysis
@@ -89,11 +96,16 @@ pub enum Commands {
     Badge(commands::badge::BadgeArgs),
     /// Compare two scan results and show new/resolved findings
     Diff(commands::diff::DiffArgs),
+    /// Generate native AFL/honggfuzz fuzz-harness scaffolds from a contract's ABI
+    Harness(commands::harness::HarnessArgs),
 }
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("Error: {}", err);
+        // Use miette's graphical report handler for rich, contextual error output.
+        // The error chain is preserved and displayed with source context.
+        let report = miette::Report::msg(format!("{err:#}"));
+        eprintln!("{:?}", report);
         std::process::exit(sanctifier_cli::exit_codes::ERROR);
     }
 }
@@ -116,6 +128,21 @@ fn run() -> anyhow::Result<()> {
         eprintln!("Warning: failed to init logging: {e}");
     }
 
+    // Print network indicator banner (suppressed in JSON log mode so stderr
+    // stays machine-parseable).
+    if log_format != logging::LogOutput::Json {
+        let network_badge = match cli.network.as_str() {
+            "mainnet" => commands::color::red_bold("[ MAINNET ]").to_string(),
+            "futurenet" => commands::color::yellow_bold("[ FUTURENET ]").to_string(),
+            _ => commands::color::green_bold("[ TESTNET ]").to_string(),
+        };
+        eprintln!(
+            "{} Sanctifier — {}",
+            network_badge,
+            commands::color::dimmed(&cli.network)
+        );
+    }
+
     match cli.command {
         Commands::Analyze(args) => commands::analyze::exec(args),
         Commands::Init(args) => commands::init::exec(args, None),
@@ -132,6 +159,7 @@ fn run() -> anyhow::Result<()> {
         Commands::Reentrancy(args) => commands::reentrancy::exec(args),
         Commands::Verify(args) => commands::verify::exec(args),
         Commands::VerifyDeployment(args) => commands::verify_deployment::exec(args),
+        Commands::Version(args) => commands::version::exec(args),
         Commands::Workspace(args) => commands::workspace::exec(args),
         Commands::Watch(args) => commands::watch::exec(args),
         Commands::Completions { shell } => {
@@ -146,5 +174,6 @@ fn run() -> anyhow::Result<()> {
         Commands::Export(args) => commands::export::exec(args),
         Commands::Badge(args) => commands::badge::exec(args),
         Commands::Diff(args) => commands::diff::exec(args),
+        Commands::Harness(args) => commands::harness::exec(args),
     }
 }

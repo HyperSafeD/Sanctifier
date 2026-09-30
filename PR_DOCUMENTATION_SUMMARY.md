@@ -14,7 +14,7 @@ Use this for the official GitHub PR description. Includes:
 - ✅ Files changed summary
 - ✅ Breaking changes statement (none)
 - ✅ Deployment notes for testnet
-- ✅ Reviewer guidance
+- ✅ Reviewer guidance.
 
 **Use case**: Paste directly into GitHub PR body for formal review.
 
@@ -186,7 +186,7 @@ contracts/timelock/
 
 3. **Share quick reference** (`TIMELOCK_PR_QUICK.md`) with team
 
-4. **Once merged**, update the dashboard playground to link to this teaching contract
+4. **Once merged**, update the dashboard playground to link to this teaching contract.
 
 ---
 

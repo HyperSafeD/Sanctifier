@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "governance-contract"
 version = "0.2.0"
 edition = "2021"

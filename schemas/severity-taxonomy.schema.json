@@ -8,7 +8,8 @@
       "additionalProperties": {
         "type": "string",
         "enum": ["low", "medium", "high", "critical"]
-      }
+      },
+      "description": "Maps generic severities (info, warning, error, blocker) to standard SARIF severity levels. For ZK vulnerabilities (Z-series), map severity explicitly based on blast-radius (e.g. missing nullifier checks -> critical, weak fiat-shamir -> high, constraint under-specification -> medium, unused public input -> low)."
     }
   }
 }

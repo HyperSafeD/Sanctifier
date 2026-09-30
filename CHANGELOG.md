@@ -4,6 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+See [VERSIONING_POLICY.md](./VERSIONING_POLICY.md) for the detailed policy on what constitutes a breaking change for CLI flags, output schemas, and rule sets.
 
 ## Format Guidelines
 
@@ -11,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sub-sections: `### Added`, `### Changed`, `### Deprecated`, `### Removed`, `### Fixed`, `### Security`
 - Bullet points start with `-` and describe user-facing changes
 - Reference issue/PR numbers where applicable
+
+## [Unreleased]
+
+### Added
+
+- Frontend: breadcrumb navigation, a `/contracts` explorer (search, risk filter, sort, risk badges), a `/audit`
+  report page with PDF and SARIF export, and a global ⌘K / Ctrl+K command palette (#1672, #1674, #1675, #1677).
+
+- `AuthGapRule::check_many` / `AuthGapRule::fix_many` — rayon-backed batch APIs that analyse many
+  sources concurrently, one task per source, with index-aligned results. Documented in
+  [`docs/rules/s001-auth-gap.md`](docs/rules/s001-auth-gap.md).
+- New `parallel` feature on `sanctifier-core` (default on, enabled by `sanctifier-cli`, off for
+  wasm32) gating the rayon dependency. The batch APIs remain available without it and run serially.
+- `DashboardProvider` — a `useReducer` + Context store for dashboard view state, replacing fourteen
+  page-level `useState` hooks in `frontend/app/dashboard/page.tsx`. State and actions are exposed
+  through separate contexts so dispatch-only consumers do not re-render on unrelated state changes.
+- Unit tests for `CallGraph` (23 cases covering empty/undefined input, the large-graph guard,
+  layout, label truncation, edge routing, and accessibility) and for `DashboardProvider` (20 cases).
+
+### Changed
+
+- README, `frontend/README.md` and `docs/PACKAGING_AND_INSTALL.md` installation guides corrected:
+  `sanctifier-cli` builds `sanctifier-core` with default features off, so installing it never
+  compiles Z3 and `--no-default-features` was a no-op on the CLI. libz3 is required only for
+  workspace-from-source builds. Added the npm/npx, Homebrew, Scoop and winget channels, the
+  Node.js 20+ / npm 10+ dashboard requirement, and a `sanctifier-core` feature-flag table.
 
 ## [v1.0.0-mainnet] - 2026-07-27
 

@@ -175,11 +175,7 @@ fn parse_function(lines: &[&str], start: usize) -> Result<(NoirFunction, usize),
         for ch in line.chars() {
             match ch {
                 '{' => depth += 1,
-                '}' => {
-                    if depth > 0 {
-                        depth -= 1;
-                    }
-                }
+                '}' => depth = depth.saturating_sub(1),
                 _ => {}
             }
         }
@@ -198,8 +194,6 @@ fn parse_function(lines: &[&str], start: usize) -> Result<(NoirFunction, usize),
         .collect();
 
     Ok((
-        NoirFunction { name, params, return_type, return_visibility, body },
-        (consumed as usize).saturating_sub(1),
         NoirFunction {
             name,
             params,

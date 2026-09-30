@@ -188,6 +188,42 @@ pub fn validate_security_config(
     }
 }
 
+/// A struct providing namespaced access to the security disclaimer functions.
+///
+/// Useful when calling from test code that uses `SecurityDisclaimer::method()` syntax.
+pub struct SecurityDisclaimer;
+
+impl SecurityDisclaimer {
+    /// See [`get_disclaimer`].
+    pub fn get_disclaimer(
+        env: Env,
+        level: SecurityLevel,
+        category: DisclaimerCategory,
+    ) -> soroban_sdk::String {
+        get_disclaimer(env, level, category)
+    }
+
+    /// See [`requires_audit`].
+    pub fn requires_audit(env: Env, level: SecurityLevel) -> bool {
+        requires_audit(env, level)
+    }
+
+    /// See [`get_testing_requirements`].
+    pub fn get_testing_requirements(env: Env, level: SecurityLevel) -> soroban_sdk::String {
+        get_testing_requirements(env, level)
+    }
+
+    /// See [`validate_security_config`].
+    pub fn validate_security_config(
+        env: Env,
+        level: SecurityLevel,
+        has_admin: bool,
+        has_upgrade: bool,
+    ) -> bool {
+        validate_security_config(env, level, has_admin, has_upgrade)
+    }
+}
+
 /// Helper macro for adding security disclaimers to contracts
 #[macro_export]
 macro_rules! security_disclaimer {

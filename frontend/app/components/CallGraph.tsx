@@ -36,6 +36,10 @@ interface LayoutNode extends CallGraphNode {
   y: number;
 }
 
+// The loading skeleton for this component lives in its own module,
+// `CallGraphSkeleton.tsx` — see that file's doc comment for why it isn't
+// exported from here.
+
 function layoutNodes(nodes: CallGraphNode[] = []): LayoutNode[] {
   if (!nodes || !Array.isArray(nodes)) {
     return [];

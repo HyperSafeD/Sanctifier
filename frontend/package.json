@@ -1,12 +1,14 @@
 {
   "name": "frontend",
   "version": "0.1.1",
+  "license": "MIT",
   "private": true,
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
   },
   "scripts": {
+    "license-check": "license-checker --production --json --out license-report.json",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
@@ -25,18 +27,20 @@
   "dependencies": {
     "@sanctifier/wasm": "file:../tooling/sanctifier-wasm/pkg",
     "jspdf": "^4.2.0",
-    "lucide-react": "^1.27.0",
+    "lucide-react": "^1.48.0",
     "shiki": "^3.2.2",
-    "next": "^16.2.12",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.8",
-    "react-window": "^1.8.10"
+    "next": "^16.3.6",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-window": "^1.8.10",
+    "server-only": "^0.0.1"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.11.1",
-    "@commitlint/cli": "^20.5.2",
+    "license-checker": "^25.0.1",
+    "@axe-core/playwright": "^4.13.0",
+    "@commitlint/cli": "^20.5.3",
     "@commitlint/config-conventional": "^20.5.0",
-    "@playwright/test": "^1.49.1",
+    "@playwright/test": "^1.63.0",
     "@storybook/addon-a11y": "^8.6.14",
     "@storybook/addon-essentials": "^8.6.14",
     "@storybook/react": "^8.6.14",
@@ -44,8 +48,8 @@
     "@storybook/test": "^8.6.14",
     "@tailwindcss/postcss": "^4",
     "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.3.0",
-    "@testing-library/user-event": "^14.6.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.6",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
@@ -53,7 +57,7 @@
     "babel-plugin-react-compiler": "1.0.0",
     "chromatic": "^11.0.0",
     "eslint": "^9",
-    "eslint-config-next": "16.2.12",
+    "eslint-config-next": "16.3.6",
     "happy-dom": "^17.4.4",
     "husky": "^9.1.7",
     "storybook": "^8.6.14",

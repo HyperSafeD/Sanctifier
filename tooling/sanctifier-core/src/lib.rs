@@ -51,18 +51,22 @@ use thiserror::Error;
 
 pub mod analysis_cache;
 pub mod cfg;
+pub mod circom_parser;
 pub mod complexity;
 pub mod constant_folding;
 pub mod contract_discovery;
 pub mod finding_codes;
+/// Gas / instruction-cost estimation heuristics.
 pub mod gas_estimator;
 pub mod gas_report;
-pub mod circom_parser;
+pub mod harness_spec;
 pub mod input_validation;
 pub mod noir_parser;
 pub mod parser;
 pub mod patcher;
 pub mod reentrancy;
+/// Resilient RPC Provider Failover Client module.
+pub mod rpc;
 pub mod rules;
 pub mod sdk_version;
 pub mod sep41;
@@ -189,6 +193,7 @@ impl Default for SanctifyConfig {
             telemetry: default_telemetry_enabled(),
             strict_mode: false,
             rules: vec![],
+            smt_timeout_ms: None,
         }
     }
 }

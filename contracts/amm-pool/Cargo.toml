@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "amm-pool"
 version = "0.1.0"
 edition = "2021"

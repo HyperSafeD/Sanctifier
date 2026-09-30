@@ -51,6 +51,10 @@ use soroban_sdk::{
 #[cfg(test)]
 mod test;
 
+/// Maximum number of signers the wallet will hold. Bounds the cost of
+/// signer-list scans such as the `contains` check in `approve`.
+pub const MAX_SIGNERS: u32 = 20;
+
 /// Errors returned by the multisig wallet contract.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -84,6 +88,8 @@ pub enum Error {
     NoRecoveryGuardian = 13,
     /// Recovery already initiated.
     RecoveryAlreadyPending = 14,
+    /// Signer list would exceed `MAX_SIGNERS`.
+    TooManySigners = 15,
 }
 
 #[contracttype]
@@ -140,6 +146,9 @@ impl MultisigWallet {
     pub fn init(env: Env, signers: Vec<Address>, threshold: u32) {
         if env.storage().instance().has(&DataKey::Threshold) {
             env.panic_with_error(Error::AlreadyInitialized);
+        }
+        if signers.len() > MAX_SIGNERS {
+            env.panic_with_error(Error::TooManySigners);
         }
         if threshold == 0 || threshold > signers.len() {
             env.panic_with_error(Error::InvalidThreshold);
@@ -309,8 +318,10 @@ impl MultisigWallet {
         Self::internal_set_threshold(&env, threshold);
     }
 
-    // ── Recovery with timelock ────────────────────────────────────────────────
+    // ── Recovery with timelock (issue #831) ──────────────────────────────────
 
+    /// Set the guardian address that can initiate stuck-state recovery.
+    /// Must be called via contract self-auth (i.e. through a passed proposal).
     pub fn set_recovery_guardian(env: Env, guardian: Address) {
         env.current_contract_address().require_auth();
         env.storage()
@@ -318,6 +329,8 @@ impl MultisigWallet {
             .set(&DataKey::RecoveryGuardian, &guardian);
     }
 
+    /// Guardian initiates a recovery: proposes new signers + threshold with a
+    /// 7-day timelock. Only one pending recovery at a time.
     pub fn initiate_recovery(
         env: Env,
         guardian: Address,
@@ -335,9 +348,13 @@ impl MultisigWallet {
         if env.storage().instance().has(&DataKey::RecoveryRequest) {
             env.panic_with_error(Error::RecoveryAlreadyPending);
         }
+        if new_signers.len() > MAX_SIGNERS {
+            env.panic_with_error(Error::TooManySigners);
+        }
         if new_threshold == 0 || new_threshold as usize > new_signers.len() as usize {
             env.panic_with_error(Error::InvalidThreshold);
         }
+        // 7-day timelock (7 * 24 * 60 * 60 seconds)
         let unlock_at = env.ledger().timestamp() + 7 * 24 * 60 * 60;
         let req = RecoveryRequest {
             new_signers,
@@ -349,6 +366,8 @@ impl MultisigWallet {
             .set(&DataKey::RecoveryRequest, &req);
     }
 
+    /// Execute a pending recovery after the timelock has expired.
+    /// Anyone can call this once the timelock passes.
     pub fn execute_recovery(env: Env) {
         let req: RecoveryRequest = env
             .storage()
@@ -367,6 +386,7 @@ impl MultisigWallet {
         env.storage().instance().remove(&DataKey::RecoveryRequest);
     }
 
+    /// Cancel a pending recovery (guardian or contract self-auth).
     pub fn cancel_recovery(env: Env, caller: Address) {
         caller.require_auth();
         let guardian: Option<Address> = env.storage().instance().get(&DataKey::RecoveryGuardian);
@@ -378,6 +398,7 @@ impl MultisigWallet {
         env.storage().instance().remove(&DataKey::RecoveryRequest);
     }
 
+    /// View the pending recovery request, if any.
     pub fn get_recovery_request(env: Env) -> Option<RecoveryRequest> {
         env.storage().instance().get(&DataKey::RecoveryRequest)
     }
@@ -406,6 +427,9 @@ impl MultisigWallet {
     fn internal_add_signer(env: &Env, signer: Address) {
         let mut signers: Vec<Address> = env.storage().instance().get(&DataKey::Signers).unwrap();
         if !signers.contains(&signer) {
+            if signers.len() >= MAX_SIGNERS {
+                env.panic_with_error(Error::TooManySigners);
+            }
             signers.push_back(signer);
             env.storage().instance().set(&DataKey::Signers, &signers);
         }
@@ -450,3 +474,4 @@ impl MultisigWallet {
         env.crypto().sha256(&data).into()
     }
 }
+

@@ -83,6 +83,10 @@ const VERSION: Symbol = symbol_short!("VERSION");
 const IMPL_HASH: Symbol = symbol_short!("IMPLHASH");
 const INITIALISED: Symbol = symbol_short!("INIT");
 
+// ~1 ledger per 5 seconds
+const WEEK_IN_LEDGERS: u32 = 7 * 24 * 60 * 60 / 5;
+const MONTH_IN_LEDGERS: u32 = 30 * WEEK_IN_LEDGERS / 7;
+
 // ── Error codes ─────────────────────────────────────────────────────────────────
 
 #[contracttype]
@@ -155,6 +159,8 @@ impl UupsProxy {
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&VERSION, &1u32);
         env.storage().instance().set(&IMPL_HASH, &impl_hash);
+        
+        env.storage().instance().extend_ttl(WEEK_IN_LEDGERS, MONTH_IN_LEDGERS);
 
         env.events()
             .publish((symbol_short!("init"),), (admin, 1u32));
@@ -178,6 +184,7 @@ impl UupsProxy {
 
         env.storage().instance().set(&VERSION, &next_version);
         env.storage().instance().set(&IMPL_HASH, &new_wasm);
+        env.storage().instance().extend_ttl(WEEK_IN_LEDGERS, MONTH_IN_LEDGERS);
 
         env.events()
             .publish((symbol_short!("upgraded"),), (next_version, new_wasm));
@@ -189,6 +196,7 @@ impl UupsProxy {
     pub fn transfer_admin(env: Env, new_admin: Address) {
         Self::require_admin(&env);
         env.storage().instance().set(&PEND_ADMIN, &new_admin);
+        env.storage().instance().extend_ttl(WEEK_IN_LEDGERS, MONTH_IN_LEDGERS);
         env.events().publish((symbol_short!("adm_nom"),), new_admin);
     }
 
@@ -203,6 +211,7 @@ impl UupsProxy {
 
         env.storage().instance().set(&ADMIN, &pending);
         env.storage().instance().remove(&PEND_ADMIN);
+        env.storage().instance().extend_ttl(WEEK_IN_LEDGERS, MONTH_IN_LEDGERS);
 
         env.events().publish((symbol_short!("adm_xfer"),), pending);
     }

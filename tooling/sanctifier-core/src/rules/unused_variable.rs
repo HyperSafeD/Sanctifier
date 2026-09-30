@@ -77,6 +77,20 @@ impl Rule for UnusedVariableRule {
     }
 }
 
+fn has_test_attr(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|a| {
+        let s = quote::quote!(#a).to_string();
+        s.contains("test")
+    })
+}
+
+fn is_cfg_test(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|a| {
+        let s = quote::quote!(#a).to_string();
+        s.contains("cfg") && s.contains("test")
+    })
+}
+
 struct UnusedVariableVisitor {
     // Current scope locals: (name, span, was_used)
     locals_stack: Vec<Vec<(String, proc_macro2::Span, bool)>>,
@@ -124,7 +138,17 @@ impl UnusedVariableVisitor {
 }
 
 impl<'ast> Visit<'ast> for UnusedVariableVisitor {
+    fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
+        if is_cfg_test(&node.attrs) {
+            return;
+        }
+        visit::visit_item_mod(self, node);
+    }
+
     fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
+        if has_test_attr(&node.attrs) {
+            return;
+        }
         self.enter_scope();
         // Skip arguments for now, focus on locals within the body
         visit::visit_item_fn(self, node);
@@ -132,6 +156,9 @@ impl<'ast> Visit<'ast> for UnusedVariableVisitor {
     }
 
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        if has_test_attr(&node.attrs) {
+            return;
+        }
         self.enter_scope();
         visit::visit_impl_item_fn(self, node);
         self.exit_scope();

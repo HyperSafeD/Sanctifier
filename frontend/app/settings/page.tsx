@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from "react";
+import { useOptionalToast } from "../providers/ToastProvider";
 
 interface Settings {
   analyzerPath: string;
@@ -27,6 +28,7 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 export default function SettingsPage() {
+  const toast = useOptionalToast();
   const [activeTab, setActiveTab] = useState<"analyzer" | "ai" | "theme" | "telemetry">("analyzer");
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
@@ -48,10 +50,11 @@ export default function SettingsPage() {
     try {
       localStorage.setItem("sanctifier-settings", JSON.stringify(settings));
       setSaved(true);
+      toast.success("Settings saved");
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
       console.error("Failed to save settings:", error);
-      alert("Failed to save settings. Storage may be full.");
+      toast.error("Failed to save settings. Storage may be full.");
     }
   };
 

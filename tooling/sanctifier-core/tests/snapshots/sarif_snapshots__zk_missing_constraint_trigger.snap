@@ -1,5 +1,6 @@
 ---
 source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+assertion_line: 382
 expression: violations_json(&violations)
 ---
 [
@@ -7,7 +8,7 @@ expression: violations_json(&violations)
     "location": "withdraw",
     "message": "Function 'withdraw' accepts a ZK proof parameter but has no constraint assertions. Without constraint checks the proof is never verified and the function is trivially exploitable.",
     "rule_name": "zk_missing_constraint",
-    "severity": "Critical",
+    "severity": "Error",
     "suggestion": "Call verify_proof() or assert the proof is valid before processing any state changes. Every ZK-gated function must verify the proof on-chain before trusting its public inputs."
   }
 ]

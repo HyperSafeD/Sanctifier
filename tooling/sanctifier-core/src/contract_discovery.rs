@@ -97,9 +97,9 @@ impl DiscoveredContract {
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /// Soroban-defined reserved function names that are not user-callable.
-const RESERVED_ENTRYPOINTS: &[&str] = &["__constructor", "__check_auth"];
+pub(crate) const RESERVED_ENTRYPOINTS: &[&str] = &["__constructor", "__check_auth"];
 
-fn has_attr_named(attrs: &[syn::Attribute], name: &str) -> bool {
+pub(crate) fn has_attr_named(attrs: &[syn::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| {
         if let Meta::Path(path) = &attr.meta {
             path.is_ident(name) || path.segments.iter().any(|s| s.ident == name)
@@ -109,7 +109,7 @@ fn has_attr_named(attrs: &[syn::Attribute], name: &str) -> bool {
     })
 }
 
-fn type_to_name(ty: &Type) -> Option<String> {
+pub(crate) fn type_to_name(ty: &Type) -> Option<String> {
     if let Type::Path(tp) = ty {
         tp.path.segments.last().map(|s| s.ident.to_string())
     } else {

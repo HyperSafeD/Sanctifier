@@ -18,9 +18,14 @@
 //! Use `increase_allowance` / `decrease_allowance` instead of `approve` when
 //! adjusting an existing non-zero allowance.
 
-use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, token, Address, Env, Symbol};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, token, Address, Env};
 
-const ALLOWANCE: Symbol = symbol_short!("ALLWNCE");
+#[contracterror]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
+#[repr(u32)]
+pub enum AllowanceError {
+    ArithmeticOverflow = 1,
+}
 
 #[contracttype]
 #[derive(Clone)]
@@ -54,7 +59,11 @@ impl AllowanceRaceContract {
         amount: i128,
     ) {
         spender.require_auth();
-        let key = AllowanceKey { owner: owner.clone(), spender: spender.clone() };
+        assert!(amount > 0, "amount must be positive");
+        let key = AllowanceKey {
+            owner: owner.clone(),
+            spender: spender.clone(),
+        };
         let current: i128 = env.storage().temporary().get(&key).unwrap_or(0);
         assert!(current >= amount, "insufficient allowance");
         env.storage().temporary().set(&key, &(current - amount));
@@ -64,12 +73,21 @@ impl AllowanceRaceContract {
     // ── Safe helpers (mitigation) ─────────────────────────────────────────────
 
     /// Atomically increase the allowance by `delta` — race-safe.
-    pub fn increase_allowance(env: Env, owner: Address, spender: Address, delta: i128) {
+    pub fn increase_allowance(
+        env: Env,
+        owner: Address,
+        spender: Address,
+        delta: i128,
+    ) -> Result<(), AllowanceError> {
         owner.require_auth();
         assert!(delta > 0, "delta must be positive");
         let key = AllowanceKey { owner, spender };
         let current: i128 = env.storage().temporary().get(&key).unwrap_or(0);
-        env.storage().temporary().set(&key, &(current + delta));
+        let next = current
+            .checked_add(delta)
+            .ok_or(AllowanceError::ArithmeticOverflow)?;
+        env.storage().temporary().set(&key, &next);
+        Ok(())
     }
 
     /// Atomically decrease the allowance by `delta` — race-safe.
@@ -98,7 +116,7 @@ mod tests {
     fn setup() -> (Env, Address, Address) {
         let env = Env::default();
         env.mock_all_auths();
-        let owner   = Address::generate(&env);
+        let owner = Address::generate(&env);
         let spender = Address::generate(&env);
         (env, owner, spender)
     }
@@ -120,10 +138,10 @@ mod tests {
         let env = Env::default();
         env.mock_all_auths();
 
-        let owner   = Address::generate(&env);
+        let owner = Address::generate(&env);
         let spender = Address::generate(&env);
 
-        let contract_id = env.register(AllowanceRaceContract, ());
+        let contract_id = env.register_contract(None, AllowanceRaceContract);
         let client = AllowanceRaceContractClient::new(&env, &contract_id);
 
         // Step 1: owner approves 100
@@ -155,8 +173,8 @@ mod tests {
     #[test]
     fn test_increase_allowance_is_additive() {
         let (env, owner, spender) = setup();
-        let id = env.register(AllowanceRaceContract, ());
-        let c  = AllowanceRaceContractClient::new(&env, &id);
+        let id = env.register_contract(None, AllowanceRaceContract);
+        let c = AllowanceRaceContractClient::new(&env, &id);
 
         c.increase_allowance(&owner, &spender, &100i128);
         assert_eq!(c.allowance(&owner, &spender), 100);
@@ -168,8 +186,8 @@ mod tests {
     #[test]
     fn test_decrease_allowance_clamps_to_zero() {
         let (env, owner, spender) = setup();
-        let id = env.register(AllowanceRaceContract, ());
-        let c  = AllowanceRaceContractClient::new(&env, &id);
+        let id = env.register_contract(None, AllowanceRaceContract);
+        let c = AllowanceRaceContractClient::new(&env, &id);
 
         c.increase_allowance(&owner, &spender, &100i128);
         c.decrease_allowance(&owner, &spender, &200i128); // would underflow
@@ -179,8 +197,8 @@ mod tests {
     #[test]
     fn test_decrease_allowance_partial() {
         let (env, owner, spender) = setup();
-        let id = env.register(AllowanceRaceContract, ());
-        let c  = AllowanceRaceContractClient::new(&env, &id);
+        let id = env.register_contract(None, AllowanceRaceContract);
+        let c = AllowanceRaceContractClient::new(&env, &id);
 
         c.increase_allowance(&owner, &spender, &100i128);
         c.decrease_allowance(&owner, &spender, &40i128);
@@ -190,15 +208,31 @@ mod tests {
     #[test]
     fn test_safe_path_no_race() {
         let (env, owner, spender) = setup();
-        let id = env.register(AllowanceRaceContract, ());
-        let c  = AllowanceRaceContractClient::new(&env, &id);
+        let id = env.register_contract(None, AllowanceRaceContract);
+        let c = AllowanceRaceContractClient::new(&env, &id);
 
         // Owner sets initial allowance via increase (safe)
         c.increase_allowance(&owner, &spender, &100i128);
 
         // Owner wants to reduce to 50 — uses decrease instead of approve
         c.decrease_allowance(&owner, &spender, &50i128);
-        assert_eq!(c.allowance(&owner, &spender), 50,
-            "decrease_allowance is atomic — no race possible");
+        assert_eq!(
+            c.allowance(&owner, &spender),
+            50,
+            "decrease_allowance is atomic — no race possible"
+        );
+    }
+
+    #[test]
+    fn test_increase_allowance_overflow_returns_error() {
+        let (env, owner, spender) = setup();
+        let id = env.register_contract(None, AllowanceRaceContract);
+        let c = AllowanceRaceContractClient::new(&env, &id);
+
+        c.approve(&owner, &spender, &i128::MAX);
+        let result = c.try_increase_allowance(&owner, &spender, &1);
+
+        assert_eq!(result, Err(Ok(AllowanceError::ArithmeticOverflow)));
+        assert_eq!(c.allowance(&owner, &spender), i128::MAX);
     }
 }

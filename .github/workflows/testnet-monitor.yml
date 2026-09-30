@@ -80,6 +80,22 @@ jobs:
               }
             }
 
+      - name: Send alert notification
+        if: steps.health.outputs.healthy != 'true'
+        continue-on-error: true
+        env:
+          ALERT_WEBHOOK_URLS: ${{ secrets.ALERT_WEBHOOK_URLS }}
+          ALERT_WEBHOOK_SECRET: ${{ secrets.ALERT_WEBHOOK_SECRET }}
+        run: |
+          node .github/scripts/alert.js \
+            --event health.failed \
+            --title "Testnet health check failed" \
+            --message "One or more deployed testnet contracts failed their scheduled health check. Tracking issues have been opened." \
+            --severity high \
+            --field "failed=${{ steps.health.outputs.failures }}/${{ steps.health.outputs.total }}" \
+            --field "trigger=testnet-monitor" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
       - name: Publish status badge JSON
         if: always() && steps.health.outputs.total != ''
         run: |

@@ -30,6 +30,10 @@ use soroban_sdk::{
     BytesN, Env, Symbol, Val, Vec,
 };
 
+/// Extra time added to timestamp-based readiness checks to account for the
+/// bounded clock drift validators may introduce when closing a ledger.
+pub const TIMESTAMP_DRIFT_BUFFER_SECS: u64 = 10;
+
 #[cfg(test)]
 mod test;
 
@@ -47,7 +51,8 @@ pub enum TimelockError {
     InsufficientDelay = 4,
     /// No scheduled operation exists with the given hash.
     ProposalNotFound = 5,
-    /// The scheduled operation's ready timestamp has not been reached yet.
+    /// The scheduled operation's ready timestamp plus validator-drift buffer
+    /// has not been reached yet.
     ProposalNotReady = 6,
     /// `new_delay` is invalid (reserved for future validation).
     InvalidDelay = 8,
@@ -218,7 +223,12 @@ impl TimelockController {
             .get(&DataKey::Proposal(hash.clone()))
             .unwrap_or_else(|| panic_with_error!(&env, TimelockError::ProposalNotFound));
 
-        if env.ledger().timestamp() < ready_timestamp {
+        // Ledger timestamps may be manipulated slightly within the network's
+        // accepted drift. Requiring this additional buffer prevents execution
+        // just before the intended wall-clock deadline. Integrations needing
+        // stronger guarantees should schedule by ledger sequence instead.
+        let executable_at = ready_timestamp.saturating_add(TIMESTAMP_DRIFT_BUFFER_SECS);
+        if env.ledger().timestamp() < executable_at {
             panic_with_error!(&env, TimelockError::ProposalNotReady);
         }
 

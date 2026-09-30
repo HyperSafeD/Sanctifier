@@ -3,7 +3,6 @@ use crate::telemetry::{self, AnalysisTelemetry};
 use crate::vulndb::{VulnDatabase, VulnMatch};
 use clap::Args;
 use colored::*;
-#[allow(unused_imports)]
 use rayon::prelude::*;
 use sanctifier_core::finding_codes;
 use sanctifier_core::rules::RuleRegistry;
@@ -14,8 +13,9 @@ use std::collections::{BTreeSet, HashMap};
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::warn;
+use tracing::{info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, clap::ValueEnum)]
 pub enum SeverityLevel {
@@ -99,11 +99,21 @@ pub struct AnalyzeArgs {
     #[arg(long, value_enum, default_value_t = SeverityLevel::High)]
     pub min_severity: SeverityLevel,
     /// Disable incremental analysis cache
-    #[arg(short = 'n', long)]
+    //
+    // No short flag: `-n` collides with the global `--network` flag
+    // (main.rs's `Cli.network`, `global = true`), which clap only catches
+    // via a debug_assert! that panics the very first time `analyze` runs in
+    // a non-release build -- i.e. every invocation under `cargo test`/
+    // `cargo run`. This made the entire `analyze` subcommand, and every
+    // integration test that exercises it, fail unconditionally.
+    #[arg(long)]
     pub no_cache: bool,
     /// Analysis profile preset — overrides --exit-code and --min-severity when set
     #[arg(long, value_enum)]
     pub profile: Option<AnalysisProfile>,
+    /// Correlation request ID for structured logging and distributed tracing
+    #[arg(long, env = "SANCTIFIER_REQUEST_ID")]
+    pub request_id: Option<String>,
 }
 
 // ── Per-file result container ────────────────────────────────────────────────
@@ -154,7 +164,7 @@ fn resolve_exit(
         Some(AnalysisProfile::Strict) => found_issues,
         Some(AnalysisProfile::Lenient) | Some(AnalysisProfile::Audit) => false,
         Some(AnalysisProfile::Ci) => found_issues,
-        None => exit_code_flag && found_issues,
+        None => found_issues || exit_code_flag,
     }
 }
 
@@ -173,6 +183,8 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
         return stream_ndjson(&args);
     }
 
+    let start = Instant::now();
+    let telemetry_enabled = false;
     let path = normalize_cli_path(args.path.clone());
     if !path.exists() {
         anyhow::bail!("path does not exist: {}", path.display());
@@ -182,9 +194,28 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
         return Ok(false);
     }
 
-    let start = Instant::now();
-    let config = load_config(&path);
-    let telemetry_enabled = config.telemetry;
+    let request_id = args.request_id.clone().unwrap_or_else(|| {
+        std::env::var("SANCTIFIER_REQUEST_ID").unwrap_or_else(|_| "req-cli-local".to_string())
+    });
+
+    info!(target: "sanctifier", request_id = %request_id, path = %path.display(), "Valid Soroban project found");
+    info!(target: "sanctifier", request_id = %request_id, path = %path.display(), "Analyzing contract");
+
+    let mut config = load_config(&path);
+    config.ledger_limit = args.limit;
+    let _analyzer = Arc::new(Analyzer::new(config.clone()));
+
+    let _vuln_db = Arc::new(match &args.vuln_db {
+        Some(db_path) => {
+            info!(target: "sanctifier", path = %db_path.display(), "Loading custom vulnerability database");
+            VulnDatabase::load(db_path)?
+        }
+        None => {
+            let database = VulnDatabase::load_default();
+            info!(target: "sanctifier", version = %database.version, "Loading built-in vulnerability database");
+            database
+        }
+    });
 
     // When a single file is given, scan only that file — not its parent directory.
     let rs_files: Vec<PathBuf> = if path.is_file() {
@@ -193,33 +224,45 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
         collect_rs_files(&path, &config.ignore_paths)
     };
 
-    let registry = RuleRegistry::with_default_rules();
-    let analyzer = Analyzer::new(config.clone());
+    let registry = std::sync::Arc::new(RuleRegistry::with_default_rules());
+    let analyzer = std::sync::Arc::new(Analyzer::new(config.clone()));
+
+    // Parallelized with rayon (issue: implement parallel processing here) --
+    // each file's registry/ledger-size/storage-collision passes are
+    // independent, so this mirrors the Arc<Analyzer> + par_iter pattern
+    // workspace.rs already uses for the same shape of per-file work.
+    let per_file_results: Vec<(String, Vec<sanctifier_core::RuleViolation>, usize, usize)> =
+        rs_files
+            .par_iter()
+            .filter_map(|file_path| {
+                let content = fs::read_to_string(file_path).ok()?;
+                let file_str = file_path.display().to_string();
+                // In JSON/SARIF log modes stderr must stay structured, so route the
+                // progress line through the tracing subscriber. In text mode print it
+                // directly so it is always visible regardless of the log level.
+                if args.format == "json" || args.format == "sarif" {
+                    tracing::info!(target: "sanctifier", "Analyzing {}", file_str);
+                } else {
+                    println!("Analyzing {}", file_str);
+                }
+                tracing::debug!(target: "sanctifier", "Scanning Rust source file: {}", file_str);
+                let violations = registry.run_all(&content);
+                let size_warnings = analyzer.analyze_ledger_size(&content).len();
+                let collisions = analyzer.scan_storage_collisions(&content).len();
+                Some((file_str, violations, size_warnings, collisions))
+            })
+            .collect();
 
     let mut all_violations: Vec<(String, sanctifier_core::RuleViolation)> = Vec::new();
     let mut size_warnings_total: usize = 0;
     let mut collision_total: usize = 0;
 
-    for file_path in &rs_files {
-        let content = match fs::read_to_string(file_path) {
-            Ok(c) => c,
-            Err(_) => continue,
-        };
-        let file_str = file_path.display().to_string();
-        // In JSON/SARIF log modes stderr must stay structured, so route the
-        // progress line through the tracing subscriber. In text mode print it
-        // directly so it is always visible regardless of the log level.
-        if args.format == "json" || args.format == "sarif" {
-            tracing::info!(target: "sanctifier", "Analyzing {}", file_str);
-        } else {
-            eprintln!("Analyzing {}", file_str);
-        }
-        tracing::debug!(target: "sanctifier", "Scanning Rust source file: {}", file_str);
-        for v in registry.run_all(&content) {
+    for (file_str, violations, size_warnings, collisions) in per_file_results {
+        for v in violations {
             all_violations.push((file_str.clone(), v));
         }
-        size_warnings_total += analyzer.analyze_ledger_size(&content).len();
-        collision_total += analyzer.scan_storage_collisions(&content).len();
+        size_warnings_total += size_warnings;
+        collision_total += collisions;
     }
 
     let total = all_violations.len();
@@ -277,8 +320,9 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
             .map(|(file, v)| {
                 serde_json::json!({
                     "file": file,
+                    "rule": v.rule_name,
                     "rule_name": v.rule_name,
-                    "severity": format!("{:?}", v.severity),
+                    "severity": format!("{:?}", v.severity).to_lowercase(),
                     "message": v.message,
                     "location": v.location,
                     "suggestion": v.suggestion,
@@ -289,6 +333,8 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
             "{}",
             serde_json::to_string_pretty(&serde_json::json!({
                 "schema_version": "1.0.0",
+                "sanctifier_version": env!("CARGO_PKG_VERSION"),
+                "findings": rule_violations,
                 "rule_violations": rule_violations,
                 "error_codes": finding_codes::all_finding_codes(),
                 "summary": {
@@ -311,6 +357,13 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
                     Some(s) => format!("{} — {}", v.message, s),
                     None => v.message.clone(),
                 };
+                let line_num: u64 = v
+                    .location
+                    .rsplit(':')
+                    .next()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(1);
+
                 serde_json::json!({
                     "ruleId": v.rule_name,
                     "level": level,
@@ -320,6 +373,9 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
                             "artifactLocation": {
                                 "uri": file,
                                 "uriBaseId": "%SRCROOT%"
+                            },
+                            "region": {
+                                "startLine": line_num
                             }
                         }
                     }]
@@ -362,15 +418,32 @@ pub(crate) fn run_analysis(args: AnalyzeArgs) -> anyhow::Result<bool> {
         if !all_violations.is_empty() {
             println!("\n{} Found {} issue(s):", "⚠️".yellow(), total);
             for (file, v) in &all_violations {
+                // Severity-colored arrow + location context (previously every
+                // violation printed the same red arrow regardless of severity,
+                // and v.location -- the field that actually carries the
+                // fn/line context each rule already computes -- was silently
+                // dropped from this output entirely).
+                let arrow = match v.severity {
+                    sanctifier_core::rules::Severity::Critical
+                    | sanctifier_core::rules::Severity::Error => "->".red().bold(),
+                    sanctifier_core::rules::Severity::High => "->".magenta().bold(),
+                    sanctifier_core::rules::Severity::Warning => "->".yellow(),
+                    sanctifier_core::rules::Severity::Info => "->".cyan(),
+                    // Severity is #[non_exhaustive] -- a future variant falls
+                    // back to plain red rather than failing to compile.
+                    _ => "->".red(),
+                };
                 println!(
-                    "   {} [{}] {} — {}",
-                    "->".red(),
+                    "   {} [{}] {}:{} ({:?}) — {}",
+                    arrow,
                     v.rule_name.bold(),
                     file,
+                    v.location,
+                    v.severity,
                     v.message
                 );
                 if let Some(s) = &v.suggestion {
-                    println!("      Suggestion: {}", s);
+                    println!("      {} {}", "Suggestion:".green(), s);
                 }
             }
         }
@@ -413,14 +486,24 @@ fn stream_ndjson(args: &AnalyzeArgs) -> anyhow::Result<bool> {
         path.clone()
     };
     let rs_files = collect_rs_files(&scan_root, &config.ignore_paths);
-    let registry = RuleRegistry::with_default_rules();
+    let registry = std::sync::Arc::new(RuleRegistry::with_default_rules());
     let stdout = std::io::stdout();
-    let mut total = 0usize;
+    let total = std::sync::atomic::AtomicUsize::new(0);
 
-    for file_path in &rs_files {
+    // Parallelized with rayon (issue #1472): each file's `registry.run_all`
+    // pass is independent, mirroring the same Arc<Registry>/Arc<Analyzer> +
+    // par_iter pattern the batch JSON/SARIF path above (`run_analysis`) and
+    // `workspace.rs` already use for this shape of per-file work. Output is
+    // still written one file's findings at a time — `Stdout::lock()` from
+    // multiple threads simply blocks until available, so each file's
+    // findings stay contiguous on the line, just not necessarily emitted in
+    // directory-walk order (every line already carries its own `file` field,
+    // so a streaming consumer isn't harmed by that reordering).
+    let write_error: std::sync::Mutex<Option<std::io::Error>> = std::sync::Mutex::new(None);
+    rs_files.par_iter().for_each(|file_path| {
         let content = match fs::read_to_string(file_path) {
             Ok(c) => c,
-            Err(_) => continue,
+            Err(_) => return,
         };
         let file_str = file_path.display().to_string();
         let violations = registry.run_all(&content);
@@ -428,7 +511,7 @@ fn stream_ndjson(args: &AnalyzeArgs) -> anyhow::Result<bool> {
         // Lock stdout once per file so all findings from this file are contiguous.
         let mut out = stdout.lock();
         for v in violations {
-            total += 1;
+            total.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
             let line = serde_json::json!({
                 "event": "finding",
                 "file": file_str,
@@ -438,10 +521,19 @@ fn stream_ndjson(args: &AnalyzeArgs) -> anyhow::Result<bool> {
                 "location": v.location,
                 "suggestion": v.suggestion,
             });
-            writeln!(out, "{}", line)?;
+            if let Err(e) = writeln!(out, "{}", line) {
+                *write_error.lock().unwrap() = Some(e);
+                return;
+            }
         }
-        out.flush()?;
+        if let Err(e) = out.flush() {
+            *write_error.lock().unwrap() = Some(e);
+        }
+    });
+    if let Some(e) = write_error.into_inner().unwrap() {
+        return Err(e.into());
     }
+    let total = total.load(std::sync::atomic::Ordering::Relaxed);
 
     let duration_ms = start.elapsed().as_millis() as u64;
     let mut out = stdout.lock();

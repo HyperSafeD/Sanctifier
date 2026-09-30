@@ -1,5 +1,13 @@
 # Sanctifier Error Code Mapping
 
+## CLI Exit Codes
+
+When running `sanctifier-cli`, the process will exit with one of the following codes:
+- **`0` (SUCCESS)**: Analysis succeeded with no triggered findings.
+- **`1` (FINDINGS_FOUND)**: Findings were detected and the active profile triggered on them.
+- **`2` (ERROR)**: Unrecoverable error (e.g., invalid path, config parse failure, I/O error).
+
+---
 Sanctifier uses a unified finding code system across `sanctifier-core` and `sanctifier-cli` outputs.
 
 | Code | Category | Meaning |
