@@ -6,16 +6,18 @@ pub struct TokenWithBugs;
 
 // Storage key for per-account balances.
 const BALANCE: Symbol = symbol_short!("BALANCE");
+const ADMIN_KEY: Symbol = symbol_short!("ADMIN");
 
 #[contractimpl]
 impl TokenWithBugs {
     /// Initialise the token.
     ///
-    /// NOTE – intentionally incomplete: does not persist `admin`, `name`, or
+    /// NOTE – intentionally incomplete: does not persist `name`, or
     /// `symbol` so that Sanctifier can flag the missing initialisation guard.
-    pub fn initialize(e: Env, _admin: Address, _name: String, _symbol: String) {
+    pub fn initialize(e: Env, admin: Address, _name: String, _symbol: String) {
         // Mark as initialised so re-entrancy can be detected.
         e.storage().instance().set(&symbol_short!("init"), &true);
+        e.storage().instance().set(&ADMIN_KEY, &admin);
     }
 
     pub fn balance(e: Env, id: Address) -> i128 {
@@ -34,7 +36,11 @@ impl TokenWithBugs {
     }
 
     // VULNERABILITY: No overflow check – `current_balance + amount` can wrap.
-    pub fn mint(e: Env, to: Address, amount: i128) {
+    pub fn mint(e: Env, admin: Address, to: Address, amount: i128) {
+        admin.require_auth();
+        let stored_admin: Address = e.storage().instance().get(&ADMIN_KEY).unwrap();
+        assert!(admin == stored_admin, "not admin");
+
         let current_balance = Self::balance(e.clone(), to.clone());
         let new_balance = current_balance + amount;
         e.storage().persistent().set(&to, &new_balance);
@@ -60,3 +66,5 @@ impl TokenWithBugs {
         String::from_str(&e, "TKN")
     }
 }
+
+mod test;
