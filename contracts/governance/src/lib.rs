@@ -86,6 +86,8 @@ pub enum Error {
     QuorumNotMet = 8,
     /// Proposer's token balance is below `proposal_threshold`.
     ProposalThresholdNotMet = 9,
+    /// Proposal parameters are invalid.
+    InvalidProposal = 10,
 }
 
 #[contracttype]
@@ -247,6 +249,10 @@ impl GovernorContract {
         let token_client = token::TokenClient::new(&env, &config.token);
         if token_client.balance(&proposer) < config.proposal_threshold {
             return Err(Error::ProposalThresholdNotMet);
+        }
+
+        if targets.len() != functions.len() || targets.len() != args.len() {
+            return Err(Error::InvalidProposal);
         }
 
         let id: u32 = env
@@ -568,8 +574,8 @@ fn load_proposal(env: &Env, proposal_id: u32) -> Result<Proposal, Error> {
 /// Returns the `i`-th (target, function, args) action of a proposal, or
 /// [`Error::InvalidState`] if the three action vectors have mismatched lengths.
 fn proposal_action(proposal: &Proposal, i: u32) -> Result<(Address, Symbol, Vec<Val>), Error> {
-    let target = proposal.targets.get(i).ok_or(Error::InvalidState)?;
-    let function = proposal.functions.get(i).ok_or(Error::InvalidState)?;
-    let args = proposal.args.get(i).ok_or(Error::InvalidState)?;
+    let target = proposal.targets.get(i).ok_or(Error::InvalidProposal)?;
+    let function = proposal.functions.get(i).ok_or(Error::InvalidProposal)?;
+    let args = proposal.args.get(i).ok_or(Error::InvalidProposal)?;
     Ok((target, function, args))
 }

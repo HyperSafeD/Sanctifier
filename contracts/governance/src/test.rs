@@ -365,3 +365,42 @@ fn test_min_quorum_blocks_queueing() {
     }));
     assert!(result.is_err(), "queue should have failed for insufficient quorum");
 }
+
+#[test]
+#[should_panic(expected = "Error(Contract, #10)")]
+fn test_propose_mismatched_lengths() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let proposer = Address::generate(&env);
+    let token_id = env.register_contract(None, VotingToken);
+    let token_client = VotingTokenClient::new(&env, &token_id);
+    token_client.set_balance(&proposer, &1000);
+
+    let timelock_id = env.register_contract(None, MockTimelock);
+
+    let governor_id = env.register_contract(None, GovernorContract);
+    let client = GovernorContractClient::new(&env, &governor_id);
+
+    client.init(
+        &token_id,
+        &timelock_id,
+        &4000,
+        &5001,
+        &1000,
+        &0,
+        &500,
+        &1000,
+    );
+
+    let target = Address::generate(&env);
+    // targets has 1, functions has 0 -> mismatch
+    client.propose(
+        &proposer,
+        &vec![&env, target],
+        &vec![&env],
+        &vec![&env],
+        &symbol_short!("prop"),
+    );
+}
+
