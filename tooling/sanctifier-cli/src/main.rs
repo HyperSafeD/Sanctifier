@@ -102,7 +102,10 @@ pub enum Commands {
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("Error: {}", err);
+        // Use miette's graphical report handler for rich, contextual error output.
+        // The error chain is preserved and displayed with source context.
+        let report = miette::Report::msg(format!("{err:#}"));
+        eprintln!("{:?}", report);
         std::process::exit(sanctifier_cli::exit_codes::ERROR);
     }
 }

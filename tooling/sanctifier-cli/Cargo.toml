@@ -17,6 +17,7 @@ authors = ["Sanctifier Contributors <maintainers@hypersafed.com>"]
 clap = { version = "4.4", features = ["derive", "env"] }
 clap_complete = "4.4"
 anyhow = "1.0"
+miette = { version = "7.0", features = ["fancy"] }
 sanctifier-core = { version = "0.1.0", path = "../sanctifier-core", default-features = false, features = ["parallel"] }
 toml = "0.8"
 toml_edit = "0.22"
