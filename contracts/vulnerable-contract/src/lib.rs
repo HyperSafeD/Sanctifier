@@ -1,4 +1,5 @@
-#![no_std]
+#![cfg_attr(feature = "test-fixtures", no_std)]
+#![cfg(any(test, kani, feature = "test-fixtures"))]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Env, Symbol};
 
 /// Typed payload for the `admin_set` event (issue #1445), matching the
@@ -252,7 +253,7 @@ mod verification {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Events, Env};
+    use soroban_sdk::Env;
 
     #[test]
     fn test_storage_key_uniqueness() {
@@ -283,3 +284,4 @@ mod tests {
         client.init_admin(&admin2);
     }
 }
+
