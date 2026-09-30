@@ -11,6 +11,29 @@ contract-local mutex using the instance-storage key `RE_GRD`.
 - The protection is contract-local only. It is not a cross-contract lock and
   does not synchronize state across different contract addresses.
 
+## Fuzzing
+
+This crate includes `cargo fuzz` harnesses under `fuzz/fuzz_targets` to exercise
+unexpected sequences of states and transitions.
+
+Install `cargo-fuzz` if it is not already available:
+
+```bash
+cargo install cargo-fuzz
+```
+
+Then from `contracts/reentrancy-guard`, run a target such as:
+
+```bash
+cargo fuzz run fuzz_guard_state_machine
+cargo fuzz run fuzz_enter_exit_sequences -- -max_len=1024
+cargo fuzz run fuzz_concurrent_access -- -max_len=256 -runs=10000000
+```
+
+These harnesses validate the core invariants of the guard by fuzzing arbitrary
+status values and operation sequences, including edge cases around re-entrant
+entry, exit, and repeated state transitions.
+
 ## Benchmarks
 
 Run the benchmark with:
