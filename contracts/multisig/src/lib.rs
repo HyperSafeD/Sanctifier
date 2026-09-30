@@ -51,6 +51,10 @@ use soroban_sdk::{
 #[cfg(test)]
 mod test;
 
+/// Maximum number of signers the wallet will hold. Bounds the cost of
+/// signer-list scans such as the `contains` check in `approve`.
+pub const MAX_SIGNERS: u32 = 20;
+
 /// Errors returned by the multisig wallet contract.
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
@@ -84,6 +88,8 @@ pub enum Error {
     NoRecoveryGuardian = 13,
     /// Recovery already initiated.
     RecoveryAlreadyPending = 14,
+    /// Signer list would exceed `MAX_SIGNERS`.
+    TooManySigners = 15,
 }
 
 #[contracttype]
@@ -140,6 +146,9 @@ impl MultisigWallet {
     pub fn init(env: Env, signers: Vec<Address>, threshold: u32) {
         if env.storage().instance().has(&DataKey::Threshold) {
             env.panic_with_error(Error::AlreadyInitialized);
+        }
+        if signers.len() > MAX_SIGNERS {
+            env.panic_with_error(Error::TooManySigners);
         }
         if threshold == 0 || threshold > signers.len() {
             env.panic_with_error(Error::InvalidThreshold);
@@ -339,6 +348,9 @@ impl MultisigWallet {
         if env.storage().instance().has(&DataKey::RecoveryRequest) {
             env.panic_with_error(Error::RecoveryAlreadyPending);
         }
+        if new_signers.len() > MAX_SIGNERS {
+            env.panic_with_error(Error::TooManySigners);
+        }
         if new_threshold == 0 || new_threshold as usize > new_signers.len() as usize {
             env.panic_with_error(Error::InvalidThreshold);
         }
@@ -415,6 +427,9 @@ impl MultisigWallet {
     fn internal_add_signer(env: &Env, signer: Address) {
         let mut signers: Vec<Address> = env.storage().instance().get(&DataKey::Signers).unwrap();
         if !signers.contains(&signer) {
+            if signers.len() >= MAX_SIGNERS {
+                env.panic_with_error(Error::TooManySigners);
+            }
             signers.push_back(signer);
             env.storage().instance().set(&DataKey::Signers, &signers);
         }
@@ -459,3 +474,4 @@ impl MultisigWallet {
         env.crypto().sha256(&data).into()
     }
 }
+

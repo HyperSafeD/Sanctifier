@@ -12,9 +12,9 @@ inputs:
     default: "."
   version:
     description: >-
-      sanctifier-cli version to install (e.g. 0.2.3). If omitted and the action
-      is used via a semver tag (e.g. HyperSafeD/Sanctifier@v0.2.3), the tag
-      version is used automatically.
+      Version of sanctifier-cli to install (e.g. 0.2.3). If omitted and the
+      action is used via a semver tag (e.g. HyperSafeD/Sanctifier@v0.2.3),
+      the tag version is used automatically.
     required: false
     default: ""
   min-severity:

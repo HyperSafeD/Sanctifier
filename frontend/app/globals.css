@@ -19,12 +19,11 @@
 
 :root,
 :root[data-theme="dark"],
-:root.dark {
+:root[data-theme="high-contrast"] {
   transition: --background 0.3s ease, --foreground 0.3s ease;
 }
 
-:root[data-theme="dark"],
-:root.dark {
+:root[data-theme="dark"] {
   --background: #0a0a0a;
   --foreground: #ededed;
 }
@@ -42,11 +41,12 @@ body {
 }
 
 :root[data-theme="dark"] body,
-:root.dark body {
+:root[data-theme="high-contrast"] body {
   color-scheme: dark;
 }
 
 /* High Contrast Accessibility Mode */
+:root[data-theme="high-contrast"],
 .theme-high-contrast {
   --background: #000000;
   --foreground: #ffffff;

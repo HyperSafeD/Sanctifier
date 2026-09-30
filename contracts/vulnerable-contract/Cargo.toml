@@ -3,6 +3,7 @@ license.workspace = true
 name = "vulnerable-contract"
 version = "0.1.0"
 edition = "2021"
+publish = false   
 
 [dependencies]
 soroban-sdk = { workspace = true }
@@ -12,6 +13,7 @@ soroban-sdk = { workspace = true, features = ["testutils"] }
 
 [features]
 testutils = ["soroban-sdk/testutils"]
+test-fixtures = []
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }

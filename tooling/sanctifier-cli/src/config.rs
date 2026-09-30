@@ -69,19 +69,29 @@ impl<'de> Deserialize<'de> for Config {
 ///
 /// Fields are ordered from largest to smallest to minimize struct padding.
 /// Total size: ~256 bytes + heap allocations for collections.
+///
+/// # Memory Optimizations
+///
+/// - `HashSet` is stored directly (not boxed) to avoid an extra heap
+///   allocation and pointer indirection — `HashSet` is already heap-allocated.
+/// - `Box<[PathBuf]>` is used for fixed-size path collections to avoid
+///   `Vec`'s capacity overhead (24 bytes → 16 bytes per collection).
+/// - `Cow<'static, str>` allows zero-copy for borrowed strings.
+/// - `ConfigFlags` packs 6 boolean flags into a single byte.
 #[derive(Debug, Serialize, Deserialize)]
 struct ConfigInner {
     /// Paths to analyze (interned strings reduce duplicates in monorepos)
     #[serde(default)]
     paths: Box<[PathBuf]>,
 
-    /// Rules to enable (uses HashSet for O(1) lookups, Box for fixed size)
+    /// Rules to enable (HashSet for O(1) lookups; stored directly to avoid
+    /// the extra heap allocation and indirection of Box<HashSet>)
     #[serde(default)]
-    enabled_rules: Box<HashSet<Cow<'static, str>>>,
+    enabled_rules: HashSet<Cow<'static, str>>,
 
     /// Rules to disable (same optimization as enabled_rules)
     #[serde(default)]
-    disabled_rules: Box<HashSet<Cow<'static, str>>>,
+    disabled_rules: HashSet<Cow<'static, str>>,
 
     /// Custom rule paths (boxed slice for fixed-size overhead)
     #[serde(default)]
@@ -255,8 +265,8 @@ impl Config {
         Self {
             inner: Arc::new(ConfigInner {
                 paths: Box::new([]),
-                enabled_rules: Box::new(HashSet::new()),
-                disabled_rules: Box::new(HashSet::new()),
+                enabled_rules: HashSet::new(),
+                disabled_rules: HashSet::new(),
                 custom_rule_paths: Box::new([]),
                 output_format: default_output_format(),
                 output_path: None,
@@ -441,8 +451,8 @@ impl ConfigBuilder {
         Config {
             inner: Arc::new(ConfigInner {
                 paths: self.paths.into_boxed_slice(),
-                enabled_rules: Box::new(self.enabled_rules),
-                disabled_rules: Box::new(self.disabled_rules),
+                enabled_rules: self.enabled_rules,
+                disabled_rules: self.disabled_rules,
                 custom_rule_paths: self.custom_rule_paths.into_boxed_slice(),
                 output_format: self.output_format,
                 output_path: self.output_path,
@@ -498,5 +508,26 @@ mod tests {
         assert!(config.is_verbose());
         assert!(config.is_parallel());
         assert!(!config.is_quiet());
+    }
+
+    #[test]
+    fn test_config_inner_size_is_bounded() {
+        // ConfigInner should be compact: the largest fields are the two
+        // HashSets (48 bytes each on 64-bit), so the struct should be
+        // well under 256 bytes before heap allocations.
+        let size = std::mem::size_of::<ConfigInner>();
+        assert!(size <= 256, "ConfigInner is {size} bytes, expected <= 256");
+    }
+
+    #[test]
+    fn test_config_flags_is_single_byte() {
+        assert_eq!(std::mem::size_of::<ConfigFlags>(), 1);
+    }
+
+    #[test]
+    fn test_config_is_arc_wrapped() {
+        // Config itself should be small (just a single Arc pointer)
+        let size = std::mem::size_of::<Config>();
+        assert_eq!(size, std::mem::size_of::<usize>(), "Config should be exactly one Arc pointer");
     }
 }

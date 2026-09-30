@@ -48,12 +48,9 @@ describe("globals.css", () => {
   });
 
   describe("dark theme override", () => {
-    it("targets both the [data-theme=dark] attribute and the .dark class", () => {
-      // Edge case: the app supports two different ways of flagging dark mode
-      // (an explicit data-theme attribute and Tailwind's .dark class) — both
-      // selectors must be present or one of the two toggle mechanisms silently
-      // does nothing.
-      expect(css).toMatch(/:root\[data-theme="dark"\],\s*\n?\s*:root\.dark\s*\{/);
+    it("uses the provider-owned data-theme attribute as the CSS state source", () => {
+      expect(css).toMatch(/:root\[data-theme="dark"\]\s*\{/);
+      expect(css).not.toMatch(/:root\.dark\s*\{[^}]*--background/);
     });
 
     it("overrides both --background and --foreground to different values than light mode", () => {
@@ -62,7 +59,7 @@ describe("globals.css", () => {
       const lightFg = rootBlock.match(/--foreground:\s*(#[0-9a-fA-F]{6})/)?.[1];
 
       const darkBlock = css.match(
-        /:root\[data-theme="dark"\],\s*\n?\s*:root\.dark\s*\{([^}]*)\}/,
+        /:root\[data-theme="dark"\]\s*\{([^}]*)\}/,
       )?.[1];
       expect(darkBlock).toBeDefined();
       const darkBg = darkBlock?.match(/--background:\s*(#[0-9a-fA-F]{6})/)?.[1];
@@ -76,7 +73,7 @@ describe("globals.css", () => {
 
     it("sets color-scheme: dark on <body> so native form controls also switch", () => {
       expect(css).toMatch(
-        /:root\[data-theme="dark"\] body,\s*\n?\s*:root\.dark body\s*\{\s*color-scheme:\s*dark;?\s*\}/,
+        /:root\[data-theme="dark"\] body,\s*\n?\s*:root\[data-theme="high-contrast"\] body\s*\{\s*color-scheme:\s*dark;?\s*\}/,
       );
     });
   });

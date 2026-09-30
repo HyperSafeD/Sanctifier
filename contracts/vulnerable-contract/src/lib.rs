@@ -1,4 +1,5 @@
-#![no_std]
+#![cfg_attr(feature = "test-fixtures", no_std)]
+#![cfg(any(test, kani, feature = "test-fixtures"))]
 use soroban_sdk::{contract, contractimpl, contracttype, symbol_short, Env, Symbol};
 
 /// Typed payload for the `admin_set` event (issue #1445), matching the
@@ -155,6 +156,10 @@ impl VulnerableContract {
             .get(&StorageKey::Balance)
             .unwrap_or(0);
         let new_balance = credit_pure_checked(balance, amount).expect("balance overflow");
+        // Invariant: new_balance == balance + amount (no overflow)
+        debug_assert_eq!(new_balance, balance + amount);
+        // Invariant: credit never decreases the balance
+        debug_assert!(new_balance >= balance);
         env.storage()
             .instance()
             .set(&StorageKey::Balance, &new_balance);
@@ -167,6 +172,10 @@ impl VulnerableContract {
             .get(&StorageKey::Balance)
             .unwrap_or(0);
         let new_balance = debit_pure_checked(balance, amount).expect("balance underflow");
+        // Invariant: new_balance == balance - amount (no underflow)
+        debug_assert_eq!(new_balance, balance - amount);
+        // Invariant: debit never increases the balance
+        debug_assert!(new_balance <= balance);
         env.storage()
             .instance()
             .set(&StorageKey::Balance, &new_balance);
@@ -247,12 +256,122 @@ mod verification {
             );
         }
     }
+
+    /// **Invariant**: `credit_pure_checked` returns `Ok(new_balance)` where
+    /// `new_balance == balance + amount` for all non-overflowing inputs.
+    ///
+    /// This proves the checked version is a strict refinement of the
+    /// vulnerable version: it agrees with `credit_pure` on all valid inputs.
+    #[kani::proof]
+    fn verify_credit_checked_refines_vulnerable() {
+        let balance: u64 = kani::any();
+        let amount: u64 = kani::any();
+
+        let checked = credit_pure_checked(balance, amount);
+        let vulnerable = credit_pure(balance, amount);
+
+        if balance.checked_add(amount).is_some() {
+            assert_eq!(checked, Ok(vulnerable));
+        }
+    }
+
+    /// **Invariant**: `debit_pure_checked` returns `Ok(new_balance)` where
+    /// `new_balance == balance - amount` for all non-underflowing inputs.
+    ///
+    /// This proves the checked version is a strict refinement of the
+    /// vulnerable version: it agrees with `debit_pure` on all valid inputs.
+    #[kani::proof]
+    fn verify_debit_checked_refines_vulnerable() {
+        let balance: u64 = kani::any();
+        let amount: u64 = kani::any();
+
+        let checked = debit_pure_checked(balance, amount);
+        let vulnerable = debit_pure(balance, amount);
+
+        if amount <= balance {
+            assert_eq!(checked, Ok(vulnerable));
+        }
+    }
+
+    /// **Invariant**: `credit_pure_checked` and `debit_pure_checked` are
+    /// inverses — crediting then debiting the same amount returns the
+    /// original balance (when neither operation fails).
+    #[kani::proof]
+    fn verify_credit_debit_are_inverses() {
+        let balance: u64 = kani::any();
+        let amount: u64 = kani::any();
+
+        // Only consider inputs where both operations succeed
+        kani::assume(balance.checked_add(amount).is_some());
+        kani::assume(amount <= balance + amount); // always true, but documents intent
+
+        let after_credit = credit_pure_checked(balance, amount).unwrap();
+        let after_debit = debit_pure_checked(after_credit, amount).unwrap();
+
+        assert_eq!(after_debit, balance);
+    }
+
+    /// **Invariant**: The balance is always `<= u64::MAX` after a secure
+    /// credit operation (i.e., the checked version never produces a value
+    /// that would overflow).
+    #[kani::proof]
+    fn verify_credit_secure_never_overflows() {
+        let balance: u64 = kani::any();
+        let amount: u64 = kani::any();
+
+        if let Ok(new_balance) = credit_pure_checked(balance, amount) {
+            assert!(new_balance <= u64::MAX);
+            assert!(new_balance >= balance); // credit never decreases balance
+        }
+    }
+
+    /// **Invariant**: The balance is always `>= 0` after a secure debit
+    /// operation (i.e., the checked version never underflows).
+    #[kani::proof]
+    fn verify_debit_secure_never_underflows() {
+        let balance: u64 = kani::any();
+        let amount: u64 = kani::any();
+
+        if let Ok(new_balance) = debit_pure_checked(balance, amount) {
+            assert!(new_balance <= balance); // debit never increases balance
+        }
+    }
+
+    /// **Invariant**: `credit_pure` is monotonic — for a fixed balance,
+    /// a larger amount always produces a larger or equal result (when no
+    /// overflow occurs).
+    #[kani::proof]
+    fn verify_credit_pure_monotonic() {
+        let balance: u64 = kani::any();
+        let amount1: u64 = kani::any();
+        let amount2: u64 = kani::any();
+
+        kani::assume(amount1 <= amount2);
+        kani::assume(balance.checked_add(amount2).is_some());
+
+        assert!(credit_pure(balance, amount1) <= credit_pure(balance, amount2));
+    }
+
+    /// **Invariant**: `debit_pure` is anti-monotonic — for a fixed balance,
+    /// a larger amount always produces a smaller or equal result (when no
+    /// underflow occurs).
+    #[kani::proof]
+    fn verify_debit_pure_anti_monotonic() {
+        let balance: u64 = kani::any();
+        let amount1: u64 = kani::any();
+        let amount2: u64 = kani::any();
+
+        kani::assume(amount1 <= amount2);
+        kani::assume(amount2 <= balance);
+
+        assert!(debit_pure(balance, amount1) >= debit_pure(balance, amount2));
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use soroban_sdk::{testutils::Events, Env};
+    use soroban_sdk::Env;
 
     #[test]
     fn test_storage_key_uniqueness() {
@@ -283,3 +402,4 @@ mod tests {
         client.init_admin(&admin2);
     }
 }
+

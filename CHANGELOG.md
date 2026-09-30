@@ -33,6 +33,13 @@ See [VERSIONING_POLICY.md](./VERSIONING_POLICY.md) for the detailed policy on wh
 
 ### Changed
 
+- Frontend theme state now uses the ThemeProvider-managed `data-theme` attribute as the CSS
+  source of truth, with the pre-hydration bootstrap honoring light, dark, system, and
+  high-contrast preferences (#1349).
+- The reentrancy-guard reference now documents and regression-tests its typed
+  `StorageKey::Guard` key against legacy string-key collisions (#1340).
+- Improved grammar and terminology throughout the getting-started guide (#1341).
+- Added configuration-driven CLI integration coverage for JSON and SARIF output (#1348).
 - README, `frontend/README.md` and `docs/PACKAGING_AND_INSTALL.md` installation guides corrected:
   `sanctifier-cli` builds `sanctifier-core` with default features off, so installing it never
   compiles Z3 and `--no-default-features` was a no-op on the CLI. libz3 is required only for

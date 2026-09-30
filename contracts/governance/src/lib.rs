@@ -88,6 +88,8 @@ pub enum Error {
     ProposalThresholdNotMet = 9,
     /// `targets`, `functions`, and `args` do not all have the same length.
     MismatchedProposalArrays = 10,
+    /// Proposal parameters are invalid.
+    InvalidProposal = 10,
 }
 
 #[contracttype]
@@ -251,6 +253,10 @@ impl GovernorContract {
         let token_client = token::TokenClient::new(&env, &config.token);
         if token_client.balance(&proposer) < config.proposal_threshold {
             return Err(Error::ProposalThresholdNotMet);
+        }
+
+        if targets.len() != functions.len() || targets.len() != args.len() {
+            return Err(Error::InvalidProposal);
         }
 
         let id: u32 = env
@@ -592,5 +598,8 @@ fn proposal_action(proposal: &Proposal, i: u32) -> Result<(Address, Symbol, Vec<
     let target = proposal.targets.get(i).ok_or(Error::MismatchedProposalArrays)?;
     let function = proposal.functions.get(i).ok_or(Error::MismatchedProposalArrays)?;
     let args = proposal.args.get(i).ok_or(Error::MismatchedProposalArrays)?;
+    let target = proposal.targets.get(i).ok_or(Error::InvalidProposal)?;
+    let function = proposal.functions.get(i).ok_or(Error::InvalidProposal)?;
+    let args = proposal.args.get(i).ok_or(Error::InvalidProposal)?;
     Ok((target, function, args))
 }
