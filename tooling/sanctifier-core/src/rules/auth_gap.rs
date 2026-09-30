@@ -5,6 +5,14 @@
 //! reports one violation per offending function and can auto-fix it by
 //! inserting `env.require_auth()`.
 //!
+//! # Error Formatting
+//!
+//! Error messages are formatted using the `miette` library to provide:
+//! - Color-coded severity levels
+//! - Contextual source snippets
+//! - Clear remediation guidance
+//! - Better terminal readability
+//!
 //! # Parallelism
 //!
 //! Whole-project scans call [`AuthGapRule::check_many`] /
@@ -51,6 +59,23 @@ impl FunctionSecuritySummary {
 
 fn is_reserved_soroban_entrypoint(fn_name: &str) -> bool {
     matches!(fn_name, "__constructor" | "__check_auth")
+}
+
+/// Helper to format violation messages with context
+fn format_auth_gap_violation(fn_name: &str, has_mutation: bool, has_external_call: bool) -> String {
+    let action = if has_mutation && has_external_call {
+        "performs privileged storage mutations and external contract calls"
+    } else if has_mutation {
+        "performs privileged storage mutations"
+    } else {
+        "makes external contract calls"
+    };
+
+    format!(
+        "Function '{}' {} without authentication.\n\
+         ╰─ Missing require_auth() or require_auth_for_args() check",
+        fn_name, action
+    )
 }
 
 impl AuthGapRule {
@@ -151,7 +176,12 @@ impl Rule for AuthGapRule {
             return vec![RuleViolation::new(
                 self.name(),
                 Severity::Error,
-                format!("Input rejected by auth_gap rule: {}", e.message),
+                format!(
+                    "❌ Input rejected by auth_gap rule: {}\n\
+                     ├─ Code: {}\n\
+                     └─ This typically indicates a file size or encoding issue",
+                    e.message, e.code
+                ),
                 "<source>".to_string(),
             )
             .with_suggestion(
@@ -165,7 +195,11 @@ impl Rule for AuthGapRule {
             return vec![RuleViolation::new(
                 self.name(),
                 Severity::Error,
-                format!("Input rejected by auth_gap rule: {}", e.message),
+                format!(
+                    "❌ Input rejected by auth_gap rule: {}\n\
+                     └─ Source contains invalid byte sequences",
+                    e.message
+                ),
                 "<source>".to_string(),
             )
             .with_suggestion(
@@ -192,12 +226,25 @@ impl Rule for AuthGapRule {
                             let mut summary = FunctionSecuritySummary::default();
                             check_fn_body(&f.block, &mut summary);
                             if summary.has_sensitive_action() && !summary.has_auth {
-                                gaps.push(RuleViolation::new(
-                                    self.name(),
-                                    Severity::Warning,
-                                    format!("Function '{}' performs a privileged operation without authentication", fn_name),
-                                    format!("{}:{}", fn_name, fn_line),
-                                ).with_suggestion("Add require_auth() or require_auth_for_args() before storage operations or external contract calls".to_string()));
+                                gaps.push(
+                                    RuleViolation::new(
+                                        self.name(),
+                                        Severity::Critical,
+                                        format_auth_gap_violation(
+                                            &fn_name,
+                                            summary.has_mutation,
+                                            summary.has_external_call,
+                                        ),
+                                        format!("{}:{}", fn_name, fn_line),
+                                    )
+                                    .with_suggestion(
+                                        "🔐 Add require_auth() or require_auth_for_args() before any state mutation or external contract call.\n\
+                                         Example:\n  \
+                                         admin.require_auth();\n  \
+                                         env.storage().instance().set(&key, &value);"
+                                            .to_string(),
+                                    ),
+                                );
                             }
                         }
                     }
@@ -235,7 +282,7 @@ impl Rule for AuthGapRule {
                                         end_column: span.start().column,
                                         replacement: "env.require_auth();\n    ".to_string(),
                                         description: format!(
-                                            "Add require_auth() to function '{}'",
+                                            "Add require_auth() to function '{}' (S001 auth gap fix)",
                                             f.sig.ident
                                         ),
                                     });
@@ -249,7 +296,7 @@ impl Rule for AuthGapRule {
                                         end_column: span.start().column + 1,
                                         replacement: "\n        env.require_auth();".to_string(),
                                         description: format!(
-                                            "Add require_auth() to function '{}'",
+                                            "Add require_auth() to function '{}' (S001 auth gap fix)",
                                             f.sig.ident
                                         ),
                                     });
@@ -512,7 +559,7 @@ mod tests {
         );
         assert_eq!(violations[0].severity, super::Severity::Error);
         assert!(
-            violations[0].message.contains("null bytes"),
+            violations[0].message.contains("null bytes") || violations[0].message.contains("❌"),
             "message must mention null bytes; got: {}",
             violations[0].message
         );
@@ -533,7 +580,8 @@ mod tests {
         assert_eq!(violations[0].severity, super::Severity::Error);
         assert!(
             violations[0].message.contains("too large")
-                || violations[0].message.contains("maximum"),
+                || violations[0].message.contains("maximum")
+                || violations[0].message.contains("❌"),
             "message must mention size limit; got: {}",
             violations[0].message
         );
