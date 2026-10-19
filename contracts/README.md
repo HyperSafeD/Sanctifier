@@ -17,7 +17,7 @@ This directory contains the Soroban contracts used by Sanctifier for analysis, f
 - `my-contract`: Baseline token-like contract used for deterministic testing/fuzzing examples.
 - `oracle`: Price-feed fixture for stale-data and trust-boundary validation.
 - `private-transfer`: Shielded-balance private transfer example (shield, transfer, unshield) that calls a Groth16 verifier.
-- `proxy`: Upgradeability fixture that emits governance-relevant upgrade/admin events.
+- `proxy`: Upgradeability fixture that emits governance-relevant upgrade/admin events. See [`docs/proxy.md`](../docs/proxy.md) for the pattern, what Sanctifier reports on it, and how to reproduce.
 - `reentrancy-guard`: Reentrancy defense fixture contract.
 - `runtime-guard-wrapper`: Runtime guard and monitoring wrapper fixture.
 - `security-disclaimers`: Shared security-disclaimer and safe-usage module used by the other contracts, with runtime configuration checks.
@@ -35,7 +35,7 @@ This directory contains the Soroban contracts used by Sanctifier for analysis, f
 
 ## Fixture notes
 
-- Event-emission fixture notes live in `runtime-guard-wrapper` and `proxy`.
+- Event-emission fixture notes live in `runtime-guard-wrapper` and `proxy`. Upgrade-pattern notes for `proxy` are in [`docs/proxy.md`](../docs/proxy.md).
 - Storage-collision fixture notes live in `runtime-guard-wrapper` and `shadowing-example`.
 - Unhandled-`Result` fixture notes live in `runtime-guard-wrapper` and `token-with-bugs`.
 - SEP-41 conformance fixtures live in `my-contract` and `fixtures/finding-codes/s012_token_interface.rs`.
