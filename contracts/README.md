@@ -12,7 +12,7 @@ This directory contains the Soroban contracts used by Sanctifier for analysis, f
 - `flashloan-token`: Flash-loan execution fixture for temporary-balance safety checks.
 - `governance`: Proposal and voting fixture for control-plane validation.
 - `kani-poc`: Model-checking fixture used by formal verification workflows.
-- `multisig`: Multi-party authorization fixture for threshold and signer-order checks.
+- `multisig`: Multi-party authorization fixture for threshold and signer-order checks. See [`docs/multisig.md`](../docs/multisig.md) for the proposal flow, recovery path and what to look for in a Sanctifier report.
 - `multisig-no-recovery`: Intentionally vulnerable multisig with no signer-recovery path, to contrast with `multisig`.
 - `my-contract`: Baseline token-like contract used for deterministic testing/fuzzing examples.
 - `oracle`: Price-feed fixture for stale-data and trust-boundary validation.
