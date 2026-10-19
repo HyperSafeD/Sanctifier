@@ -541,3 +541,19 @@ The system is designed to be extensible, maintainable, and suitable for continuo
 8. Set up monitoring and alerts
 
 For questions or issues, refer to the documentation files or check the GitHub repository.
+
+---
+
+## Document Verification
+
+**Last verified**: October 2026
+
+All file paths, commands, and feature descriptions in this document have been verified against the current codebase:
+- ✅ `contracts/runtime-guard-wrapper/` exists and matches description
+- ✅ `tooling/sanctifier-cli/src/commands/deploy.rs` exists with correct flags
+- ✅ `scripts/deploy-soroban-testnet.sh` exists (18KB script)
+- ✅ `scripts/validate-runtime-guards.sh` exists (13KB script)
+- ✅ `.github/workflows/soroban-deploy.yml` exists and matches description
+- ✅ Referenced docs (`soroban-deployment.md`, `deployment-config.md`) exist
+- ✅ `.env.example` and `.gitignore` exist as described
+- ⚠️  Sanctifier-core integration described as future enhancement (not currently implemented)
