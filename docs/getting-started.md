@@ -176,6 +176,64 @@ sanctifier completions elvish > ~/.elvish/lib/sanctifier.elv
 
 After installing completions, restart your shell or source the completion file.
 
+### Dev containers and Codespaces (VS Code extension)
+
+If you use the Sanctifier VS Code extension (`sanctifier.sanctifier-soroban`) in a
+[dev container](https://containers.dev/) or GitHub Codespaces, three things differ from a local setup.
+
+**1. The extension offers to add `sanctifier-cli` to your container.** When a Rust file opens, the
+extension looks at `.devcontainer/devcontainer.json` in the **first** workspace folder:
+
+| `.devcontainer/devcontainer.json` | What happens |
+|---|---|
+| Missing | Nothing. |
+| Present, and a key under `features` contains `sanctifier-cli` | Nothing. The CLI is already configured. |
+| Present, but no `sanctifier-cli` feature | An information message asks whether to add it, with an **Add to devcontainer** button. |
+| Present but not valid JSON | Nothing, silently. See the note on comments below. |
+
+Choosing **Add to devcontainer** adds this entry to `features` (creating `features` if needed) and saves the file:
+
+```json
+"features": {
+  "ghcr.io/devcontainers/features/sanctifier-cli:1": {}
+}
+```
+
+then reports *"Rebuild the container to apply."* Nothing changes until you run **Dev Containers:
+Rebuild Container**. Ignoring the message leaves the file untouched, and it is shown again the next
+time the extension activates.
+
+> **Things to know**
+> - Only `.devcontainer/devcontainer.json` is checked. A `.devcontainer.json` at the repository root,
+>   or a `.devcontainer/<folder>/devcontainer.json`, is not detected.
+> - The file is read with a strict JSON parser. `devcontainer.json` files that contain `//` comments
+>   or trailing commas fail to parse, so no prompt appears. Saving after **Add to devcontainer**
+>   rewrites the file as plain JSON with 2-space indentation, which also drops any formatting you had.
+> - Any `features` key containing the text `sanctifier-cli` counts, whatever registry it points to.
+
+**2. The CLI path is resolved inside the container.** In a dev container the extension runs in the
+container, not on your machine. `sanctifier.sanctifierPath` (used by *Sanctifier: Analyze
+Workspace*) must therefore be a path that exists **inside** the container, and a binary installed
+only on your host is not visible. If the setting is empty or the file is missing, the extension reports
+it and does not run the scan (see [Troubleshooting](#10-troubleshooting)).
+
+**3. Add the extension to the container's VS Code customizations** so every contributor gets it:
+
+```json
+"customizations": {
+  "vscode": {
+    "extensions": [
+      "sanctifier.sanctifier-soroban",
+      "rust-lang.rust-analyzer"
+    ]
+  }
+}
+```
+
+If you would rather not use the `sanctifier-cli` feature, install the CLI yourself in the
+container, for example `"postCreateCommand": "cargo install sanctifier-cli"`, and point
+`sanctifier.sanctifierPath` at the resulting binary.
+
 ---
 
 ## 3. Create a Minimal Soroban Contract
@@ -631,6 +689,22 @@ proof of a bug — they mean the solver couldn't decide either way within the ti
 [`docs/kani-integration.md`](./kani-integration.md) for how to raise the timeout or scope a harness
 to a smaller pure function (the same "Core Logic Separation" pattern used throughout
 `contracts/kani-poc`).
+
+### Dev container: no "Add to devcontainer" prompt appears
+
+The prompt only appears when `.devcontainer/devcontainer.json` exists in the first workspace folder,
+parses as strict JSON, and has no `features` key containing `sanctifier-cli`. Check that the file is
+in that exact location, that it has no `//` comments or trailing commas (those make the parse fail
+silently), and that you haven't already added the feature. See
+[Dev containers and Codespaces](#dev-containers-and-codespaces-vs-code-extension).
+
+### Dev container: `binary not found at "..."` or the rebuild can't find the `sanctifier-cli` feature
+
+`sanctifier.sanctifierPath` is checked inside the container, so a path from your host machine will
+not exist there. Set it to the CLI's location in the container (for example the output of
+`which sanctifier` in the container terminal). If the container rebuild fails while pulling
+`ghcr.io/devcontainers/features/sanctifier-cli:1`, remove that feature and install the CLI with
+`cargo install sanctifier-cli` in `postCreateCommand` instead.
 
 ### Still stuck?
 
