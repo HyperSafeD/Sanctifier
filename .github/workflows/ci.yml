@@ -118,6 +118,9 @@ jobs:
           cargo test -p sanctifier-core --all-features
           cargo test -p sanctifier-cli
 
+      - name: Run deploy script fail-fast tests
+        run: bash scripts/test-deploy-failfast.sh
+
       - name: Run action unit tests
         run: |
           python -m unittest discover -s tests/action -p "test_*.py"

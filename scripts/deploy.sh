@@ -149,7 +149,9 @@ dry_run_deploy() {
         log_success "Simulation succeeded"
         echo ""
         echo "  ── Simulated transaction ──"
-        echo "$sim_output" | head -20
+        # sed reads all of its input, so (unlike `echo | head`) a large simulate
+        # output can't SIGPIPE the writer and trip `set -o pipefail` (#1923).
+        sed -n '1,20p' <<<"$sim_output"
         echo ""
         echo "  ✅ Dry-run PASSED — no broadcast made."
         echo ""
@@ -168,21 +170,29 @@ live_deploy() {
     local wasm="$1"
     log_info "Deploying contract to $NETWORK ..."
 
+    # Under `set -e` a failing `output=$(...)` would exit before the error
+    # handling below ran, hiding the CLI's own error text (#1923). Test the
+    # command in an `if` so its output is always shown.
     local output
-    output=$(soroban contract deploy \
+    if ! output=$(soroban contract deploy \
         --wasm "$wasm" \
         --source "$SOROBAN_SECRET_KEY" \
-        --network "$NETWORK" 2>&1)
-
-    if echo "$output" | grep -qE "^[A-Z0-9]{56}$"; then
-        local cid
-        cid=$(echo "$output" | grep -oE "^[A-Z0-9]{56}$" | head -1)
-        log_success "Contract deployed: $cid"
-    else
-        log_error "Deploy failed or unexpected output:"
-        echo "$output"
+        --network "$NETWORK" 2>&1); then
+        log_error "soroban contract deploy failed:"
+        echo "$output" >&2
         exit 1
     fi
+
+    # A herestring (not `echo | grep`) and `|| cid=""` keep a no-match from
+    # tripping `set -e` / `pipefail` before we can report it.
+    local cid
+    cid=$(grep -oE "^[A-Z0-9]{56}$" <<<"$output" | head -1) || cid=""
+    if [[ -z "$cid" ]]; then
+        log_error "Deploy failed or unexpected output:"
+        echo "$output" >&2
+        exit 1
+    fi
+    log_success "Contract deployed: $cid"
 }
 
 # ── Main ─────────────────────────────────────────────────────────────────────────
