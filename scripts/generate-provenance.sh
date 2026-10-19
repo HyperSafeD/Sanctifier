@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+set -euo pipefail
+
 # scripts/generate-provenance.sh
 # Generates CHECKSUMS.txt covering every release artifact listed in
 # data/release-manifest.json.  Atomic-write semantics: the manifest is
@@ -6,15 +8,13 @@
 # has succeeded — a partial CHECKSUMS.txt cannot leak on interrupt.
 #
 # Hardened:
-#   - set -euo pipefail
+#   - set -euo pipefail (line 2, before any commands)
 #   - manifest-driven file list (single source of truth)
 #   - portable: prefers sha256sum (Linux), falls back to `shasum -a 256`
 #     (macOS) — fails fast if neither is present
 #   - atomic install of the final manifest via `mv`
 #   - reproducible: paths are emitted relative to repo root, sorted by
 #     manifest order (deterministic)
-
-set -euo pipefail
 
 MANIFEST="data/release-manifest.json"
 OUTPUT="CHECKSUMS.txt"
