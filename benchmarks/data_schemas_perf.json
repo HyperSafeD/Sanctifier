@@ -1,0 +1,32 @@
+{
+  "generated_at_epoch_ms": 1777332857449,
+  "metrics": [
+    {
+      "bytes": 6140,
+      "max_pattern_len": 72,
+      "parse_ms": 0.08494299981975928,
+      "path": "data/vulnerability-db.json",
+      "read_ms": 0.7110500000635511,
+      "total_pattern_len": 628,
+      "vulnerabilities": 12
+    },
+    {
+      "bytes": 2591,
+      "max_pattern_len": 91,
+      "parse_ms": 0.042007000047306065,
+      "path": "tooling/sanctifier-cli/data/vulnerability-db.json",
+      "read_ms": 0.36192899960951763,
+      "total_pattern_len": 209,
+      "vulnerabilities": 5
+    },
+    {
+      "bytes": 2380,
+      "max_pattern_len": null,
+      "parse_ms": 0.05150400011189049,
+      "path": "schemas/vulnerability-db.json",
+      "read_ms": 0.4795800000465533,
+      "total_pattern_len": null,
+      "vulnerabilities": null
+    }
+  ]
+}

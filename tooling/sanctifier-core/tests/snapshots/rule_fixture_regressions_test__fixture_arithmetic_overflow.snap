@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/rule_fixture_regressions_test.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "credit",
+    "message": "Unchecked '+' operation in 'credit': possible overflow of accumulated values",
+    "rule_name": "arithmetic_overflow",
+    "severity": "Warning",
+    "suggestion": "Use .checked_add(rhs) or .saturating_add(rhs) to handle overflow"
+  }
+]

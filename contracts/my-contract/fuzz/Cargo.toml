@@ -1,8 +1,11 @@
 [package]
+license.workspace = true
 name = "my-contract-fuzz"
 version = "0.0.1"
 edition = "2021"
 publish = false
+
+[workspace]
 
 [package.metadata]
 cargo-fuzz = true
@@ -10,8 +13,6 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 my-contract = { path = ".." }
-borsh = "1.3"
-arbitrary = { version = "1", features = ["derive"] }
 
 [[bin]]
 name = "fuzz_cross_contract"

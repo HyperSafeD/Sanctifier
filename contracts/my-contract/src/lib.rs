@@ -3,6 +3,14 @@
 
 use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Env, String};
 
+pub mod cross_contract;
+pub use cross_contract::{handle_cross_contract_message, CrossContractError, CrossContractMessage};
+
+#[cfg(test)]
+mod fuzz;
+#[cfg(test)]
+mod test;
+
 // ---------------------------------------------------------------------------
 // SEP-41 type compatibility
 // ---------------------------------------------------------------------------

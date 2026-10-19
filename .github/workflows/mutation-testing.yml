@@ -1,0 +1,102 @@
+name: Mutation Testing
+
+on:
+  schedule:
+    # Run weekly on Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+    # Allow manual triggering
+
+jobs:
+  mutation-test:
+    name: Mutation Testing (cargo-mutants)
+    runs-on: ubuntu-latest
+    continue-on-error: true  # Non-blocking: expensive to run on every push
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Install Z3
+        run: sudo apt-get update && sudo apt-get install -y libz3-dev
+
+      - name: Cache cargo registry & build artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install cargo-mutants
+        run: cargo install cargo-mutants
+
+      - name: Run mutation testing on sanctifier-core
+        run: |
+          cd tooling/sanctifier-core
+          cargo mutants --no-shuffle --timeout 600
+        env:
+          CARGO_TERM_COLOR: always
+
+      - name: Upload mutation testing report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: mutation-test-report
+          path: |
+            tooling/sanctifier-core/mutants.out/
+            tooling/sanctifier-core/mutants-report.html
+          retention-days: 30
+
+      - name: Comment summary on PR (if applicable)
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            
+            // Try to read the mutation report
+            const reportPath = 'tooling/sanctifier-core/mutants.out/mutants.csv';
+            if (fs.existsSync(reportPath)) {
+              const csv = fs.readFileSync(reportPath, 'utf8');
+              const lines = csv.split('\n').filter(l => l.trim());
+              
+              const total = lines.length - 1; // Subtract header
+              const caught = lines.slice(1).filter(l => l.includes('caught')).length;
+              const survived = lines.slice(1).filter(l => l.includes('survived')).length;
+              const timeout = lines.slice(1).filter(l => l.includes('timeout')).length;
+              
+              const killRate = total > 0 ? ((caught / total) * 100).toFixed(2) : 0;
+              
+              const comment = `## Mutation Testing Results
+              
+              - **Total Mutants**: ${total}
+              - **Killed**: ${caught}
+              - **Survived**: ${survived}
+              - **Timeout**: ${timeout}
+              - **Kill Rate**: ${killRate}%
+              
+              ${killRate >= 80 ? '✅ Kill rate meets target (>80%)' : '⚠️ Kill rate below target (>80%)'}
+              
+              See the mutation-test-report artifact for detailed results.`;
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }

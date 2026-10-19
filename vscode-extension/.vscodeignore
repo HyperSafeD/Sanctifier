@@ -4,3 +4,4 @@ tsconfig.json
 .gitignore
 **/node_modules/**
 *.vsix
+out/test/**

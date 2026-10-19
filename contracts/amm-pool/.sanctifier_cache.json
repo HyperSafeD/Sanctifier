@@ -1,0 +1,282 @@
+{
+  "version": "1",
+  "entries": {
+    "contracts/amm-pool/src/lib.rs": {
+      "hash": "c882c4b5b03146963f908366293b00da28e067443fefb13f7fed9e8c53da9281",
+      "result": {
+        "file_path": "contracts/amm-pool/src/lib.rs",
+        "collisions": [
+          {
+            "key_value": "DataKey :: TotalSupply",
+            "key_type": "storage::set (instance)",
+            "location": "contracts/amm-pool/src/lib.rs:storage-op:334",
+            "message": "Potential instance storage key collision: value 'DataKey :: TotalSupply' is also used in: storage-op (line 352)"
+          },
+          {
+            "key_value": "DataKey :: TotalSupply",
+            "key_type": "storage::get (instance)",
+            "location": "contracts/amm-pool/src/lib.rs:storage-op:352",
+            "message": "Potential instance storage key collision: value 'DataKey :: TotalSupply' is also used in: storage-op (line 334)"
+          },
+          {
+            "key_value": "key",
+            "key_type": "storage::get (instance)",
+            "location": "contracts/amm-pool/src/lib.rs:storage-op:340",
+            "message": "Potential instance storage key collision: value 'key' is also used in: storage-op (line 358)"
+          },
+          {
+            "key_value": "key",
+            "key_type": "storage::get (instance)",
+            "location": "contracts/amm-pool/src/lib.rs:storage-op:358",
+            "message": "Potential instance storage key collision: value 'key' is also used in: storage-op (line 340)"
+          }
+        ],
+        "size_warnings": [],
+        "unsafe_patterns": [],
+        "auth_gaps": [],
+        "panic_issues": [],
+        "arithmetic_issues": [],
+        "custom_matches": [],
+        "vuln_matches": [],
+        "event_issues": [],
+        "unhandled_results": [
+          {
+            "function_name": "add_liquidity",
+            "call_expression": "calculate_initial_liquidity (amount_a , amount_b)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:add_liquidity:59"
+          },
+          {
+            "function_name": "add_liquidity",
+            "call_expression": "write_pair (& env , token_a , token_b)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:add_liquidity:69"
+          },
+          {
+            "function_name": "add_liquidity",
+            "call_expression": "write_pool_state (& env , amount_a , amount_b , initial_liquidity)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:add_liquidity:70"
+          },
+          {
+            "function_name": "add_liquidity",
+            "call_expression": "read_pair (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:add_liquidity:74"
+          },
+          {
+            "function_name": "add_liquidity",
+            "call_expression": "read_reserve_a (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:add_liquidity:81"
+          },
+          {
+            "function_name": "add_liquidity",
+            "call_expression": "read_reserve_b (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:add_liquidity:84"
+          },
+          {
+            "function_name": "add_liquidity",
+            "call_expression": "calculate_liquidity_mint (reserve_a , reserve_b , amount_a , amount_b , total...",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:add_liquidity:88"
+          },
+          {
+            "function_name": "add_liquidity",
+            "call_expression": "write_pool_state (& env , next_reserve_a , next_reserve_b , next_total_supply)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:add_liquidity:106"
+          },
+          {
+            "function_name": "remove_liquidity",
+            "call_expression": "read_total_supply (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:remove_liquidity:117"
+          },
+          {
+            "function_name": "remove_liquidity",
+            "call_expression": "read_reserve_a (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:remove_liquidity:127"
+          },
+          {
+            "function_name": "remove_liquidity",
+            "call_expression": "read_reserve_b (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:remove_liquidity:130"
+          },
+          {
+            "function_name": "remove_liquidity",
+            "call_expression": "proportional_amount (reserve_a , lp_amount , total_supply)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:remove_liquidity:134"
+          },
+          {
+            "function_name": "remove_liquidity",
+            "call_expression": "proportional_amount (reserve_b , lp_amount , total_supply)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:remove_liquidity:137"
+          },
+          {
+            "function_name": "remove_liquidity",
+            "call_expression": "write_pool_state (& env , next_reserve_a , next_reserve_b , remaining_supply)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:remove_liquidity:155"
+          },
+          {
+            "function_name": "swap",
+            "call_expression": "read_reserve_a (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:swap:166"
+          },
+          {
+            "function_name": "swap",
+            "call_expression": "read_reserve_b (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:swap:169"
+          },
+          {
+            "function_name": "swap",
+            "call_expression": "read_pair (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:swap:172"
+          },
+          {
+            "function_name": "swap",
+            "call_expression": "execute_swap (reserve_a , reserve_b , amount_in , min_out)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:swap:176"
+          },
+          {
+            "function_name": "swap",
+            "call_expression": "execute_swap (reserve_b , reserve_a , amount_in , min_out)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:swap:178"
+          },
+          {
+            "function_name": "swap",
+            "call_expression": "read_total_supply (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:swap:190"
+          },
+          {
+            "function_name": "swap",
+            "call_expression": "write_pool_state (& env , next_reserve_a , next_reserve_b , total_supply)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:swap:193"
+          },
+          {
+            "function_name": "swap",
+            "call_expression": "read_total_supply (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:swap:203"
+          },
+          {
+            "function_name": "swap",
+            "call_expression": "write_pool_state (& env , next_reserve_a , next_reserve_b , total_supply)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:swap:206"
+          },
+          {
+            "function_name": "get_price",
+            "call_expression": "read_reserve_a (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:get_price:211"
+          },
+          {
+            "function_name": "get_price",
+            "call_expression": "read_reserve_b (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:get_price:214"
+          },
+          {
+            "function_name": "get_price",
+            "call_expression": "read_pair (& env)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:get_price:217"
+          },
+          {
+            "function_name": "calculate_liquidity_mint",
+            "call_expression": "min_u128 (liquidity_a , liquidity_b)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/src/lib.rs:calculate_liquidity_mint:270"
+          }
+        ],
+        "upgrade_reports": [
+          {
+            "findings": [],
+            "upgrade_mechanisms": [],
+            "init_functions": [],
+            "storage_types": [
+              "DataKey"
+            ],
+            "suggestions": []
+          }
+        ],
+        "smt_issues": [],
+        "truncation_bounds_issues": [],
+        "sep41_checked_contracts": [],
+        "sep41_issues": [],
+        "contractimport_issues": [],
+        "timed_out": false
+      }
+    },
+    "contracts/amm-pool/tests/integration_tests.rs": {
+      "hash": "ffda0375e5b8d3e514c4fb6b0076b59f11ea34dc005ae6989749fdbfb7bc3866",
+      "result": {
+        "file_path": "contracts/amm-pool/tests/integration_tests.rs",
+        "collisions": [],
+        "size_warnings": [],
+        "unsafe_patterns": [],
+        "auth_gaps": [],
+        "panic_issues": [],
+        "arithmetic_issues": [],
+        "custom_matches": [],
+        "vuln_matches": [],
+        "event_issues": [],
+        "unhandled_results": [
+          {
+            "function_name": "add_liquidity",
+            "call_expression": "AmmPool :: add_liquidity (env , token_a , token_b , amount_a , amount_b , min...",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/tests/integration_tests.rs:add_liquidity:20"
+          },
+          {
+            "function_name": "remove_liquidity",
+            "call_expression": "AmmPool :: remove_liquidity (env , lp_amount , min_a , min_b)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/tests/integration_tests.rs:remove_liquidity:24"
+          },
+          {
+            "function_name": "swap",
+            "call_expression": "AmmPool :: swap (env , token_in , amount_in , min_out)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/tests/integration_tests.rs:swap:28"
+          },
+          {
+            "function_name": "get_price",
+            "call_expression": "AmmPool :: get_price (env , token_in , token_out)",
+            "message": "Result returned from function call is not handled. Use ?, match, or .unwrap()/.expect() to handle the Result.",
+            "location": "contracts/amm-pool/tests/integration_tests.rs:get_price:32"
+          }
+        ],
+        "upgrade_reports": [
+          {
+            "findings": [],
+            "upgrade_mechanisms": [],
+            "init_functions": [],
+            "storage_types": [],
+            "suggestions": []
+          }
+        ],
+        "smt_issues": [],
+        "truncation_bounds_issues": [],
+        "sep41_checked_contracts": [],
+        "sep41_issues": [],
+        "contractimport_issues": [],
+        "timed_out": false
+      }
+    }
+  }
+}

@@ -2,12 +2,23 @@
 
 import { useMemo } from "react";
 import type { Finding, Severity } from "../types";
+import type { ScanRecord } from "../lib/scan-history";
+import { TrendChart } from "./TrendChart";
 
 interface SummaryChartProps {
   findings: Finding[];
+  trendRecords?: ScanRecord[];
+  onClearHistory?: () => void;
 }
 
-export function SummaryChart({ findings }: SummaryChartProps) {
+const trendColors: Record<string, string> = {
+  critical: "#ef4444",
+  high: "#f97316",
+  medium: "#f59e0b",
+  low: "#71717a",
+};
+
+export function SummaryChart({ findings, trendRecords = [], onClearHistory }: SummaryChartProps) {
   const counts = useMemo(() => {
     const s: Record<Severity, number> = {
       critical: 0,
@@ -30,6 +41,8 @@ export function SummaryChart({ findings }: SummaryChartProps) {
     { label: "medium", count: counts.medium, color: "bg-amber-500" },
     { label: "low", count: counts.low, color: "bg-zinc-500" },
   ];
+
+  const hasTrend = trendRecords.length > 0;
 
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 p-4">
@@ -58,6 +71,35 @@ export function SummaryChart({ findings }: SummaryChartProps) {
       <p className="mt-3 text-xs text-zinc-500 dark:text-zinc-400">
         Total: {total} findings
       </p>
+
+      {hasTrend && (
+        <div className="mt-6 pt-4 border-t border-zinc-200 dark:border-zinc-700">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase tracking-wider">
+              Severity Trend ({trendRecords.length} scans)
+            </h4>
+            {onClearHistory && (
+              <button
+                onClick={onClearHistory}
+                className="text-[10px] text-zinc-400 hover:text-red-400 transition-colors"
+                aria-label="Clear all scan history"
+              >
+                Clear history
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            {(["critical", "high", "medium", "low"] as const).map((sev) => (
+              <TrendChart
+                key={sev}
+                records={trendRecords}
+                severity={sev}
+                color={trendColors[sev]}
+              />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

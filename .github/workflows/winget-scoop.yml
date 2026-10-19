@@ -1,0 +1,118 @@
+name: Update Winget & Scoop Manifests
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions: {}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  update-manifests:
+    name: Update Winget and Scoop manifests
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download Windows amd64 binary
+        run: |
+          curl -fsSL -o sanctifier-windows-amd64.exe \
+            "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/sanctifier-windows-amd64.exe"
+
+      - name: Compute SHA256 for Winget manifest
+        id: sha256
+        run: |
+          sha=$(sha256sum sanctifier-windows-amd64.exe | cut -d ' ' -f 1)
+          echo "sha256=${sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Update Winget installer manifest
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha256.outputs.sha256 }}"
+          sed -i "s|PackageVersion: .*|PackageVersion: ${VERSION}|g" winget/manifests/h/HyperSafeD/Sanctifier/*/HyperSafeD.Sanctifier.installer.yaml
+          sed -i "s|PackageVersion: .*|PackageVersion: ${VERSION}|g" winget/manifests/h/HyperSafeD/Sanctifier/*/HyperSafeD.Sanctifier.locale.en-US.yaml
+          sed -i "s|PackageVersion: .*|PackageVersion: ${VERSION}|g" winget/manifests/h/HyperSafeD/Sanctifier/*/HyperSafeD.Sanctifier.yaml
+          sed -i "s|/download/v[^/]*/|/download/v${VERSION}/|g" winget/manifests/h/HyperSafeD/Sanctifier/*/HyperSafeD.Sanctifier.installer.yaml
+          sed -i "s|/download/v[^/]*/|/download/v${VERSION}/|g" winget/manifests/h/HyperSafeD/Sanctifier/*/HyperSafeD.Sanctifier.locale.en-US.yaml
+          sed -i "s|/releases/tag/v[^\"]*|/releases/tag/v${VERSION}|g" winget/manifests/h/HyperSafeD/Sanctifier/*/HyperSafeD.Sanctifier.locale.en-US.yaml
+          sed -i "s|InstallerSha256: .*|InstallerSha256: ${SHA}|g" winget/manifests/h/HyperSafeD/Sanctifier/*/HyperSafeD.Sanctifier.installer.yaml
+
+      - name: Update Scoop manifest
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          SHA="${{ steps.sha256.outputs.sha256 }}"
+          cat > scoop/sanctifier.json << MANIFESTEOF
+          {
+            "version": "${VERSION}",
+            "description": "Security copilot for Stellar Soroban smart contracts",
+            "homepage": "https://github.com/HyperSafeD/Sanctifier",
+            "license": "MIT OR Apache-2.0",
+            "architecture": {
+              "64bit": {
+                "url": "https://github.com/HyperSafeD/Sanctifier/releases/download/v${VERSION}/sanctifier-windows-amd64.exe",
+                "hash": "${SHA}"
+              },
+              "arm64": {
+                "url": "https://github.com/HyperSafeD/Sanctifier/releases/download/v${VERSION}/sanctifier-windows-arm64.exe",
+                "hash": "${SHA}"
+              }
+            },
+            "bin": [
+              [
+                "sanctifier-windows-amd64.exe",
+                "sanctifier"
+              ]
+            ],
+            "checkver": {
+              "github": "https://github.com/HyperSafeD/Sanctifier"
+            },
+            "autoupdate": {
+              "architecture": {
+                "64bit": {
+                  "url": "https://github.com/HyperSafeD/Sanctifier/releases/download/\$version/sanctifier-windows-amd64.exe",
+                  "hash": {
+                    "url": "\$baseurl/SHA256SUMS"
+                  }
+                },
+                "arm64": {
+                  "url": "https://github.com/HyperSafeD/Sanctifier/releases/download/\$version/sanctifier-windows-arm64.exe",
+                  "hash": {
+                    "url": "\$baseurl/SHA256SUMS"
+                  }
+                }
+              }
+            }
+          }
+          MANIFESTEOF
+
+      - name: Create Winget PR to microsoft/winget-pkgs
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.WINGET_PR_TOKEN }}
+          commit-message: "Update Sanctifier to v${{ steps.version.outputs.version }}"
+          title: "winget: Update HyperSafeD.Sanctifier to ${{ steps.version.outputs.version }}"
+          body: |
+            Auto-generated update for Sanctifier v${{ steps.version.outputs.version }}
+
+            Release: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}
+          branch: "winget/sanctifier-${{ steps.version.outputs.version }}"
+          base: "main"
+          path: "winget/manifests/h/HyperSafeD/Sanctifier/${{ steps.version.outputs.version }}"
+          labels: "automated,winget"
+        continue-on-error: true
+
+      - name: Commit updated manifest files to this repo
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update winget & scoop manifests for v${{ steps.version.outputs.version }}"
+          file_pattern: "winget/ scoop/"

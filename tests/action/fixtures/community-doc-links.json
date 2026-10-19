@@ -1,0 +1,15 @@
+{
+  "contributing_file": "CONTRIBUTING.md",
+  "documentation_index_file": "DOCUMENTATION_INDEX.md",
+  "required_contributing_links": [
+    ".github/CODE_OF_CONDUCT.md",
+    ".github/ISSUE_TEMPLATE/bug_report.yml",
+    ".github/ISSUE_TEMPLATE/feature_request.yml",
+    ".github/PULL_REQUEST_TEMPLATE.md",
+    ".github/SECURITY.md"
+  ],
+  "required_index_links": [
+    "CONTRIBUTING.md",
+    ".github/CODE_OF_CONDUCT.md"
+  ]
+}

@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "line 4",
+    "message": "External contract call result is not checked or handled",
+    "rule_name": "unchecked_external_call",
+    "severity": "Warning",
+    "suggestion": "Store the result in a variable and handle errors with match, ?, or .unwrap_or()"
+  }
+]

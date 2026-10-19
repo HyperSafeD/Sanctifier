@@ -1,0 +1,123 @@
+# Fixture: valid action input combinations
+# Each entry is a set of inputs that must pass validate_inputs() without error.
+# The expected_* fields document the normalised output values.
+
+cases:
+
+  - id: defaults
+    description: Default values as declared in action.yml
+    inputs:
+      path: "."
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "sanctifier-results.sarif"
+      debug: "false"
+    expected:
+      path: "."
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "sanctifier-results.sarif"
+      debug: "false"
+
+  - id: uppercase_normalisation
+    description: Inputs supplied in UPPER CASE must be normalised to lower case
+    inputs:
+      path: "."
+      min_severity: "HIGH"
+      format: "SARIF"
+      upload_sarif: "YES"
+      sarif_output: "out/results.sarif"
+      debug: "TRUE"
+    expected:
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      debug: "true"
+
+  - id: format_json
+    description: JSON output format with upload_sarif disabled
+    inputs:
+      path: "."
+      min_severity: "medium"
+      format: "json"
+      upload_sarif: "false"
+      sarif_output: "results.json"
+      debug: "false"
+    expected:
+      format: "json"
+      upload_sarif: "false"
+
+  - id: format_text
+    description: Plain text output format
+    inputs:
+      path: "."
+      min_severity: "low"
+      format: "text"
+      upload_sarif: "false"
+      sarif_output: "report.txt"
+      debug: "false"
+    expected:
+      format: "text"
+      min_severity: "low"
+
+  - id: min_severity_critical
+    description: Critical severity threshold
+    inputs:
+      path: "."
+      min_severity: "critical"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "critical.sarif"
+      debug: "false"
+    expected:
+      min_severity: "critical"
+
+  - id: min_severity_info
+    description: Info severity threshold (most permissive)
+    inputs:
+      path: "."
+      min_severity: "info"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "all-findings.sarif"
+      debug: "false"
+    expected:
+      min_severity: "info"
+
+  - id: nested_sarif_output_path
+    description: SARIF output in a nested subdirectory
+    inputs:
+      path: "."
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "security/reports/sanctifier.sarif"
+      debug: "false"
+    expected:
+      sarif_output: "security/reports/sanctifier.sarif"
+
+  - id: debug_enabled
+    description: Debug logging enabled
+    inputs:
+      path: "."
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "true"
+      sarif_output: "sanctifier-results.sarif"
+      debug: "true"
+    expected:
+      debug: "true"
+
+  - id: upload_sarif_no_alias
+    description: Boolean false expressed as "no"
+    inputs:
+      path: "."
+      min_severity: "high"
+      format: "sarif"
+      upload_sarif: "no"
+      sarif_output: "sanctifier-results.sarif"
+      debug: "false"
+    expected:
+      upload_sarif: "false"

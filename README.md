@@ -1,513 +1,537 @@
-# Sanctifier 🛡️
+<div align="center">
 
-[![CI](https://github.com/HyperSafeD/Sanctifier/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/HyperSafeD/Sanctifier/actions/workflows/ci.yml)
-[![Codecov](https://codecov.io/gh/Jayy4rl/Sanctifier/graph/badge.svg)](https://codecov.io/gh/Jayy4rl/Sanctifier)
-[![crates.io](https://img.shields.io/crates/v/sanctifier-cli.svg)](https://crates.io/crates/sanctifier-cli)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+**[English](README.md)** | **[Español](README.es.md)** | **[中文](README.zh-CN.md)** | **[日本語](README.ja.md)** | **[Français](README.fr.md)**
 
-<p align="center">
-  <img src="branding/logo.png" width="300" alt="Sanctifier Logo">
-</p>
+</div>
 
-**Sanctifier** is a security and formal-verification suite for
-[Stellar Soroban](https://soroban.stellar.org/) smart contracts.
-It statically analyses Rust/Soroban source code, checks for 12 classes of
-vulnerabilities, matches against a community-sourced vulnerability database,
-and optionally proves invariants with Z3.
+<div align="center">
+  <img src="branding/logo.png" width="220" alt="Sanctifier" />
 
----
+  # Sanctifier.
 
-## Table of Contents
+  ### Catch the bug before someone else cashes it.
 
-- [Installation](#-installation)
-- [Quick Start](#-quick-start)
-- [Finding Codes](#-finding-codes)
-- [CLI Reference](#-cli-reference)
-- [Example JSON Output](#-example-json-output)
-- [JSON Schema](#-json-schema)
-- [GitHub Action](#-github-action)
-- [Project Structure](#-project-structure)
-- [Configuration](#-configuration)
-- [Add a Sanctifier Badge to Your Project](#-add-a-sanctifier-badge-to-your-project)
-- [Documentation](#-documentation)
-- [Contributing](#-contributing)
-- [License](#-license)
+  **Security copilot for Stellar Soroban smart contracts** — static analysis, formal verification with Z3, on-chain runtime guards, and an auditor-friendly dashboard, all driven by a single SARIF-clean engine.
+
+  [![CI](https://github.com/HyperSafeD/Sanctifier/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/HyperSafeD/Sanctifier/actions/workflows/ci.yml)
+  [![Codecov](https://codecov.io/gh/HyperSafeD/Sanctifier/graph/badge.svg)](https://codecov.io/gh/HyperSafeD/Sanctifier)
+  [![crates.io](https://img.shields.io/crates/v/sanctifier-cli.svg)](https://crates.io/crates/sanctifier-cli)
+  [![Soroban Testnet](https://img.shields.io/badge/Soroban%20Testnet-Live-2dd4bf?style=flat-square&logo=stellar)](LIVE_TESTNET.md)
+  [![Testnet Monitor](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/HyperSafeD/Sanctifier/monitor/badges/testnet-monitor.json)](LIVE_TESTNET.md)
+  [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+</div>
 
 ---
 
-## 📦 Installation
+## Why Does Sanctifier exists?
 
-### From crates.io
+> [!NOTE]
+> When an EVM contract ships a bug, the community has a decade of tools — Slither, Mythril, Foundry, Certora — to catch it. Soroban shipped to mainnet in 2024 with almost none of that scaffolding. Every team writes the same review checklist from scratch. Every audit re-discovers the same five footguns.
+
+Sanctifier is the missing layer. **One engine, twelve canonical rules, three deployment surfaces.** Built specifically for Soroban's authorization model, storage TTL semantics, SEP-41 token interface, and gas/event quirks. Open source. Auditor-grade. Drop-in for CI.
+
+---
+
+## What it catches
+
+Every finding has a stable code — `S001..S012` — so you can filter, suppress, and trend it across releases.
+
+### Core Security Rules (S001–S012)
+
+| Code | What it catches | Why it bites |
+|------|-----------------|--------------|
+| [`S001`](docs/rules/S001.md) | Missing `require_auth` on state-changing calls | Anyone can drain your contract |
+| [`S002`](docs/rules/S002.md) | `panic!` / `unwrap` / `expect` in contract paths | Locked state, no recovery |
+| [`S003`](docs/rules/S003.md) | Unchecked arithmetic — overflow, underflow, truncation | Silent loss-of-funds rounding |
+| [`S004`](docs/rules/S004.md) | Ledger entries pushing the size threshold | Refusal at write time, mid-tx |
+| [`S005`](docs/rules/S005.md) | Storage-key collisions between data paths | Cross-feature data corruption |
+| [`S006`](docs/rules/S006.md) | Unsafe patterns — including timestamp-as-randomness | Predictable winners, exploit replay |
+| [`S007`](docs/rules/S007.md) | Your custom YAML rules | Your house style, enforced |
+| [`S008`](docs/rules/S008.md) | Inconsistent or missing event emissions | Wallets and indexers go blind |
+| [`S009`](docs/rules/S009.md) | Unhandled `Result` return values | Silent failures masquerading as success |
+| [`S010`](docs/rules/S010.md) | Upgrade / admin / governance risk | Single-key takeover paths |
+| [`S011`](docs/rules/S011.md) | Z3-disproved invariants | Mathematical guarantees you don't have |
+| [`S012`](docs/rules/S012.md) | SEP-41 token interface deviations | Wallets reject your token |
+
+### Vulnerability Database
+
+The community **vulnerability database** matches known CVE-style patterns (`SOL-2024-*`) against your AST — so a published exploit anywhere becomes a finding everywhere.
+
+### Zero-knowledge contracts — the `Z001..Z014` series
+
+If your contract verifies ZK proofs on-chain, Sanctifier checks the ways those integrations keep breaking: nullifiers that are never recorded, public inputs that don't commit to the transaction, verifying keys with no ceremony provenance or trusted straight out of storage.
+
+> [!IMPORTANT]
+> **→ [docs/zk-roadmap.md](docs/zk-roadmap.md)** is the scope summary: which Z-rules have detectors today, which are documented but not yet wired, and what is deliberately deferred. Start there before reading the 62 individual issues.
+>
+> The full catalogue lives in [docs/rules/](docs/rules/), with the vulnerability classes and secure patterns explained in the [ZK Security Guide](docs/zk-security-guide.md).
+
+---
+
+## Live on Soroban testnet — right now
+
+This isn't a slide deck. Sanctifier's **Runtime Guard Wrapper**, **Reentrancy Guard**, and **Vulnerable-by-design Contract** are deployed and emitting on-chain audit events you can `stellar contract invoke` against today. See **[LIVE_TESTNET.md](LIVE_TESTNET.md)** for addresses, verification commands, and event logs.
 
 ```bash
+# Tail real-time guard events on the live deployment
+stellar events --network testnet --start-ledger <LATEST> \
+  --id $RUNTIME_GUARD_CONTRACT_ID
+```
+
+---
+
+## Five ways to use it
+
+| Surface | For | Time to first finding |
+|---|---|---|
+| **`sanctifier` CLI** | Local dev, scripts, hot paths | **30 seconds** |
+| **GitHub Action** | Every PR, every push | **One commit** |
+| **Web Dashboard** (Next.js) | Auditors, reviewers, hackathon demos | Drag-and-drop a `.rs` file |
+| **VS Code Extension** | Inline diagnostics as you type | One install |
+| **On-chain Runtime Guard** | Forensic trail after deploy | One contract wrap |
+
+Same engine under all of them (it cross-compiles to WASM for the browser path), so findings are bit-for-bit identical wherever you scan.
+
+---
+
+## 30-second quickstart
+
+> [!NOTE]
+> **No Z3 needed to install.** `sanctifier-cli` depends on `sanctifier-core` with default features off, so `cargo install` never compiles Z3 and needs no C toolchain. libz3 is only required when you build the workspace from source or depend on `sanctifier-core` with its default `smt` feature — see [Install options](#install-options).
+
+```bash
+# 1. install (Rust 1.78+)
 cargo install sanctifier-cli
-```
 
-### From source
+# 2. scan
+sanctifier analyze ./contracts
 
-```bash
-git clone https://github.com/Jayy4rl/Sanctifier.git
-cd Sanctifier/tooling/sanctifier-cli
-cargo install --path .
-```
+# 3. integrate into CI — exit 1 on high/critical findings
+sanctifier analyze ./contracts --exit-code --format sarif > sanctifier.sarif
 
-> **Prerequisites:** Rust 1.78+, `libz3-dev` and `clang`/`libclang-dev`
-> (needed by the Z3 formal-verification backend).
->
-> ```bash
-> # Debian / Ubuntu
-> sudo apt-get install libz3-dev clang libclang-dev
->
-> # macOS
-> brew install z3 llvm
-> ```
-
----
-
-## 🚀 Quick Start
-
-Analyse a Soroban contract in a single command:
-
-```bash
-sanctifier analyze ./contracts/my-token
+# 4. ship a security badge for your README
+sanctifier analyze . --format json > report.json
+sanctifier badge --report report.json --svg-output sanctifier.svg
 ```
 
 <details>
-<summary><b>Example terminal output</b></summary>
+<summary><b>What you'll see</b></summary>
 
 ```text
-⚠️ Found potential Authentication Gaps!
-   -> [S001] Function: ./contracts/token-with-bugs/src/lib.rs:initialize
-   -> [S001] Function: ./contracts/token-with-bugs/src/lib.rs:transfer
-   -> [S001] Function: ./contracts/token-with-bugs/src/lib.rs:mint
+⚠️ Authentication Gaps
+   → [S001] src/lib.rs:transfer — missing require_auth
+   → [S001] src/lib.rs:mint     — missing require_auth
 
-⚠️ Found unchecked Arithmetic Operations!
-   -> [S003] Op: -
-      Location: ./contracts/token-with-bugs/src/lib.rs:transfer:30
-   -> [S003] Op: +
-      Location: ./contracts/token-with-bugs/src/lib.rs:transfer:33
+⚠️ Unchecked Arithmetic
+   → [S003] src/lib.rs:transfer:30 — operator `-`
+   → [S003] src/lib.rs:transfer:33 — operator `+`
 
-⚠️ Found Unhandled Result issues!
-   -> [S009] Function: transfer
-      Call: Self :: balance (e . clone () , from . clone ())
-      Location: ./contracts/token-with-bugs/src/lib.rs:transfer:27
-      Message: Result returned from function call is not handled.
+⚠️ SEP-41 Deviation
+   → [S012] missing `allowance` function
 
-⚠️ Found SEP-41 Interface Deviations!
-   -> [S012] Function: allowance
-      Kind: MissingFunction
-      Message: Missing SEP-41 function 'allowance'.
+🛡️ 2 known-vulnerability matches from DB v1.0.0
+   ❌ [SOL-2024-002] Missing auth on token transfer (CRITICAL)
+   🔴 [SOL-2024-003] Unchecked balance underflow (HIGH)
 
-🛡️ Found 2 known vulnerability pattern(s) (DB v1.0.0)!
-   ❌ [SOL-2024-002] Missing Auth on Token Transfer (CRITICAL)
-   🔴 [SOL-2024-003] Unchecked Balance Underflow (HIGH)
-
-✨ Static analysis complete.
+✨ Scan complete · 4 findings · exit 1
 ```
+
+Exit code is `1` when critical/high findings are present — wire it into CI as-is.
 
 </details>
 
 ---
 
-## 🔎 Finding Codes
-
-Every finding is tagged with a stable code so you can filter, suppress, or
-reference it in CI.
-
-| Code | Category | Description |
-|------|----------|-------------|
-| `S001` | authentication | Missing `require_auth` in a state-changing function |
-| `S002` | panic_handling | `panic!` / `unwrap` / `expect` usage that may abort execution |
-| `S003` | arithmetic | Unchecked arithmetic with overflow/underflow risk |
-| `S004` | storage_limits | Ledger entry size exceeds or approaches the configured threshold |
-| `S005` | storage_keys | Potential storage-key collision across data paths |
-| `S006` | unsafe_patterns | Potentially unsafe language or runtime pattern detected |
-| `S007` | custom_rule | User-defined rule matched contract source |
-| `S008` | events | Inconsistent topic counts or sub-optimal gas patterns in events |
-| `S009` | logic | A `Result` return value is not consumed or handled |
-| `S010` | upgrades | Security risk in contract upgrade or admin mechanisms |
-| `S011` | formal_verification | Z3 proved a mathematical violation of an invariant |
-| `S012` | token_interface | SEP-41 token interface compatibility or authorization deviation |
-
-In addition, the community vulnerability database emits `SOL-2024-*` codes
-when a known vulnerability pattern is matched.
-See [docs/error-codes.md](docs/error-codes.md) for full details.
-
----
-
-## 🛠 CLI Reference
-
-### `sanctifier analyze`
-
-Analyse a Soroban contract for vulnerabilities.
-
-```bash
-sanctifier analyze [OPTIONS] [PATH]
-```
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `[PATH]` | — | `.` | Contract directory or `Cargo.toml` |
-| `--format <FORMAT>` | `-f` | `text` | Output format: `text` or `json` |
-| `--limit <BYTES>` | `-l` | `64000` | Ledger entry size limit in bytes |
-| `--vuln-db <PATH>` | — | built-in | Custom vulnerability database JSON |
-| `--webhook-url <URL>` | — | — | Webhook endpoint(s) for scan notifications (repeatable) |
-
-```bash
-# JSON output for CI
-sanctifier analyze ./contracts/my-token --format json
-
-# Custom ledger limit and webhook
-sanctifier analyze . --limit 32000 \
-  --webhook-url https://hooks.slack.com/services/XXX/YYY/ZZZ
-```
-
-**Exit code:** `1` when critical or high findings are detected (useful in CI
-pipelines).
-
----
-
-### Webhook Integration
-
-Use one or more `--webhook-url` flags to push a `scan.completed` notification
-after `sanctifier analyze` finishes:
-
-```bash
-sanctifier analyze ./contracts/token-with-bugs \
-  --webhook-url https://discord.com/api/webhooks/XXX/YYY \
-  --webhook-url https://hooks.slack.com/services/AAA/BBB/CCC
-```
-
-Provider-specific payloads:
-
-| Provider | Payload shape |
-|----------|---------------|
-| Discord | `{ "content": "Sanctifier scan completed ..." }` |
-| Slack | `{ "text": "Sanctifier scan completed ...", "attachments": [{ "color": "...", "fields": [...] }] }` |
-| Teams | `{ "text": "Sanctifier scan completed ..." }` |
-| Custom webhook | Raw JSON payload: `event`, `project_path`, `timestamp_unix`, `summary` |
-
-The shared payload data includes:
-
-| Field | Description |
-|-------|-------------|
-| `event` | Always `scan.completed` |
-| `project_path` | Analysed path passed to `sanctifier analyze` |
-| `timestamp_unix` | Completion timestamp as UNIX seconds |
-| `summary.total_findings` | Total number of findings emitted |
-| `summary.has_critical` | Whether any critical findings were detected |
-| `summary.has_high` | Whether any high-severity findings were detected |
-
-Webhook delivery failures are non-fatal: Sanctifier logs a warning to stderr and
-still returns the analysis result.
-
----
-
-### `sanctifier init`
-
-Generate a `.sanctify.toml` configuration file in the current directory.
-
-```bash
-sanctifier init [OPTIONS]
-```
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--force` | `-f` | `false` | Overwrite an existing config file |
-
----
-
-### `sanctifier badge`
-
-Create an SVG badge and optional Markdown snippet from a JSON scan report.
-
-```bash
-sanctifier badge [OPTIONS]
-```
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--report <PATH>` | `-r` | `sanctifier-report.json` | Path to a Sanctifier JSON report |
-| `--svg-output <PATH>` | — | `sanctifier-security.svg` | Output SVG file |
-| `--markdown-output <PATH>` | — | — | Output Markdown snippet file |
-| `--badge-url <URL>` | — | local SVG path | Public URL for the SVG |
-
-```bash
-sanctifier analyze . --format json > sanctifier-report.json
-sanctifier badge --report sanctifier-report.json \
-  --svg-output badges/sanctifier-security.svg \
-  --markdown-output badges/sanctifier-security.md
-```
-
----
-
-### `sanctifier callgraph`
-
-Generate a Graphviz DOT call graph of cross-contract calls
-(`env.invoke_contract`).
-
-```bash
-sanctifier callgraph [OPTIONS] [PATH]
-```
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `[PATH]` | — | `.` | Contract directory, workspace, or `.rs` file |
-| `--output <FILE>` | `-o` | `callgraph.dot` | Output DOT file |
-
-```bash
-sanctifier callgraph ./contracts/amm-pool -o amm-callgraph.dot
-dot -Tpng amm-callgraph.dot -o amm-callgraph.png   # requires Graphviz
-```
-
----
-
-### `sanctifier update`
-
-Check for and download the latest Sanctifier binary from crates.io.
-
-```bash
-sanctifier update
-```
-
----
-
-### `sanctifier report`
-
-Generate a security report (writes to stdout or a file).
-
-```bash
-sanctifier report [OPTIONS]
-```
-
-| Flag | Short | Default | Description |
-|------|-------|---------|-------------|
-| `--output <PATH>` | `-o` | stdout | Output file path |
-
----
-
-## 📋 Example JSON Output
-
-```bash
-sanctifier analyze ./contracts/vulnerable-contract --format json
-```
-
-```jsonc
-{
-  "metadata": {
-    "version": "0.1.0",
-    "timestamp": "2026-03-24T12:00:00Z",
-    "project_path": "./contracts/vulnerable-contract",
-    "format": "sanctifier-ci-v1"
-  },
-  "summary": {
-    "critical": 0,
-    "high": 0,
-    "medium": 2,
-    "low": 0,
-    "info": 0
-  },
-  "findings": {
-    "auth_gaps": [
-      { "code": "S001", "function": "src/lib.rs:set_admin" }
-    ],
-    "panics": [
-      { "code": "S002", "type": "expect", "location": "src/lib.rs:set_admin_secure" }
-    ],
-    "arithmetic_issues": [],
-    "storage_collisions": [
-      { "code": "S005", "value": "admin", "type": "storage::set (instance)" }
-    ],
-    "upgrade_admin_risks": [
-      { "code": "S010", "category": "Governance", "function": "set_admin" }
-    ]
-  },
-  "error_codes": [
-    { "code": "S001", "category": "authentication", "description": "..." },
-    "..."
-  ],
-  "vuln_db_matches": [],
-  "schema_version": "1.0.0"
-}
-```
-
-> **Note:** The example above is abbreviated. See the full field reference in the JSON Schema below.
-
----
-
-## 📐 JSON Schema
-
-The machine-readable contract for `--format json` output is published at
-[`schemas/analysis-output.json`](schemas/analysis-output.json) (JSON Schema draft-07).
-
-```
-schemas/
-└── analysis-output.json   # Draft-07 schema — validated in CI
-```
-
-Downstream tools (dashboards, IDE plugins, CI integrations) can use the schema to:
-
-- **Validate** report files before processing them.
-- **Generate** typed bindings in any language that supports JSON Schema.
-- **Detect breaking changes** when the tool is upgraded.
-
-The `schema_version` field in every report (e.g. `"1.0.0"`) is bumped independently
-of the Sanctifier tool version whenever the output shape changes, so consumers can
-guard on it without coupling to the CLI release cycle.
-
----
-
-## 🤖 GitHub Action
-
-Sanctifier ships a composite GitHub Action (`action.yml`) so CI consumers can
-integrate with a few lines.
+## Wire it into your repo (in one PR)
 
 ```yaml
-name: Sanctifier Scan
-
-on:
-  pull_request:
-  push:
-    branches: [main]
-
-permissions:
-  contents: read
-  security-events: write
-
+# .github/workflows/sanctifier.yml
+name: Sanctifier
+on: [pull_request, push]
+permissions: { contents: read, security-events: write }
 jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Run Sanctifier
-        uses: HyperSafeD/Sanctifier@main
+      - uses: HyperSafeD/Sanctifier@main
         with:
           path: .
           format: sarif
           min-severity: high
           upload-sarif: "true"
-          sarif-output: sanctifier-results.sarif
 ```
 
-When `format: sarif` and `upload-sarif: "true"`, the action uploads the SARIF
-file via `github/codeql-action/upload-sarif@v3` so findings appear in GitHub
-code scanning.
+SARIF lands in GitHub code-scanning so reviewers see annotations inline on PRs.
+
+> [!TIP]
+> Ensure you have `security-events: write` permissions enabled in your GitHub Actions settings for SARIF uploads to succeed.
 
 ---
 
-## 📂 Project Structure
+## Run the dashboard locally
+
+Requires **Node.js 20+** and **npm 10+** (enforced by `frontend/package.json` `engines`).
+
+```bash
+cd frontend
+npm ci          # use `npm install` if you are changing dependencies
+npm run dev
+# → http://localhost:3000
+```
+
+- **`/scan`** — drag in a `.rs` file, get findings in <2s
+- **`/dashboard`** — load a JSON report, drill in by severity, see a live call-graph
+- **`/playground`** — try canned vulnerable contracts (auth-gap, overflow, unsafe-PRNG, …)
+- **`/terminal`** — `sanctifier` in a terminal emulator for guided demos
+
+---
+
+## Install options
+
+> [!TIP]
+> **Quick start:** For most users, `cargo install sanctifier-cli` is all you need.
+
+### Installation Methods
+
+Every channel below is published automatically from the release workflow on each tagged version.
+
+| Method | Command | Best for |
+|--------|---------|----------|
+| **Cargo (recommended)** | `cargo install sanctifier-cli` | Most users; needs Rust 1.78+, no Z3 or C toolchain |
+| **npm / npx** | `npx @hypersafed/sanctifier-cli analyze ./contracts` | macOS & Linux with no Rust toolchain; fetches the release binary on first run (Node 18+) |
+| **Homebrew** | `brew install HyperSafeD/sanctifier/sanctifier` | macOS and Linuxbrew |
+| **Scoop (Windows)** | `scoop install https://raw.githubusercontent.com/HyperSafeD/Sanctifier/main/scoop/sanctifier.json` | Windows, with auto-update on new releases |
+| **winget (Windows)** | `winget install HyperSafeD.Sanctifier` | Windows, system package manager |
+| **Docker** | `docker run --rm -v $PWD:/src ghcr.io/hypersafed/sanctifier analyze /src` | No local Rust needed |
+| **GitHub Codespaces** | [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/HyperSafeD/Sanctifier) | Cloud IDE, pre-configured |
+| **From source** | `git clone https://github.com/HyperSafeD/Sanctifier && cd Sanctifier && make dev-setup && make release` | Latest development version; **needs libz3** (see below) |
+
+### Pre-built Binaries
+
+Direct downloads for your platform (no Rust toolchain required):
+
+| Platform | Download | Verification |
+|----------|----------|--------------|
+| **Linux (x86_64)** | [Download](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64) | [SHA256](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64.sha256) |
+| **Linux (musl)** | [Download](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64-musl) | [SHA256](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64-musl.sha256) |
+| **macOS (Intel)** | [Download](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-amd64) | [SHA256](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-amd64.sha256) |
+| **macOS (Apple Silicon)** | [Download](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-arm64) | [SHA256](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-arm64.sha256) |
+| **Windows** | [Download](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-windows-amd64.exe) | [SHA256](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-windows-amd64.exe.sha256) |
+
+**Verifying binaries:** Each release includes SHA256 checksums for integrity verification:
+
+```bash
+# Linux/macOS
+curl -LO https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64
+curl -LO https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64.sha256
+sha256sum -c sanctifier-linux-amd64.sha256
+
+# Windows (PowerShell)
+(Get-FileHash sanctifier-windows-amd64.exe).Hash -eq (Get-Content sanctifier-windows-amd64.exe.sha256)
+```
+
+### System Requirements
+
+**To install and run the CLI:**
+- Rust 1.78+ (only when installing via cargo; the binary, Docker, npx, Homebrew, Scoop and winget channels need no toolchain)
+- 2GB RAM
+- 500MB disk space
+
+**To run the dashboard:** Node.js 20+ and npm 10+.
+
+**To build the workspace from source** (`make build` / `make release` / `cargo test --workspace`), `sanctifier-core` is compiled with its default `smt` feature, which links Z3:
+
+| Platform | Required Packages |
+|----------|------------------|
+| **Debian/Ubuntu** | `sudo apt-get install libz3-dev clang libclang-dev build-essential pkg-config` |
+| **Fedora/RHEL** | `sudo dnf install z3-devel clang clang-devel` |
+| **Arch Linux** | `sudo pacman -S z3 clang` |
+| **macOS** | `brew install z3 llvm` |
+| **Windows** | Install [Z3](https://github.com/Z3Prover/z3/releases) and [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) |
+
+`make dev-setup` installs the Rust toolchain, the `wasm32-unknown-unknown` target, `wasm-pack`, `soroban-cli` and the Node dependencies for you — it does **not** install libz3, which is platform-specific.
+
+**Optional:**
+- `soroban-cli` for contract deployment features: `cargo install soroban-cli`
+- `wasm-pack` for WASM analysis: `cargo install wasm-pack`
+
+### Building without Z3
+
+If you depend on `sanctifier-core` directly and don't need SMT-backed formal verification (rule S011), turn the default features off and re-enable only what you use:
+
+```toml
+[dependencies]
+sanctifier-core = { version = "0.1", default-features = false, features = ["soroban", "parallel"] }
+```
+
+| Feature | Default | What it does |
+|---------|---------|--------------|
+| `smt` | on | Z3-backed formal verification (rule S011). Requires libz3 at compile time; drop it for wasm32 targets. |
+| `soroban` | on | Pulls in `soroban-sdk` for the runtime `SanctifiedGuard` trait. |
+| `parallel` | on | Rayon-backed batch APIs (e.g. `AuthGapRule::check_many`) that analyse many sources concurrently. Drop it for wasm32, which has no threads; the batch APIs stay available and run serially. |
+
+The shipped `sanctifier-cli` already builds with `default-features = false, features = ["parallel"]`, which is why installing it never pulls in Z3. All rules except S011 (S001–S010, S012, and the `Z` series) are fully functional without the `smt` feature.
+
+### Verifying Installation
+
+After installation, verify Sanctifier is working:
+
+```bash
+# Check version
+sanctifier --version
+
+# Run environment diagnostics
+sanctifier doctor
+
+# Test with a sample scan
+sanctifier analyze --help
+```
+
+### Updating Sanctifier
+
+Keep your installation up-to-date:
+
+```bash
+# Update via cargo
+cargo install sanctifier-cli --force
+
+# Or use built-in updater with integrity checks
+sanctifier update
+```
+
+### Troubleshooting Installation
+
+> [!WARNING]
+> **Common Issues and Fixes**
+>
+> 1. **"cargo: command not found"**
+>    - Install Rust via rustup: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh`
+>    - Restart your terminal or run: `source ~/.cargo/env`
+>
+> 2. **"failed to compile z3-sys"** (building from source, or depending on `sanctifier-core` directly)
+>    - Install Z3 development libraries (see System Requirements above)
+>    - Or build `sanctifier-core` without the `smt` feature (see [Building without Z3](#building-without-z3))
+>    - Installing the CLI with `cargo install sanctifier-cli` never hits this — it does not build Z3
+>
+> 3. **"sanctifier: command not found" after installation**
+>    - Ensure `~/.cargo/bin` is in your PATH
+>    - Add to shell profile: `echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc`
+>
+> 4. **Windows: "VCRUNTIME140.dll not found"**
+>    - Install [Microsoft Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe)
+>
+> For more detailed troubleshooting, see [`docs/getting-started.md#troubleshooting`](docs/getting-started.md#troubleshooting).
+
+---
+
+## Troubleshooting
+
+### Installation Issues
+
+| Issue | Solution |
+|-------|----------|
+| `cargo: command not found` | Install Rust: `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+| `failed to run custom build command for 'soroban-sdk'` | Update Rust: `rustup update stable` |
+| `error: no such command: 'install'` | Restart shell or run: `source ~/.cargo/env` |
+| `sanctifier: command not found` | Add to PATH: `echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc` |
+| Z3/libz3 compilation errors | Install dev libs: `brew install z3` (macOS) or `sudo apt install libz3-dev` (Linux) |
+| Windows: VCRUNTIME140.dll error | Install [Visual C++ Redistributable](https://aka.ms/vs/17/release/vc_redist.x64.exe) |
+
+### Runtime Issues
+
+| Issue | Solution |
+|-------|----------|
+| `No Soroban project found at "..."` | Ensure target directory has `Cargo.toml` with `soroban-sdk` dependency |
+| `Findings look stale after fixing` | File wasn't saved, or you're pointing at wrong path; re-run with exact path you edited |
+| `error[E0463]: can't find crate for 'core'` | Missing WASM target: `rustup target add wasm32-unknown-unknown` |
+| `sanctifier analyze` hangs | Use `--timeout 0` to disable timeout, or `--timeout 5` for 5-second limit |
+| Empty findings on valid contract | Ensure rules are enabled in `.sanctify.toml` (check `enabled_rules` list) |
+
+### Dashboard Issues
+
+| Issue | Solution |
+|-------|----------|
+| `npm ERR! Node version too old` | Requires Node.js 20+; update via [nodejs.org](https://nodejs.org) |
+| Port 3000 already in use | Kill process on port: `lsof -ti:3000 \| xargs kill -9`, then `npm run dev` |
+| Dashboard won't load JSON report | Ensure report format matches schema; validate with: `jq . report.json` |
+
+---
+
+## CLI reference
+
+```bash
+# Full analysis (most flags shown; all have defaults)
+sanctifier analyze  [PATH]
+    --format text|json|sarif|ndjson   # output format (default: text)
+    --limit BYTES                     # ledger entry size cap (default: 64000)
+    --timeout SECS                    # per-file timeout, 0 = none (default: 30)
+    --exit-code                       # exit 1 when findings meet threshold
+    --min-severity critical|high|medium|low  # threshold for --exit-code (default: high)
+    --profile strict|lenient|ci|audit # preset overrides --exit-code/--min-severity
+    --webhook-url URL                 # POST results here on completion (repeatable)
+    --no-cache                        # skip incremental analysis cache
+
+# Other commands
+sanctifier diff       [PATH] --baseline <report.json>   # new/resolved findings vs baseline
+sanctifier watch      [PATH]              # re-runs on file change
+sanctifier workspace  [PATH]              # cargo-workspace-aware scan
+sanctifier callgraph  [PATH] --output callgraph.dot
+sanctifier harness    [PATH] --output fuzz-harness --target afl|honggfuzz|both
+sanctifier badge      --report report.json --svg-output sanctifier.svg
+sanctifier fix        [PATH] --rule S003  # apply patcher fixes
+sanctifier verify     [PATH]              # Z3-only invariant pass
+sanctifier deploy     [PATH] --network testnet|futurenet|mainnet
+sanctifier doctor                         # environment diagnostics
+sanctifier init       [PATH]              # scaffold project + .sanctify.toml
+sanctifier update                         # self-update with checksum check
+```
+
+Every subcommand accepts `--format json` for machine consumption. Use `--format ndjson` with `analyze` for streaming line-delimited output (one JSON object per finding, final `{"event":"done"}`).
+
+---
+
+## Output is a contract, not a vibe
+
+`--format json` output validates against [`schemas/analysis-output.json`](schemas/analysis-output.json) (JSON Schema draft-07). Every report carries a `schema_version` that bumps independently of the CLI version, so downstream tooling can pin to a schema without coupling to a release cadence.
+
+```jsonc
+{
+  "metadata":        { "version": "0.1.0", "format": "sanctifier-ci-v1", "timestamp": "…" },
+  "summary":         { "critical": 0, "high": 1, "medium": 2, "low": 0 },
+  "error_codes":     ["S001", "S003"],
+  "auth_gaps":       [{ "location": "src/lib.rs:42", "message": "missing require_auth" }],
+  "arithmetic_issues": [{ "location": "src/lib.rs:30", "operator": "-" }],
+  "rule_violations": [{ "rule_name": "require_auth_for_args", "severity": "Error",
+                        "location": "src/lib.rs:set_admin", "message": "…" }],
+  "vuln_db_matches": [{ "id": "SOL-2024-002", "severity": "CRITICAL", "matched_at": "src/lib.rs:55" }],
+  "schema_version":  "1.0.0"
+}
+```
+
+SARIF 2.1.0 output is canonical for GitHub code-scanning and any SAST aggregator.
+
+> [!NOTE]
+> `--format sarif` produces a SARIF 2.1.0 document compatible with GitHub code-scanning.
+> `--format ndjson` streams one object per finding so large scans can be processed incrementally.
+
+---
+
+## Config — `.sanctify.toml`
+
+```toml
+ignore_paths        = ["target", ".git"]
+enabled_rules       = ["auth_gaps", "panics", "arithmetic", "ledger_size"]
+ledger_limit        = 64000
+approaching_threshold = 0.8
+strict_mode         = false
+
+[[custom_rules]]
+name     = "no_unsafe_block"
+pattern  = 'unsafe\s*\{'
+severity = "error"
+```
+
+Custom rules support full YAML DSL — see [docs/rule-authoring-guide.md](docs/rule-authoring-guide.md).
+
+---
+
+## Roadmap
+
+Sanctifier is shipping in waves. What's done, what's next, what's wishlist:
+
+### Shipped
+- 12 canonical analysis rules (S001–S012) with stable codes
+- CLI, GitHub Action, Web Dashboard, VS Code extension, WASM build
+- Off-chain anomaly detector for recorded runtime calls with Slack/Discord alerts
+- Live testnet runtime-guard contracts emitting on-chain audit events
+- SARIF + JSON output, draft-07 schema, badge generator
+- Diff mode, watch mode, cargo-workspace scan, patcher
+
+### In flight (see the [contrib-wave issues](https://github.com/HyperSafeD/Sanctifier/issues?q=contrib-wave+in%3Atitle))
+- Real-LLM provider for `/api/ai/explain` (currently stubbed)
+- Editor-agnostic `sanctifier lsp` for Neovim / Helix / Zed
+- Streaming `--ndjson` output for incremental piping
+- GitHub PR comment formatter with delta vs base
+- 20+ new engine rules (allowance race, TTL bumps, cross-contract `try_call`, taint through destructures, …)
+- ZK integration — `Z001..Z014` rule catalogue, circom/Noir parsing, shielded-contract fixtures, dashboard ZK panel. Scope and status: **[docs/zk-roadmap.md](docs/zk-roadmap.md)**
+
+### Wishlist
+- Hosted REST API, Stellar Laboratory plugin, cargo-sanctify subcommand shim, anomaly-detection rules engine for recorded runtime calls
+
+---
+
+## Project layout
 
 ```text
 Sanctifier/
-├── contracts/              # Soroban smart contracts (examples & test targets)
-├── frontend/               # Next.js web dashboard
-├── schemas/
-│   └── analysis-output.json  # JSON Schema (draft-07) for --format json output
 ├── tooling/
-│   ├── sanctifier-cli/     # CLI binary (this is what you install)
-│   └── sanctifier-core/    # Static-analysis engine & Z3 backend
+│   ├── sanctifier-cli/        # CLI binary (the one you install)
+│   ├── sanctifier-detector/   # Off-chain anomaly detection service
+│   ├── sanctifier-core/       # Static-analysis engine + Z3 backend
+│   └── sanctifier-wasm/       # Browser/Node WASM build of the engine
+├── frontend/                  # Next.js dashboard, playground, terminal
+├── vscode-extension/          # VS Code diagnostics integration
+├── contracts/                 # Soroban contracts (fixtures + live targets)
+│   ├── runtime-guard-wrapper/ # ← deployed to testnet
+│   ├── reentrancy-guard/      # ← deployed to testnet
+│   └── vulnerable-contract/   # ← deployed to testnet (demo target)
+├── schemas/
+│   └── analysis-output.json   # JSON Schema (draft-07) — validated in CI
 ├── data/
-│   └── vulnerability-db.json  # Community-sourced vulnerability patterns
-├── scripts/                # Deployment & CI helper scripts
-└── docs/                   # Architecture decisions, guides, case studies
+│   └── vulnerability-db.json  # Community-sourced CVE-style patterns
+├── action.yml                 # GitHub composite action
+├── benchmarks/                # Performance corpora
+├── specs/                     # OpenAPI + RFC drafts
+└── docs/                      # Guides, ADRs, threat models, case studies
 ```
 
 ---
 
-## ⚙️ Configuration
+## New here? Start with the tutorial
 
-Run `sanctifier init` to generate a `.sanctify.toml`:
+**[Scan your first Soroban contract in 5 minutes →](docs/getting-started.md)**
 
-```toml
-ignore_paths = ["target", ".git"]
-enabled_rules = ["auth_gaps", "panics", "arithmetic", "ledger_size"]
-ledger_limit = 64000
-approaching_threshold = 0.8
-strict_mode = false
-
-[[custom_rules]]
-name = "no_unsafe_block"
-pattern = 'unsafe\s*\{'
-severity = "error"
-
-[[custom_rules]]
-name = "no_mem_forget"
-pattern = "std::mem::forget"
-severity = "warning"
-```
+The tutorial walks you through installing Sanctifier, writing a minimal contract,
+running your first scan, fixing every finding, and confirming a clean report — all
+in a single terminal session.
 
 ---
 
-## 🏅 Add a Sanctifier Badge to Your Project
+## Documentation
 
-Display your contract's security status directly in your repository README.
-
-### Step 1 — Generate the report and badge
-
-```bash
-# Produce a JSON report
-sanctifier analyze . --format json > sanctifier-report.json
-
-# Generate the SVG badge and a Markdown snippet
-sanctifier badge \
-  --report sanctifier-report.json \
-  --svg-output .github/badges/sanctifier-security.svg \
-  --markdown-output .github/badges/sanctifier-security.md \
-  --badge-url "https://raw.githubusercontent.com/<owner>/<repo>/main/.github/badges/sanctifier-security.svg"
-```
-
-### Step 2 — Commit the badge to your repository
-
-```bash
-git add .github/badges/sanctifier-security.svg
-git commit -m "ci: add Sanctifier security badge"
-```
-
-### Step 3 — Embed the badge in your README
-
-Copy the snippet from `sanctifier-security.md`, or paste directly:
-
-```markdown
-[![Sanctifier: Secure](https://raw.githubusercontent.com/<owner>/<repo>/main/.github/badges/sanctifier-security.svg)](https://github.com/HyperSafeD/Sanctifier)
-```
-
-### What the badge reflects
-
-| Badge color | Status | Meaning |
-|-------------|--------|---------|
-| 🟢 Green | **Secure** | Zero findings |
-| 🟠 Orange | **Warning** | At least one finding (high severity or any finding) |
-| 🔴 Red | **Critical** | At least one critical-severity finding |
-
-The badge is regenerated automatically whenever you re-run `sanctifier badge`
-with an updated report.  Add it to your CI pipeline so the badge always
-reflects the latest scan result.
+| If you want to… | Read |
+|-----------------|------|
+| **Get started (tutorial)** | **[docs/getting-started.md](docs/getting-started.md)** |
+| Browse the API reference | [API Documentation](https://hypersafed.github.io/Sanctifier/) |
+| Understand every finding code | [docs/error-codes.md](docs/error-codes.md) |
+| **Analyse a ZK contract** | **[docs/zk-roadmap.md](docs/zk-roadmap.md)** (scope) · [ZK Security Guide](docs/zk-security-guide.md) · [ZK Integration Guide](docs/ZK-INTEGRATION-GUIDE.md) |
+| Wire the runtime guard into your contract | [docs/runtime-guards-integration.md](docs/runtime-guards-integration.md) |
+| Set up CI | [docs/ci-cd-setup.md](docs/ci-cd-setup.md) |
+| Deploy to testnet | [docs/soroban-deployment.md](docs/soroban-deployment.md) |
+| Write your own rule | [docs/rule-authoring-guide.md](docs/rule-authoring-guide.md) |
+| See it benchmarked | [docs/case-studies/soroban-examples.md](docs/case-studies/soroban-examples.md) |
+| Review the threat model | [docs/security-threat-model.md](docs/security-threat-model.md) |
+| **Check service reliability targets** | **[docs/SLO.md](docs/SLO.md)** — uptime, latency, and error budgets for the hosted API |
+| Rollback procedures for mainnet | [ROLLBACK_PROCEDURE.md](./ROLLBACK_PROCEDURE.md) |
+| Understand versioning policy | [VERSIONING_POLICY.md](./VERSIONING_POLICY.md) |
+| Browse design decisions | [docs/adr/](docs/adr/) |
 
 ---
 
-## 📚 Documentation
+## Contributing
 
-| Document | Description |
-|----------|-------------|
-| [Getting Started](docs/getting-started.md) | First-run walkthrough |
-| [Error Codes](docs/error-codes.md) | Full finding-code reference |
-| [Runtime Guards Integration](docs/runtime-guards-integration.md) | Adding runtime guards to your contract |
-| [CI/CD Setup](docs/ci-cd-setup.md) | GitHub Actions integration |
-| [Soroban Deployment](docs/soroban-deployment.md) | Deploy guard contracts to testnet |
-| [Contributing Analysis Rules](docs/Contributing-analysis-rules.MD) | Writing custom analysis rules |
-| [Case Studies](docs/case-studies/soroban-examples.md) | Benchmark against official Soroban examples |
-| [Architecture Decisions](docs/adr/) | ADRs for design choices |
+> [!TIP]
+> We're picking up momentum and we want the help. **~100 hand-curated [`[contrib-wave]`](https://github.com/HyperSafeD/Sanctifier/issues?q=contrib-wave+in%3Atitle) issues** are live, each one with a problem statement, acceptance criteria, file pointers, and difficulty hint.
+> 
+> There's a `good first issue` for every skill level — bash, Rust, TypeScript, Next.js, GitHub Actions, doc-writing, contract authoring. Start with [CONTRIBUTING.md](CONTRIBUTING.md), then pick an issue and say hi.
 
 ---
 
-## 🤝 Contributing
+## License
 
-We welcome contributions from the Stellar community! Please see the
-[Contributing Guide](CONTRIBUTING.md) for details on setting up your
-development environment, running tests, and submitting pull requests.
+MIT — see [LICENSE](LICENSE).
 
----
-
-## 📄 License
-
-MIT
+<div align="center">
+  <sub>Built for the Stellar Soroban ecosystem · Mainnet doesn't forgive · Audit-grade, in CI.</sub>
+</div>

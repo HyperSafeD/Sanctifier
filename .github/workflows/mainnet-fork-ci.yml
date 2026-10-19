@@ -1,0 +1,162 @@
+name: Mainnet Fork Integration Tests
+
+# ── Trigger policy ────────────────────────────────────────────────────────────
+# • Weekly on Sundays at 02:00 UTC — keeps the corpus validated against live
+#   mainnet state without spamming the Stellar Expert API.
+# • Manual dispatch — allows on-demand runs when new contracts are added to
+#   the corpus or after engine changes that might affect real-world patterns.
+# • Explicitly NOT triggered on pull_request / push to avoid rate-limiting
+#   the Stellar Expert public API during routine development.
+
+on:
+  schedule:
+    - cron: "0 2 * * 0"   # Every Sunday at 02:00 UTC
+  workflow_dispatch:
+    inputs:
+      contract_id:
+        description: "Optional: single corpus entry ID to test (e.g. soroswap-router). Leave blank to run all."
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Opt-in flag that the test binary checks before making any network call.
+  SANCTIFIER_MAINNET_FORK: "1"
+
+jobs:
+  mainnet-fork:
+    name: Read-only mainnet fork analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      # ── Rust toolchain ───────────────────────────────────────────────────────
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      # ── System dependencies (Z3 for SMT feature) ─────────────────────────────
+      - name: Install Z3
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            libz3-dev libdbus-1-dev libudev-dev pkg-config curl
+
+      # ── Cargo cache ──────────────────────────────────────────────────────────
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-mainnet-fork-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-mainnet-fork-
+
+      # ── Build test binary ────────────────────────────────────────────────────
+      - name: Build mainnet fork test binary
+        run: |
+          cargo test --no-run --test mainnet_fork_test -p sanctifier-core \
+            --locked 2>&1
+
+      # ── Run fork tests ───────────────────────────────────────────────────────
+      - name: Run mainnet fork integration tests
+        env:
+          SANCTIFIER_FORK_CONTRACT: ${{ github.event.inputs.contract_id }}
+        run: |
+          cargo test --test mainnet_fork_test -p sanctifier-core \
+            --locked -- --nocapture 2>&1 | tee target/mainnet-fork-output.txt
+
+      # ── Upload report artifact ────────────────────────────────────────────────
+      - name: Upload fork test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mainnet-fork-report
+          path: |
+            target/mainnet-fork-report.json
+            target/mainnet-fork-output.txt
+          retention-days: 30
+
+      # ── Open issues for hard failures ─────────────────────────────────────────
+      - name: Open tracking issues for engine failures
+        if: failure()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require("node:fs");
+
+            let report;
+            try {
+              report = JSON.parse(fs.readFileSync("target/mainnet-fork-report.json", "utf8"));
+            } catch {
+              // Report file may not exist if the build itself failed.
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: "Mainnet fork CI: build/setup failure",
+                body: [
+                  "The mainnet fork integration test job failed before producing a report.",
+                  "",
+                  `Workflow run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                ].join("\n"),
+                labels: ["mainnet-fork", "bug", "ci"],
+              });
+              return;
+            }
+
+            const failed = report.results.filter(r => r.status === "failed");
+            for (const result of failed) {
+              const query = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open label:mainnet-fork "${result.id}"`;
+              const existing = await github.rest.search.issuesAndPullRequests({ q: query, per_page: 1 });
+
+              const title = `Mainnet fork: engine failure on ${result.name} (${result.id})`;
+              const body = [
+                "The scheduled mainnet fork integration test flagged a crash, hang, or unexpected result.",
+                "",
+                `**Contract**: ${result.name}`,
+                `**Contract ID**: \`${result.contract_id}\``,
+                `**Error**: ${result.error || "unknown"}`,
+                `**Duration**: ${result.duration_ms}ms`,
+                "",
+                "## Unexpected Findings",
+                result.unexpected_findings.length > 0
+                  ? result.unexpected_findings.map(f => `- ${f}`).join("\n")
+                  : "_(none)_",
+                "",
+                `**Workflow run**: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                "",
+                "## Triage Steps",
+                "1. Download the `mainnet-fork-report` artifact from the workflow run.",
+                "2. Reproduce locally: `SANCTIFIER_MAINNET_FORK=1 SANCTIFIER_FORK_CONTRACT=" + result.id + " cargo test --test mainnet_fork_test -p sanctifier-core -- --nocapture`",
+                "3. If the failure is a crash/panic: file an engine bug with the stack trace.",
+                "4. If the failure is a hang: profile with `RUST_LOG=debug` and trace visitor loops.",
+                "5. If findings are unexpected but valid: add them to `expected_findings` in `tests/mainnet-fork/corpus.json`.",
+              ].join("\n");
+
+              if (existing.data.items.length === 0) {
+                await github.rest.issues.create({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  title,
+                  body,
+                  labels: ["mainnet-fork", "bug", "needs-triage"],
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.data.items[0].number,
+                  body: `Recurred in run: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nError: ${result.error}`,
+                });
+              }
+            }

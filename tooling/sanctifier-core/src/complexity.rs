@@ -13,7 +13,7 @@
 //   - Lines of code (LOC)
 //   - Number of extern crate / use dependencies (file-level)
 
-use syn::{visit::Visit, File, ImplItem, ImplItemFn, ItemExternCrate, ItemFn, ItemUse};
+use syn::{visit::Visit, File, ImplItemFn, ItemExternCrate, ItemFn, ItemUse};
 
 // ---------------------------------------------------------------------------
 // Thresholds (warn if exceeded)
@@ -238,6 +238,7 @@ impl<'ast> Visit<'ast> for FileVisitor {
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Analyzes the complexity metrics of a Soroban contract AST.
 pub fn analyze_complexity(ast: &File, contract_path: &str) -> ContractMetrics {
     let mut visitor = FileVisitor::new();
     visitor.visit_file(ast);
@@ -312,6 +313,7 @@ pub fn analyze_complexity_from_source(
     Ok(analyze_complexity(&ast, contract_path))
 }
 
+/// Renders a complexity metrics report as an HTML table.
 pub fn render_html_report(metrics: &ContractMetrics) -> String {
     let rows: String = metrics
         .functions

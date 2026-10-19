@@ -380,6 +380,40 @@ EOF
 }
 
 #======================================================================
+# Validation Functions
+#======================================================================
+
+validate_contract_id() {
+    local id=$1
+    if [[ "$id" =~ ^C[A-Z0-9]{55}$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+validate_secret_key() {
+    local key=$1
+    if [[ "$key" =~ ^S[A-Z0-9]{55}$ ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+validate_tools() {
+    local required_tools=("soroban" "jq")
+    for tool in "${required_tools[@]}"; do
+        if ! command -v "$tool" &> /dev/null; then
+            log_error "Required tool not found: $tool"
+            log_info "Please install $tool to proceed."
+            return 1
+        fi
+    done
+    return 0
+}
+
+#======================================================================
 # Main Entry Point
 #======================================================================
 
@@ -396,13 +430,30 @@ main() {
 EOF
     echo -e "${NC}"
     
+    if ! validate_tools; then
+        exit 1
+    fi
+
     CONTRACT_ID=""
     
     parse_arguments "$@"
     
     if [ -z "$CONTRACT_ID" ]; then
         log_error "Contract ID is required"
+        log_info "Specify with --contract-id C..."
         print_help
+        exit 1
+    fi
+
+    if ! validate_contract_id "$CONTRACT_ID"; then
+        log_error "Invalid Contract ID format: $CONTRACT_ID"
+        log_info "Contract IDs should start with 'C' and be 56 characters long."
+        exit 1
+    fi
+
+    if [[ -n "${SOROBAN_SECRET_KEY:-}" ]] && ! validate_secret_key "$SOROBAN_SECRET_KEY"; then
+        log_error "Invalid SOROBAN_SECRET_KEY format"
+        log_info "Secret keys should start with 'S' and be 56 characters long."
         exit 1
     fi
     

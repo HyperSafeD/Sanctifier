@@ -1,0 +1,20 @@
+[package]
+name = "sanctifier-detector"
+version = "0.1.0"
+edition = "2021"
+description = "Off-chain anomaly detection service for Sanctifier call records"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/HyperSafeD/Sanctifier"
+homepage = "https://github.com/HyperSafeD/Sanctifier"
+
+[dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", features = ["clock", "serde"] }
+clap = { version = "4.4", features = ["derive"] }
+reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+

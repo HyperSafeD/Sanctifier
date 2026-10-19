@@ -1,0 +1,20 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "set_user_balance",
+    "message": "Function 'set_user_balance' modifies storage without emitting events. This creates transparency gaps for indexers and off-chain monitors.",
+    "rule_name": "shadow_storage",
+    "severity": "Warning",
+    "suggestion": "Emit an event after each storage mutation using env.events().publish() to ensure indexers can track state changes. Example: env.events().publish((symbol_short!(\"event_name\"), key), data)"
+  },
+  {
+    "location": "set_global_balance",
+    "message": "Function 'set_global_balance' modifies storage without emitting events. This creates transparency gaps for indexers and off-chain monitors.",
+    "rule_name": "shadow_storage",
+    "severity": "Warning",
+    "suggestion": "Emit an event after each storage mutation using env.events().publish() to ensure indexers can track state changes. Example: env.events().publish((symbol_short!(\"event_name\"), key), data)"
+  }
+]

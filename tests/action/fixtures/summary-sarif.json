@@ -1,0 +1,26 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "sanctifier"
+        }
+      },
+      "results": [
+        {
+          "ruleId": "S001",
+          "message": {
+            "text": "missing auth"
+          }
+        },
+        {
+          "ruleId": "S002",
+          "message": {
+            "text": "panic"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+name: Sanctifier (CLI) → Code Scanning
+
+# Alternative to the composite action: run the CLI directly, then upload the
+# SARIF yourself with github/codeql-action/upload-sarif. Use this when you need
+# full control over the command (custom vuln DB, profile, extra flags) or want
+# to merge Sanctifier's SARIF with other tools before uploading.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    name: Sanctifier CLI scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Sanctifier CLI
+        # --no-default-features skips Z3 (every rule except S011 still runs) and
+        # avoids needing libz3-dev on the runner. Drop it if you want S011.
+        run: cargo install sanctifier-cli --locked --no-default-features
+
+      - name: Run Sanctifier (write SARIF to stdout → file)
+        # The CLI prints SARIF to stdout; redirect it to a file.
+        # `|| true` keeps the step green so the SARIF still uploads even when
+        # --exit-code returns 1 because findings were found.
+        run: |
+          sanctifier analyze . \
+            --format sarif \
+            --min-severity high \
+            --exit-code > sanctifier-results.sarif || true
+
+      - name: Upload SARIF to Code Scanning
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          sarif_file: sanctifier-results.sarif
+          # A distinct category keeps these alerts separate from other tools
+          # (CodeQL, Semgrep) uploaded to the same repository.
+          category: sanctifier

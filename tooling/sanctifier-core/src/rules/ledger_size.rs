@@ -45,7 +45,6 @@ impl LedgerSizeRule {
     }
 }
 
-/// Severity of a ledger-size issue.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SizeWarningLevel {
     /// Estimated size exceeds the hard limit.
@@ -74,44 +73,46 @@ impl Rule for LedgerSizeRule {
 
         for item in &file.items {
             match item {
-                Item::Struct(s) => {
-                    if has_contracttype(&s.attrs) {
-                        let size = self.estimate_struct_size(s);
-                        if let Some(level) = self.classify_size(size, strict_threshold) {
-                            let severity = match level {
-                                SizeWarningLevel::ExceedsLimit => Severity::Error,
-                                SizeWarningLevel::ApproachingLimit => Severity::Warning,
-                            };
-                            violations.push(RuleViolation::new(
-                                self.name(),
-                                severity,
-                                format!("Struct '{}' estimated size {} bytes exceeds or approaches limit", s.ident, size),
-                                format!("{}:estimated {} bytes, limit {} bytes", s.ident, size, self.ledger_limit),
-                            ));
-                        }
+                Item::Struct(s) if has_contracttype(&s.attrs) => {
+                    let size = self.estimate_struct_size(s);
+                    if let Some(level) = self.classify_size(size, strict_threshold) {
+                        let severity = match level {
+                            SizeWarningLevel::ExceedsLimit => Severity::Error,
+                            SizeWarningLevel::ApproachingLimit => Severity::Warning,
+                        };
+                        violations.push(RuleViolation::new(
+                            self.name(),
+                            severity,
+                            format!(
+                                "Struct '{}' estimated size {} bytes exceeds or approaches limit",
+                                s.ident, size
+                            ),
+                            format!(
+                                "{}:estimated {} bytes, limit {} bytes",
+                                s.ident, size, self.ledger_limit
+                            ),
+                        ));
                     }
                 }
-                Item::Enum(e) => {
-                    if has_contracttype(&e.attrs) {
-                        let size = self.estimate_enum_size(e);
-                        if let Some(level) = self.classify_size(size, strict_threshold) {
-                            let severity = match level {
-                                SizeWarningLevel::ExceedsLimit => Severity::Error,
-                                SizeWarningLevel::ApproachingLimit => Severity::Warning,
-                            };
-                            violations.push(RuleViolation::new(
-                                self.name(),
-                                severity,
-                                format!(
-                                    "Enum '{}' estimated size {} bytes exceeds or approaches limit",
-                                    e.ident, size
-                                ),
-                                format!(
-                                    "{}:estimated {} bytes, limit {} bytes",
-                                    e.ident, size, self.ledger_limit
-                                ),
-                            ));
-                        }
+                Item::Enum(e) if has_contracttype(&e.attrs) => {
+                    let size = self.estimate_enum_size(e);
+                    if let Some(level) = self.classify_size(size, strict_threshold) {
+                        let severity = match level {
+                            SizeWarningLevel::ExceedsLimit => Severity::Error,
+                            SizeWarningLevel::ApproachingLimit => Severity::Warning,
+                        };
+                        violations.push(RuleViolation::new(
+                            self.name(),
+                            severity,
+                            format!(
+                                "Enum '{}' estimated size {} bytes exceeds or approaches limit",
+                                e.ident, size
+                            ),
+                            format!(
+                                "{}:estimated {} bytes, limit {} bytes",
+                                e.ident, size, self.ledger_limit
+                            ),
+                        ));
                     }
                 }
                 _ => {}
@@ -178,6 +179,7 @@ impl LedgerSizeRule {
         DISCRIMINANT_SIZE + max_variant
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn estimate_type_size(&self, ty: &Type) -> usize {
         match ty {
             Type::Path(tp) => {

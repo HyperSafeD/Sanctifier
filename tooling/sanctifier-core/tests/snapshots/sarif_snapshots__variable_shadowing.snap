@@ -1,0 +1,20 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "4",
+    "message": "Variable 'x' shadows an outer variable declared at line 3",
+    "rule_name": "variable_shadowing",
+    "severity": "Warning",
+    "suggestion": "Consider renaming the inner variable to avoid shadowing (e.g., 'x_inner', 'x_2')"
+  },
+  {
+    "location": "5",
+    "message": "Variable 'x' shadows an outer variable declared at line 3",
+    "rule_name": "variable_shadowing",
+    "severity": "Warning",
+    "suggestion": "Consider renaming the inner variable to avoid shadowing (e.g., 'x_inner', 'x_2')"
+  }
+]

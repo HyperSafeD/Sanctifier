@@ -10,6 +10,13 @@ inputs:
     description: Contract path to analyze
     required: false
     default: "."
+  version:
+    description: >-
+      Version of sanctifier-cli to install (e.g. 0.2.3). If omitted and the
+      action is used via a semver tag (e.g. HyperSafeD/Sanctifier@v0.2.3),
+      the tag version is used automatically.
+    required: false
+    default: ""
   min-severity:
     description: Minimum severity to report (critical|high|medium|low)
     required: false
@@ -26,6 +33,14 @@ inputs:
     description: Path for generated SARIF report
     required: false
     default: sanctifier-results.sarif
+  debug:
+    description: Enable verbose debug logging for the action steps (safe-by-default; no secrets)
+    required: false
+    default: "false"
+  use-docker:
+    description: Run sanctifier via the ghcr.io/hypersafed/sanctifier Docker image instead of installing via cargo
+    required: false
+    default: "false"
 
 outputs:
   findings-count:
@@ -35,22 +50,93 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Install Sanctifier CLI
-      shell: bash
-      run: cargo install sanctifier-cli --locked
-
-    - name: Analyze project
+    - name: Validate action inputs
       shell: bash
       run: |
-        if [ "${{ inputs.format }}" = "sarif" ]; then
-          sanctifier analyze "${{ inputs.path }}" \
-            --format sarif \
-            --min-severity "${{ inputs.min-severity }}" \
-            --exit-code > "${{ inputs.sarif-output }}"
+        python "${{ github.action_path }}/scripts/action_inputs.py" \
+          --path "${{ inputs.path }}" \
+          --min-severity "${{ inputs.min-severity }}" \
+          --format "${{ inputs.format }}" \
+          --upload-sarif "${{ inputs.upload-sarif }}" \
+          --sarif-output "${{ inputs.sarif-output }}" \
+          --debug "${{ inputs.debug }}" \
+          --output "$RUNNER_TEMP/sanctifier_action_inputs"
+        cat "$RUNNER_TEMP/sanctifier_action_inputs" >> "$GITHUB_ENV"
+
+    - name: Install Sanctifier CLI
+      if: ${{ inputs.use-docker != 'true' }}
+      shell: bash
+      run: |
+        python "${{ github.action_path }}/scripts/resolve_action_version.py" \
+          --action-ref "${{ github.action_ref }}" \
+          --requested "${{ inputs.version }}" \
+          --output "$RUNNER_TEMP/sanctifier_cli_version"
+
+        version="$(cat "$RUNNER_TEMP/sanctifier_cli_version" || true)"
+        if [ "${SANCTIFIER_ACTION_DEBUG:-false}" = "true" ]; then
+          echo "[sanctifier-action][debug] action_ref=${{ github.action_ref }} requested_version=${{ inputs.version }} resolved_version=${version:-latest}"
+        fi
+        if [ -n "$version" ]; then
+          echo "Installing sanctifier-cli==$version"
+          cargo install sanctifier-cli --locked --version "$version"
         else
-          sanctifier analyze "${{ inputs.path }}" \
-            --format "${{ inputs.format }}" \
-            --min-severity "${{ inputs.min-severity }}" \
+          echo "Installing sanctifier-cli (latest)"
+          cargo install sanctifier-cli --locked
+        fi
+
+    - name: Analyze project (native)
+      if: ${{ inputs.use-docker != 'true' }}
+      shell: bash
+      run: |
+        if [ "${SANCTIFIER_ACTION_DEBUG:-false}" = "true" ]; then
+          echo "[sanctifier-action][debug] scan path=$SANCTIFIER_ACTION_PATH format=$SANCTIFIER_ACTION_FORMAT min_severity=$SANCTIFIER_ACTION_MIN_SEVERITY"
+        fi
+        if [ "$SANCTIFIER_ACTION_FORMAT" = "sarif" ]; then
+          mkdir -p "$(dirname "$SANCTIFIER_ACTION_SARIF_OUTPUT")"
+          sanctifier analyze "$SANCTIFIER_ACTION_PATH" \
+            --format sarif \
+            --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
+            --exit-code > "$SANCTIFIER_ACTION_SARIF_OUTPUT"
+        else
+          sanctifier analyze "$SANCTIFIER_ACTION_PATH" \
+            --format "$SANCTIFIER_ACTION_FORMAT" \
+            --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
+            --exit-code
+        fi
+
+    - name: Analyze project (Docker)
+      if: ${{ inputs.use-docker == 'true' }}
+      shell: bash
+      run: |
+        DOCKER_TAG="${{ inputs.version }}"
+        if [ -z "$DOCKER_TAG" ]; then
+          DOCKER_TAG="latest"
+        fi
+
+        SCAN_ABS_PATH="$(realpath "$SANCTIFIER_ACTION_PATH" 2>/dev/null || cd "$SANCTIFIER_ACTION_PATH" && pwd)"
+        IMAGE_OWNER=$(echo "${{ github.action_repository }}" | cut -d'/' -f1 | tr '[:upper:]' '[:lower:]')
+        IMAGE="ghcr.io/${IMAGE_OWNER}/sanctifier:${DOCKER_TAG}"
+
+        if [ "${SANCTIFIER_ACTION_DEBUG:-false}" = "true" ]; then
+          echo "[sanctifier-action][debug] scan path=$SCAN_ABS_PATH format=$SANCTIFIER_ACTION_FORMAT min_severity=$SANCTIFIER_ACTION_MIN_SEVERITY docker_image=$IMAGE"
+        fi
+
+        if [ "$SANCTIFIER_ACTION_FORMAT" = "sarif" ]; then
+          mkdir -p "$(dirname "$SANCTIFIER_ACTION_SARIF_OUTPUT")"
+          docker run --rm \
+            -v "${SCAN_ABS_PATH}:/workspace" \
+            "${IMAGE}" \
+            analyze /workspace \
+            --format sarif \
+            --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
+            --exit-code > "$SANCTIFIER_ACTION_SARIF_OUTPUT"
+        else
+          docker run --rm \
+            -v "${SCAN_ABS_PATH}:/workspace" \
+            "${IMAGE}" \
+            analyze /workspace \
+            --format "$SANCTIFIER_ACTION_FORMAT" \
+            --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
             --exit-code
         fi
 
@@ -58,14 +144,17 @@ runs:
       id: summarize
       shell: bash
       run: |
-        findings_count=0
-        if [ "${{ inputs.format }}" = "json" ]; then
-          findings_count=$(sanctifier analyze "${{ inputs.path }}" --format json | jq -r '.summary.total_findings // 0')
-        fi
-        echo "findings-count=${findings_count}" >> "$GITHUB_OUTPUT"
+        python "${{ github.action_path }}/scripts/action_summary.py" \
+          --format "$SANCTIFIER_ACTION_FORMAT" \
+          --path "$SANCTIFIER_ACTION_PATH" \
+          --min-severity "$SANCTIFIER_ACTION_MIN_SEVERITY" \
+          --sarif-output "$SANCTIFIER_ACTION_SARIF_OUTPUT"
 
     - name: Upload SARIF
-      if: ${{ inputs.format == 'sarif' && inputs.upload-sarif == 'true' }}
-      uses: github/codeql-action/upload-sarif@v3
+      if: >-
+        ${{ env.SANCTIFIER_ACTION_FORMAT == 'sarif'
+          && env.SANCTIFIER_ACTION_UPLOAD_SARIF == 'true'
+          && !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork) }}
+      uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
       with:
-        sarif_file: ${{ inputs.sarif-output }}
+        sarif_file: ${{ env.SANCTIFIER_ACTION_SARIF_OUTPUT }}

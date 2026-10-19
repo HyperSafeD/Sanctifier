@@ -1,0 +1,77 @@
+name: Code Scanning (Sanctifier + CodeQL)
+
+# Uploads Sanctifier's SARIF to GitHub Code Scanning and runs CodeQL alongside
+# it. Both tools publish into the same Code Scanning view using distinct
+# `category` values so their alerts never overwrite each other.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  schedule:
+    # Re-scan weekly so newly published rules/queries surface on existing code.
+    - cron: "0 6 * * 1"
+
+# Least-privilege defaults. `security-events: write` is required to upload SARIF.
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # ── Sanctifier: Soroban-specific static analysis → SARIF ────────────────────
+  sanctifier:
+    name: Sanctifier (Soroban)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      # Use the published composite action. It runs
+      #   sanctifier analyze <path> --format sarif --min-severity <sev> --exit-code
+      # writes SARIF to `sarif-output`, and uploads it to Code Scanning.
+      - name: Run Sanctifier
+        uses: HyperSafeD/Sanctifier@main
+        continue-on-error: true # keep the workflow green; review alerts in the UI
+        with:
+          path: .
+          format: sarif
+          min-severity: high
+          upload-sarif: "true"
+          sarif-output: sanctifier-results.sarif
+
+  # ── CodeQL: GitHub's first-party analysis, runs alongside Sanctifier ────────
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        # CodeQL supports JS/TS via the `frontend/` dashboard in this repo.
+        # Adjust the language list to match what you ship.
+        language: ["javascript-typescript"]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          category: "/language:${{ matrix.language }}"

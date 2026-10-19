@@ -66,6 +66,7 @@ export interface UpgradeFinding {
   description: string;
   location: string;
   suggestion?: string;
+  severity?: string;
 }
 
 export interface SmtIssue {
@@ -135,5 +136,39 @@ export interface CallGraphEdge {
   source: string;
   target: string;
   label?: string;
-  type: "calls" | "mutates" | "reads";
+  /** internal = both contracts are in the same project; calls = external contract */
+  type: "calls" | "mutates" | "reads" | "internal";
+}
+export interface WorkspaceMember {
+  name: string;
+  total_findings: number;
+  report?: AnalysisReport;
+  source?: string;
+}
+
+export interface WorkspaceSummary {
+  workspace: string;
+  contracts: WorkspaceMember[];
+  shared_libs: string[];
+  grand_total_findings: number;
+}
+
+export type DiffStatus = "added" | "removed" | "unchanged" | "severity_changed";
+
+export interface DiffFinding {
+  finding: Finding;
+  status: DiffStatus;
+  previousSeverity?: Severity;
+}
+
+export interface ReportDiff {
+  baselineName: string;
+  currentName: string;
+  baselineFindings: Finding[];
+  currentFindings: Finding[];
+  diffFindings: DiffFinding[];
+  addedCount: number;
+  removedCount: number;
+  unchangedCount: number;
+  severityChangedCount: number;
 }

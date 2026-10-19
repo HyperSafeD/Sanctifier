@@ -19,7 +19,8 @@ fn auth_gap_fixture_emits_exactly_one_auth_gap() {
 
     let findings = analyzer.scan_auth_gaps(&source);
 
-    assert_eq!(findings, vec!["store_user".to_string()]);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0], "store_user");
 }
 
 #[test]
@@ -56,5 +57,5 @@ fn reentrancy_fixture_contains_cross_contract_edge() {
     );
 
     assert_eq!(edges.len(), 1);
-    assert!(edges[0].function_expr.as_ref().is_some());
+    assert!(!edges[0].caller_function.is_empty());
 }

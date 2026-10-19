@@ -1,0 +1,61 @@
+coverage:
+  status:
+    project:
+      default:
+        target: 80%
+        threshold: 2%
+        informational: false
+    
+    patch:
+      default:
+        target: 70%
+        informational: true
+  
+  # Package-specific thresholds
+  # Critical: sanctifier-core must maintain 90%+
+  flags:
+    sanctifier-core:
+      paths:
+        - tooling/sanctifier-core/src/
+      target: 90%
+      threshold: 0%
+      if_ci_failed: error
+      informational: false
+    
+    sanctifier-cli:
+      paths:
+        - tooling/sanctifier-cli/src/
+      target: 75%
+      threshold: 1%
+      informational: true
+    
+    sanctifier-detector:
+      paths:
+        - tooling/sanctifier-detector/src/
+      target: 80%
+      threshold: 1%
+      informational: true
+
+  precision: 2
+  round: down
+  range: "70...100"
+
+comment:
+  layout: "header,diff,flags,files,footer"
+  behavior: default
+  require_changes: false
+  require_base: true
+  require_head: true
+
+# Ignore test files and generated code
+ignore:
+  - "**/*_test.rs"
+  - "**/tests/**"
+  - "**/benches/**"
+  - "**/examples/**"
+  - "**/*.spec.ts"
+  - "**/*.test.ts"
+  - "**/node_modules/**"
+  - "**/target/**"
+  - "**/dist/**"
+  - "**/build/**"

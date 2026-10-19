@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "bump_counter",
+    "message": "Function 'bump_counter' calls update() without an explicit state check.",
+    "rule_name": "storage_update_state_check",
+    "severity": "Warning",
+    "suggestion": "Ensure there is a state check (e.g., env.storage().instance().has()) before calling update() to prevent accidental overwrites."
+  }
+]

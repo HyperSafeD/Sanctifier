@@ -1,0 +1,89 @@
+name: Sanctifier → Jira / Linear
+
+# Runs Sanctifier with the CLI, then parses the SARIF with jq and opens a
+# ticket per finding in Jira and/or Linear. This is a documented sample — wire
+# in your own project keys / team IDs and store credentials as repo secrets.
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: "0 7 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  scan-and-export:
+    name: Scan and export findings
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Sanctifier CLI
+        run: cargo install sanctifier-cli --locked --no-default-features
+
+      - name: Run Sanctifier → SARIF
+        run: |
+          sanctifier analyze . \
+            --format sarif \
+            --min-severity high \
+            --exit-code > sanctifier-results.sarif || true
+
+      - name: Create Jira issues from findings
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}      # https://your-org.atlassian.net
+          JIRA_EMAIL: ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY: SEC
+        run: |
+          set -euo pipefail
+          # Emit one compact JSON object per result: {ruleId, level, message, uri}
+          jq -c '.runs[].results[]
+                 | {ruleId, level, message: .message.text,
+                    uri: .locations[0].physicalLocation.artifactLocation.uri}' \
+            sanctifier-results.sarif | while read -r finding; do
+            rule=$(echo "$finding" | jq -r '.ruleId')
+            msg=$(echo "$finding"  | jq -r '.message')
+            uri=$(echo "$finding"  | jq -r '.uri')
+            curl -sS -X POST "$JIRA_BASE_URL/rest/api/3/issue" \
+              -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n \
+                    --arg proj "$JIRA_PROJECT_KEY" \
+                    --arg summary "[Sanctifier] $rule in $uri" \
+                    --arg body "$msg (file: $uri)" \
+                    '{fields: {project: {key: $proj},
+                               issuetype: {name: "Bug"},
+                               summary: $summary,
+                               description: {type: "doc", version: 1,
+                                 content: [{type: "paragraph",
+                                   content: [{type: "text", text: $body}]}]}}}')"
+          done
+
+      - name: Create Linear issues from findings
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+          LINEAR_TEAM_ID: ${{ secrets.LINEAR_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          jq -c '.runs[].results[]
+                 | {ruleId, message: .message.text,
+                    uri: .locations[0].physicalLocation.artifactLocation.uri}' \
+            sanctifier-results.sarif | while read -r finding; do
+            rule=$(echo "$finding" | jq -r '.ruleId')
+            msg=$(echo "$finding"  | jq -r '.message')
+            uri=$(echo "$finding"  | jq -r '.uri')
+            curl -sS -X POST https://api.linear.app/graphql \
+              -H "Authorization: $LINEAR_API_KEY" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n \
+                    --arg team "$LINEAR_TEAM_ID" \
+                    --arg title "[Sanctifier] $rule in $uri" \
+                    --arg desc "$msg (file: $uri)" \
+                    '{query: "mutation($t:String!,$d:String!,$team:String!){issueCreate(input:{title:$t,description:$d,teamId:$team}){success}}",
+                      variables: {t: $title, d: $desc, team: $team}}')"
+          done

@@ -1,0 +1,54 @@
+name: Project Board Auto-Triage
+
+# Issue #1260 — Automatically add new issues labelled `mainnet` or `zk` to
+# the relevant project-board column so the epics (#1252, #1253) and board
+# views stay in sync without manual triage overhead.
+#
+# Setup (one-time, repo admin):
+#   1. Create/confirm the two GitHub Projects (v2) boards:
+#        • "Mainnet Launch Readiness"  → set MAINNET_PROJECT_URL in repo vars
+#        • "ZK Integration"            → set ZK_PROJECT_URL in repo vars
+#   2. Create a fine-grained PAT (or use a GitHub App token) with
+#      `project: read/write` scope and store it as secret PROJECT_TOKEN.
+#
+# The `actions/add-to-project` action adds the issue to the project board;
+# GitHub Projects v2 handles column/status assignment based on the project's
+# own automation rules (e.g. "To Do" on issue open).
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  triage-mainnet:
+    name: Add to Mainnet Launch Readiness board
+    if: github.event.label.name == 'mainnet'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add issue to Mainnet Launch Readiness project
+        uses: actions/add-to-project@v1.0.2
+        with:
+          project-url: ${{ vars.MAINNET_PROJECT_URL }}
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+
+  triage-zk:
+    name: Add to ZK Integration board
+    if: github.event.label.name == 'zk'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add issue to ZK Integration project
+        uses: actions/add-to-project@v1.0.2
+        with:
+          project-url: ${{ vars.ZK_PROJECT_URL }}
+          github-token: ${{ secrets.PROJECT_TOKEN }}
+
+  triage-area-zk:
+    name: Add to ZK Integration board (area:zk label)
+    if: github.event.label.name == 'area: zk'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add issue to ZK Integration project
+        uses: actions/add-to-project@v1.0.2
+        with:
+          project-url: ${{ vars.ZK_PROJECT_URL }}
+          github-token: ${{ secrets.PROJECT_TOKEN }}

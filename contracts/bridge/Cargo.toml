@@ -1,0 +1,12 @@
+[package]
+license.workspace = true
+name = "bridge-contract"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+

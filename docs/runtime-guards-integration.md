@@ -1,5 +1,47 @@
 # Integrating Sanctifier Runtime Guards in Soroban
 
+## Architecture: Runtime-Guard Event Flow
+
+The diagram below shows how an on-chain event travels from contract emission through the runtime-guard wrapper, into the indexer, and finally to the frontend consumer.
+
+```mermaid
+flowchart LR
+    subgraph Soroban["Soroban Network"]
+        A["Smart Contract\n(emit event)"]
+    end
+
+    subgraph Wrapper["contracts/runtime-guard-wrapper"]
+        B["RuntimeGuardWrapper\n(subscribe & validate)"]
+        C{{"Invariant Check\n(SanctifiedGuard)"}}
+        D["Reject / Log\nviolation"]
+    end
+
+    subgraph Indexer["Event Indexer"]
+        E["contractEventIndexerService\n(persist to DB)"]
+    end
+
+    subgraph Frontend["Frontend"]
+        F["React UI\n(real-time feed)"]
+    end
+
+    A -->|"contract_event (XDR)"| B
+    B --> C
+    C -->|"✓ valid"| E
+    C -->|"✗ violation"| D
+    E -->|"REST / WebSocket"| F
+```
+
+**Key stages:**
+
+| Stage | Component | Responsibility |
+|-------|-----------|---------------|
+| Emit | Smart Contract | Publishes XDR-encoded `ContractEvent` to the ledger |
+| Wrap | `runtime-guard-wrapper` | Subscribes to horizon stream, runs `SanctifiedGuard::check_invariant` |
+| Index | `contractEventIndexerService` | Persists validated events; exposes REST + WebSocket endpoints |
+| Consume | React Frontend | Renders live event feed; shows guard violations in the audit log |
+
+
+
 This guide shows how to add runtime validation wrappers to an existing Soroban contract using Sanctifier's runtime guard trait.
 
 ## What you will use

@@ -1,4 +1,5 @@
 [package]
+license.workspace = true
 name = "my-contract"
 version = "0.1.0"
 edition = "2021"
@@ -7,18 +8,10 @@ edition = "2021"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-soroban-sdk = { workspace = true, features = ["testutils"] }
+soroban-sdk = { workspace = true }
 
 [dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
 bolero = "0.10"
 bolero-generator = "0.10"
 
-[profile.release]
-opt-level = "z"
-overflow-checks = true
-debug = 0
-strip = "symbols"
-debug-assertions = false
-panic = "abort"
-codegen-units = 1
-lto = true

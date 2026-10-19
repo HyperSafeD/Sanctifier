@@ -1,0 +1,14 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+assertion_line: 696
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "rotate_verifying_key_vulnerable",
+    "message": "Function 'rotate_verifying_key_vulnerable' writes a verifying key to storage without a preceding require_auth/admin check. Any caller can rotate the trusted verification parameters and forge proofs, making the contract's ZK guarantees meaningless.",
+    "rule_name": "unprotected_vk_rotation",
+    "severity": "Critical",
+    "suggestion": "Authenticate a privileged admin before writing the verifying key, e.g. `admin.require_auth();` where `admin` is the stored admin address, or use `require_auth_for_args` to bind authorization to the rotation payload. See docs/rules/Z010.md."
+  }
+]

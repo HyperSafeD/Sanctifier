@@ -1,0 +1,5 @@
+FROM scratch
+COPY sanctifier-linux-amd64-musl /usr/local/bin/sanctifier
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/sanctifier"]
+CMD ["--help"]

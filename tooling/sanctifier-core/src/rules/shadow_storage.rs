@@ -1,9 +1,11 @@
 use crate::rules::{Rule, RuleViolation, Severity};
 use syn::{parse_str, Expr, File, Item, Stmt};
 
+/// Rule to detect shadow storage patterns in Soroban contracts.
 pub struct ShadowStorageRule;
 
 impl ShadowStorageRule {
+    /// Creates a new instance of the shadow storage rule.
     pub fn new() -> Self {
         Self
     }
@@ -275,7 +277,6 @@ fn is_storage_mutation_method(method_name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::Analyzer;
     use crate::SanctifyConfig;
 

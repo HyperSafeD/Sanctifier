@@ -1,0 +1,4 @@
+defaults:
+  require_review: true
+  block_merge_on_failure: true
+  require_schema_validation: true

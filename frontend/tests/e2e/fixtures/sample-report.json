@@ -1,0 +1,34 @@
+{
+  "auth_gaps": [
+    {
+      "function_name": "initialize",
+      "code": "AUTH_GAP"
+    }
+  ],
+  "panic_issues": [
+    {
+      "code": "PANIC_001",
+      "function_name": "transfer",
+      "issue_type": "panic!",
+      "location": "src/lib.rs:45"
+    }
+  ],
+  "arithmetic_issues": [
+    {
+      "code": "ARITH_001",
+      "function_name": "add_balance",
+      "operation": "+",
+      "suggestion": "checked_add",
+      "location": "src/lib.rs:60"
+    }
+  ],
+  "call_graph": [
+    {
+      "caller": "user_action",
+      "callee": "internal_helper",
+      "file": "src/lib.rs",
+      "line": 100,
+      "contract_id_expr": "self"
+    }
+  ]
+}

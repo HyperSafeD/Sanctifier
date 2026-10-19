@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "withdraw",
+    "message": "Function 'withdraw' performs privileged storage mutations without authentication.\n╰─ Missing require_auth() or require_auth_for_args() check",
+    "rule_name": "auth_gap",
+    "severity": "Critical",
+    "suggestion": "🔐 Add require_auth() or require_auth_for_args() before any state mutation or external contract call.\nExample:\n  admin.require_auth();\n  env.storage().instance().set(&key, &value);"
+  }
+]

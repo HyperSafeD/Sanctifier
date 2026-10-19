@@ -1,16 +1,20 @@
-use crate::StorageCollisionIssue;
 use quote::quote;
+use serde::Serialize;
 use std::collections::HashMap;
 use syn::spanned::Spanned;
-use syn::{
-    visit::{self, Visit},
-    Expr, ExprCall, ExprMacro, ExprMethodCall, ItemConst, Lit,
-};
+use syn::visit::Visit;
+use syn::{Expr, ExprCall, ExprMacro, ExprMethodCall, ItemConst, Lit};
 
-const STORAGE_OPS: &[&str] = &["get", "set", "has", "remove", "update", "try_update"];
+#[derive(Debug, Serialize, Clone)]
+pub struct StorageCollisionIssue {
+    pub key_value: String,
+    pub key_type: String,
+    pub location: String,
+    pub message: String,
+}
 
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-enum SorobanStorageType {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SorobanStorageType {
     Instance,
     Persistent,
     Temporary,
@@ -40,6 +44,7 @@ struct KeyInfo {
     line: usize,
 }
 
+#[allow(clippy::new_without_default)]
 impl StorageVisitor {
     pub fn new() -> Self {
         Self {
@@ -149,7 +154,7 @@ impl<'ast> Visit<'ast> for StorageVisitor {
                 );
             }
         }
-        visit::visit_item_const(self, i);
+        syn::visit::visit_item_const(self, i);
     }
 
     fn visit_expr_call(&mut self, i: &'ast ExprCall) {
@@ -175,7 +180,26 @@ impl<'ast> Visit<'ast> for StorageVisitor {
                 }
             }
         }
-        visit::visit_expr_call(self, i);
+        syn::visit::visit_expr_call(self, i);
+    }
+
+    fn visit_expr_method_call(&mut self, i: &'ast ExprMethodCall) {
+        // Detect env.storage().<type>().set(key, value)
+        if i.method == "set" && i.args.len() >= 2 {
+            let storage_type = Self::parse_storage_type_from_expr(&i.receiver);
+            if storage_type != SorobanStorageType::Unknown {
+                if let Some(key) = Self::extract_key_value_expr(&i.args[0]) {
+                    self.add_key(
+                        key,
+                        "storage::set".to_string(),
+                        storage_type,
+                        "inline".to_string(),
+                        i.span().start().line,
+                    );
+                }
+            }
+        }
+        syn::visit::visit_expr_method_call(self, i);
     }
 
     fn visit_expr_macro(&mut self, i: &'ast ExprMacro) {
@@ -199,25 +223,6 @@ impl<'ast> Visit<'ast> for StorageVisitor {
                 i.span().start().line,
             );
         }
-        visit::visit_expr_macro(self, i);
-    }
-
-    fn visit_expr_method_call(&mut self, i: &'ast ExprMethodCall) {
-        let method_name = i.method.to_string();
-        if STORAGE_OPS.contains(&method_name.as_str()) {
-            let storage_type = Self::parse_storage_type_from_expr(&i.receiver);
-            if let Some(first_arg) = i.args.first() {
-                if let Some(key_value) = Self::extract_key_value_expr(first_arg) {
-                    self.add_key(
-                        key_value,
-                        format!("storage::{}", method_name),
-                        storage_type,
-                        "storage-op".to_string(),
-                        i.span().start().line,
-                    );
-                }
-            }
-        }
-        visit::visit_expr_method_call(self, i);
+        syn::visit::visit_expr_macro(self, i);
     }
 }

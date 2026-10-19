@@ -5,18 +5,79 @@
 
 /// Unchecked arithmetic detection.
 pub mod arithmetic_overflow;
+/// Arkworks ConstraintSynthesizer circuit detection with Z007-adapted range-check analysis.
+pub mod arkworks_circuit;
 /// Missing authorization checks.
 pub mod auth_gap;
+/// Gas exhaustion risk from unbounded user-controlled loops (S031).
+pub mod gas_exhaustion;
+/// Instance storage misuse — per-user data stored in Instance instead of Persistent.
+pub mod instance_storage_misuse;
 /// Ledger entry size analysis.
 pub mod ledger_size;
+/// Missing state event emission.
+pub mod missing_state_event;
 /// Panic / unwrap detection.
 pub mod panic_detection;
+/// Reentrancy vulnerability detection and auto-fix.
+pub mod reentrancy;
 /// Shadow storage pattern detection.
 pub mod shadow_storage;
+/// Detect usage of env.storage().instance().update() without state check.
+pub mod storage_update_state_check;
+/// Integer truncation and unchecked bounds detection.
+pub mod truncation_bounds;
+/// Unchecked external call detection.
+pub mod unchecked_external_call;
 /// Unhandled `Result` values.
 pub mod unhandled_result;
+/// Unsafe PRNG usage in state-critical code.
+pub mod unsafe_prng;
 /// Unused local variables.
 pub mod unused_variable;
+/// Direct xdr::ScVal raw construction detection.
+pub mod xdr_raw_construction;
+
+/// Soroban SDK v22 deprecated storage/deployment API patterns.
+pub mod deprecated_sdk_usage;
+/// Persistent/Temporary storage writes without a TTL bump (extend_ttl).
+pub mod missing_ttl_bump;
+/// Raw `invoke_contract` call without `try_invoke_contract` error handling.
+pub mod raw_invoke_contract;
+/// require_auth used instead of require_auth_for_args in multi-arg admin operations.
+pub mod require_auth_for_args;
+/// `#[test]` functions that never reference a `ContractClient`.
+pub mod shallow_test;
+/// Static reentrancy — external call before state write (complement to runtime guard).
+pub mod static_reentrancy;
+/// Taint propagation through tuple and struct destructures.
+pub mod taint_propagation;
+/// Detect env.ledger().timestamp() used as entropy for randomness.
+pub mod timestamp_randomness;
+/// transfer_from-style flows that consume 'from' balance without allowance checks.
+pub mod transfer_from_no_allowance;
+/// Variable shadowing in nested scopes.
+pub mod variable_shadowing;
+
+// ── Z-series: ZK / circom integration rules ──────────────────────────────────
+/// Z007 — Under-constrained circuit inputs for circom circuits.
+pub mod z007_under_constrained;
+/// Z005 — No nullifier-set check before processing a proof (double-spend risk).
+pub mod zk_double_spend_risk;
+/// Z004 — hardcoded trusted-setup material without ceremony provenance.
+pub mod zk_hardcoded_trusted_setup;
+/// Z001 — ZK function with no constraint assertions (proof never checked).
+pub mod zk_missing_constraint;
+/// Z003 — verifier public inputs omit a security-relevant value (proof malleability).
+pub mod zk_missing_public_input_binding;
+/// Z005 — storage-loaded verifying key used without an integrity check.
+pub mod zk_missing_vk_integrity_check;
+/// Z010 — verifying-key storage write without a preceding admin auth check.
+pub mod zk_missing_vk_rotation_access_control;
+/// Z013 — ZK proof verification result discarded (ignored return value).
+pub mod zk_verification_result_ignored;
+/// Z004 — Groth16/SNARK verifier call inside a skippable if/else branch.
+pub mod zk_verifier_skippable;
 
 use serde::Serialize;
 use std::any::Any;
@@ -41,7 +102,7 @@ pub trait Rule: Send + Sync + std::panic::UnwindSafe + std::panic::RefUnwindSafe
 }
 
 /// A source-level text replacement.
-#[derive(Debug, Clone, Serialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize, PartialEq)]
 pub struct Patch {
     /// Start line (1-based).
     pub start_line: usize,
@@ -58,7 +119,7 @@ pub struct Patch {
 }
 
 /// A single violation emitted by a [`Rule`].
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct RuleViolation {
     /// Name of the rule that fired.
     pub rule_name: String,
@@ -77,11 +138,15 @@ pub struct RuleViolation {
 }
 
 /// Severity level of a rule violation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, serde::Deserialize)]
 #[non_exhaustive]
 pub enum Severity {
+    /// Immediate, exploitable security risk — blocks CI.
+    Critical,
     /// Hard error — blocks CI.
     Error,
+    /// Significant security concern that should be fixed before mainnet.
+    High,
     /// Warning — should be addressed.
     Warning,
     /// Informational.
@@ -170,6 +235,43 @@ impl RuleRegistry {
         registry.register(unhandled_result::UnhandledResultRule::new());
         registry.register(unused_variable::UnusedVariableRule::new());
         registry.register(shadow_storage::ShadowStorageRule::new());
+        registry.register(xdr_raw_construction::XdrRawConstructionRule::new());
+        registry.register(storage_update_state_check::StorageUpdateStateCheckRule::new());
+        registry.register(reentrancy::ReentrancyRule::new());
+        registry.register(truncation_bounds::TruncationBoundsRule::new());
+        registry.register(unsafe_prng::UnsafePrngRule::new());
+        registry.register(variable_shadowing::VariableShadowingRule::new());
+        registry.register(unchecked_external_call::UncheckedExternalCallRule::new());
+        registry.register(missing_state_event::MissingStateEventRule::new());
+        registry.register(instance_storage_misuse::InstanceStorageMisuseRule::new());
+        registry.register(raw_invoke_contract::RawInvokeContractRule::new());
+        registry.register(shallow_test::ShallowTestRule::new());
+        registry.register(transfer_from_no_allowance::TransferFromNoAllowanceRule::new());
+        registry.register(missing_ttl_bump::MissingTtlBumpRule::new());
+        registry.register(taint_propagation::TaintPropagationRule::new());
+        registry.register(static_reentrancy::StaticReentrancyRule::new());
+        registry.register(deprecated_sdk_usage::DeprecatedSdkUsageRule::new());
+        registry.register(timestamp_randomness::TimestampRandomnessRule::new());
+        registry.register(require_auth_for_args::RequireAuthForArgsRule::new());
+        registry.register(gas_exhaustion::GasExhaustionRiskRule::new());
+        // ── Z-series ZK rules (#1230) ─────────────────────────────────────────
+        registry.register(zk_missing_constraint::ZkMissingConstraintRule::new());
+        registry.register(zk_verifier_skippable::ZkVerifierSkippableRule::new());
+        registry.register(zk_double_spend_risk::ZkDoubleSpendRiskRule::new());
+        registry.register(zk_verification_result_ignored::ZkVerificationResultIgnoredRule::new());
+        // ── Z003 / Z004 / Z005 (#1199, #1200, #1201) ─────────────────────────
+        registry.register(zk_missing_public_input_binding::ZkMissingPublicInputBindingRule::new());
+        registry.register(zk_hardcoded_trusted_setup::ZkHardcodedTrustedSetupRule::new());
+        registry.register(zk_missing_vk_integrity_check::ZkMissingVkIntegrityCheckRule::new());
+        // ── Z010 (#1206) unprotected verifying-key rotation ────────────────────
+        registry.register(
+            zk_missing_vk_rotation_access_control::ZkMissingVkRotationAccessControlRule::new(),
+        );
+        // ── Z007 (#1213) circom under-constrained inputs with optional SMT deep-verify ─
+        registry.register(z007_under_constrained::Z007UnderConstrainedRule::new());
         registry
     }
 }
+
+#[cfg(test)]
+mod crlf_tests;

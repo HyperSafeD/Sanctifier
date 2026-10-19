@@ -1,0 +1,191 @@
+name: Contracts CI Matrix
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "contracts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "contracts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+env:
+  CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  workspace-check:
+    name: Workspace check (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Z3 (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libz3-dev libdbus-1-dev libudev-dev pkg-config
+
+      - name: Install Z3 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install z3 llvm
+          echo "Z3_SYS_Z3_HEADER=$(brew --prefix z3)/include/z3.h" >> $GITHUB_ENV
+          echo "LIBRARY_PATH=$(brew --prefix z3)/lib:$LIBRARY_PATH" >> $GITHUB_ENV
+          echo "CPATH=$(brew --prefix z3)/include:$CPATH" >> $GITHUB_ENV
+          echo "LLVM_CONFIG_PATH=$(brew --prefix llvm)/bin/llvm-config" >> $GITHUB_ENV
+
+      - name: cargo check --workspace
+        run: cargo check --workspace --locked
+
+  # -------------------------------------------------------------------------
+  # SEP-41 compliance: one standardized conformance suite that every SEP-41
+  # token contract must pass. Its dependency tree is `syn`-only (no Z3), so
+  # this job stays fast and self-contained.
+  # -------------------------------------------------------------------------
+  sep41-compliance:
+    name: SEP-41 compliance suite
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-sep41-compliance-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-sep41-compliance-
+
+      - name: Run SEP-41 compliance suite
+        run: cargo test -p sep41-compliance
+
+  # -------------------------------------------------------------------------
+  # Job 1: check + clippy + test for every contract in the workspace.
+  # Uses fail-fast: false so a single failure surfaces all broken contracts.
+  # -------------------------------------------------------------------------
+  contract-check:
+    name: Check ${{ matrix.contract }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        contract:
+          - amm-pool
+          - flashloan-token
+          - governance-contract
+          - kani-poc-contract
+          - multisig-wallet
+          - my-contract
+          - uups-proxy
+          - reentrancy-guard
+          - runtime-guard-wrapper
+          - timelock
+          - token-with-bugs
+          - vesting-contract
+          - vulnerable-contract
+          - benchmark
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-contract-check-${{ matrix.contract }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-contract-check-${{ matrix.contract }}-
+
+      - name: cargo check — ${{ matrix.contract }}
+        run: cargo check -p ${{ matrix.contract }}
+
+      - name: cargo clippy — ${{ matrix.contract }}
+        run: cargo clippy -p ${{ matrix.contract }} -- -D warnings
+
+      - name: cargo test — ${{ matrix.contract }}
+        run: cargo test -p ${{ matrix.contract }}
+
+  # -------------------------------------------------------------------------
+  # Job 2: WASM release build for contracts whose Soroban dependency does not
+  # require the `testutils` feature in production code (i.e. testutils lives
+  # only in [dev-dependencies]).  Contracts with testutils in [dependencies]
+  # cannot be compiled to wasm32-unknown-unknown in release mode.
+  # -------------------------------------------------------------------------
+  contract-wasm:
+    name: WASM ${{ matrix.contract }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        contract:
+          - flashloan-token
+          - governance-contract
+          - kani-poc-contract
+          - uups-proxy
+          - reentrancy-guard
+          - timelock
+          - token-with-bugs
+          - vulnerable-contract
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain with wasm32 target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo artifacts
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-contract-wasm-${{ matrix.contract }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-contract-wasm-${{ matrix.contract }}-
+
+      - name: Build WASM — ${{ matrix.contract }}
+        run: cargo build -p ${{ matrix.contract }} --target wasm32-unknown-unknown --release
+
+      - name: Report WASM size — ${{ matrix.contract }}
+        run: |
+          find target/wasm32-unknown-unknown/release -name "*.wasm" -newer Cargo.toml \
+            | xargs -I{} sh -c 'echo "${{ matrix.contract }}: $(du -h {} | cut -f1)"'

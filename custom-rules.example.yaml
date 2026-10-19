@@ -1,0 +1,45 @@
+# Example custom rules for Sanctifier
+# Place this file in your project root and reference it in .sanctify.toml
+
+- id: no_unsafe_transfer
+  name: No Unsafe Transfer
+  description: Avoid using unsafe_transfer function
+  severity: error
+  matcher:
+    type: function_call
+    name: unsafe_transfer
+    args: []
+
+- id: require_admin_event
+  name: Require Admin Event
+  description: Admin changes must emit events
+  severity: warning
+  matcher:
+    type: storage_operation
+    operation: set
+    key_pattern: "*admin*"
+
+- id: no_direct_panic
+  name: No Direct Panic
+  description: Use Result types instead of panic!
+  severity: error
+  matcher:
+    type: regex
+    pattern: "panic!\\("
+
+- id: check_balance_before_transfer
+  name: Check Balance Before Transfer
+  description: Always check balance before transfer operations
+  severity: warning
+  matcher:
+    type: method_call
+    method: transfer
+    receiver: "*Client"
+
+- id: no_hardcoded_addresses
+  name: No Hardcoded Addresses
+  description: Avoid hardcoded contract addresses
+  severity: warning
+  matcher:
+    type: regex
+    pattern: "Address::from_string\\(&env, \"C[A-Z0-9]{55}\"\\)"

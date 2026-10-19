@@ -1,0 +1,11 @@
+[package]
+name = "my-plain-rust-app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+
+[dev-dependencies]
+tempfile = "3"

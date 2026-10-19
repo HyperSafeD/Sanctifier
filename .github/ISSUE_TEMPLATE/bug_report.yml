@@ -1,0 +1,84 @@
+name: Bug report
+description: Report a reproducible defect in Sanctifier.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please provide enough detail for us to reproduce the problem quickly.
+
+  - type: input
+    id: sanctifier-version
+    attributes:
+      label: Sanctifier version
+      description: Provide the CLI version, git commit, container tag, or release identifier.
+      placeholder: v0.1.0 or main@<commit>
+    validations:
+      required: true
+
+  - type: dropdown
+    id: operating-system
+    attributes:
+      label: Operating system
+      description: Select the primary OS where the bug occurs.
+      options:
+        - macOS
+        - Ubuntu / Debian Linux
+        - Fedora / RHEL Linux
+        - Windows
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: contract-snippet
+    attributes:
+      label: Contract snippet
+      description: Paste the smallest Soroban contract snippet or configuration that reproduces the problem.
+      placeholder: |
+        #[contractimpl]
+        impl Example {
+            pub fn transfer(env: Env, to: Address, amount: i128) {
+                // minimal repro
+            }
+        }
+      render: rust
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce-steps
+    attributes:
+      label: Steps to reproduce
+      description: Include the exact command, input path, and any relevant flags.
+      placeholder: |
+        1. Run `sanctifier analyze ./contracts/example --format json`
+        2. Observe the reported finding set
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-output
+    attributes:
+      label: Expected output
+      description: Describe the result you expected from Sanctifier.
+      placeholder: Sanctifier should report no findings for this contract.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-output
+    attributes:
+      label: Actual output
+      description: Paste the exact output or error message you received.
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add logs, screenshots, environment notes, or links to related issues if useful.

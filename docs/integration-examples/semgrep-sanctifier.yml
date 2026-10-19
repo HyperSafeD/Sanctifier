@@ -1,0 +1,62 @@
+name: Semgrep + Sanctifier
+
+# Runs Semgrep and Sanctifier in parallel and uploads each tool's SARIF to
+# Code Scanning under its own `category`. GitHub keeps the two result sets
+# separate, so you get a unified inbox without one tool clobbering the other.
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Run Semgrep → SARIF
+        # `p/rust` is a sensible default ruleset for a Soroban (Rust) codebase.
+        run: semgrep scan --config p/rust --sarif --output semgrep.sarif
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+
+      - name: Upload Semgrep SARIF
+        uses: github/codeql-action/upload-sarif@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  sanctifier:
+    name: Sanctifier
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+
+      - name: Run Sanctifier
+        uses: HyperSafeD/Sanctifier@main
+        continue-on-error: true
+        with:
+          path: .
+          format: sarif
+          min-severity: high
+          upload-sarif: "true"
+          sarif-output: sanctifier-results.sarif

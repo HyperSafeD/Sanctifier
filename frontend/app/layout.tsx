@@ -2,7 +2,12 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "./providers/theme-provider";
+import { WorkspaceProvider } from "./providers/WorkspaceProvider";
+import { ToastProvider } from "./providers/ToastProvider";
 import { NavBar } from "./components/NavBar";
+import { CommandPalette } from "./components/CommandPalette";
+import { KeyboardShortcuts } from "./components/KeyboardShortcuts";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,24 +33,31 @@ export default function RootLayout({
     (() => {
       const storageKey = "theme";
       const root = document.documentElement;
-      let theme = "light";
+      let preference = "system";
 
       try {
         const stored = window.localStorage.getItem(storageKey);
-        if (stored === "light" || stored === "dark") {
-          theme = stored;
-        } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-          theme = "dark";
+        if (
+          stored === "light" ||
+          stored === "dark" ||
+          stored === "system" ||
+          stored === "high-contrast"
+        ) {
+          preference = stored;
         }
-      } catch (error) {
-        if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-          theme = "dark";
-        }
+      } catch {
+        preference = "system";
       }
 
-      root.dataset.theme = theme;
-      root.classList.toggle("dark", theme === "dark");
-      root.style.colorScheme = theme;
+      const resolved =
+        preference === "system"
+          ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+          : preference;
+
+      root.dataset.theme = resolved;
+      root.classList.toggle("dark", resolved === "dark");
+      root.classList.toggle("theme-high-contrast", resolved === "high-contrast");
+      root.style.colorScheme = resolved === "high-contrast" ? "dark" : resolved;
     })();
   `;
 
@@ -57,10 +69,18 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <ThemeProvider>
-          <NavBar />
-          {children}
-        </ThemeProvider>
+        <ErrorBoundary>
+          <ThemeProvider>
+            <ToastProvider>
+              <WorkspaceProvider>
+                <NavBar />
+                <CommandPalette />
+                <KeyboardShortcuts />
+                {children}
+              </WorkspaceProvider>
+            </ToastProvider>
+          </ThemeProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );

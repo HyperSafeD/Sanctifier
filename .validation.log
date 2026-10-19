@@ -1,0 +1,30 @@
+[0;31m[✗][0m Required tool not found: soroban
+[0;34m[INFO][0m Please install soroban to proceed.
+[0;31m[✗][0m Required tool not found: soroban
+[0;34m[INFO][0m Please install soroban to proceed.
+[0;31m[✗][0m Required tool not found: soroban
+[0;34m[INFO][0m Please install soroban to proceed.
+[0;31m[✗][0m Required tool not found: soroban
+[0;34m[INFO][0m Please install soroban to proceed.
+[0;31m[✗][0m Required tool not found: soroban
+[0;34m[INFO][0m Please install soroban to proceed.
+[0;31m[✗][0m Required tool not found: soroban
+[0;34m[INFO][0m Please install soroban to proceed.
+[0;31m[✗][0m Contract ID is required
+[0;34m[INFO][0m Specify with --contract-id C...
+[0;31m[✗][0m Invalid Contract ID format: invalid
+[0;34m[INFO][0m Contract IDs should start with 'C' and be 56 characters long.
+[0;31m[✗][0m Invalid Contract ID format: CAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+[0;34m[INFO][0m Contract IDs should start with 'C' and be 56 characters long.
+[0;31m[✗][0m Contract ID is required
+[0;34m[INFO][0m Specify with --contract-id C...
+[0;31m[✗][0m Invalid Contract ID format: invalid
+[0;34m[INFO][0m Contract IDs should start with 'C' and be 56 characters long.
+[0;31m[✗][0m Invalid SOROBAN_SECRET_KEY format
+[0;34m[INFO][0m Secret keys should start with 'S' and be 56 characters long.
+[0;31m[✗][0m Contract ID is required
+[0;34m[INFO][0m Specify with --contract-id C...
+[0;31m[✗][0m Invalid Contract ID format: invalid
+[0;34m[INFO][0m Contract IDs should start with 'C' and be 56 characters long.
+[0;31m[✗][0m Invalid SOROBAN_SECRET_KEY format
+[0;34m[INFO][0m Secret keys should start with 'S' and be 56 characters long.

@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/rule_fixture_regressions_storage_test.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "save_note",
+    "message": "Function 'save_note' writes to Persistent/Temporary storage but never calls extend_ttl — the entry may expire",
+    "rule_name": "missing_ttl_bump",
+    "severity": "Warning",
+    "suggestion": "Call env.storage().persistent().extend_ttl(&key, low, high) (or temporary()) after each write to prevent the entry from expiring. Example: env.storage().instance().extend_ttl(1000, 5000);"
+  }
+]

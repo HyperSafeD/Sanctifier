@@ -1,0 +1,20 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "verify_vulnerable",
+    "message": "Function 'verify_vulnerable' loads the verifying key from mutable storage and passes it to the verifier without checking its integrity. If the stored key is ever swapped — by a compromised admin, a storage-key collision, or a migration bug — every proof verified here is forgeable.",
+    "rule_name": "missing_vk_integrity_check",
+    "severity": "High",
+    "suggestion": "Commit a reference hash of the vetted verifying key at deployment, then hash the storage-loaded key and assert equality before calling the verifier, e.g. `assert_eq!(env.crypto().sha256(&vk_bytes), expected_vk_hash);`. Update the reference hash in the same transaction as any authorised rotation (Z010)."
+  },
+  {
+    "location": "verify_inline_vulnerable",
+    "message": "Function 'verify_inline_vulnerable' loads the verifying key from mutable storage and passes it to the verifier without checking its integrity. If the stored key is ever swapped — by a compromised admin, a storage-key collision, or a migration bug — every proof verified here is forgeable.",
+    "rule_name": "missing_vk_integrity_check",
+    "severity": "High",
+    "suggestion": "Commit a reference hash of the vetted verifying key at deployment, then hash the storage-loaded key and assert equality before calling the verifier, e.g. `assert_eq!(env.crypto().sha256(&vk_bytes), expected_vk_hash);`. Update the reference hash in the same transaction as any authorised rotation (Z010)."
+  }
+]

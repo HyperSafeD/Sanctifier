@@ -4,9 +4,28 @@
 
 ---
 
+## 🆕 Recent Improvements
+
+### Rule Engine & Z3 Backend Hardening (Latest)
+
+**What's New:**
+- ✅ **Rule Engine Orchestration:** 20 new integration tests covering registry population, determinism, custom regex rules, and workspace-scale e2e scans
+- ✅ **Z3 Backend Refactor:** Modular architecture with clear boundaries (types, invariants, backend, benchmark) + 21 integration tests
+- ✅ **CI Coverage:** Dedicated `rule-engine-e2e` and `smt-module-boundaries` jobs ensure production reliability
+- ✅ **Documentation:** Complete formal specs and test suite references
+
+**Key Benefits:**
+- Production-ready rule engine with predictable outputs
+- Cleaner Z3 backend module boundaries for easier maintenance
+- Comprehensive test coverage in CI
+- Stable JSON output formats
+
+---
+
 ## 🚀 Getting Started (Start Here!)
 
 ### For Beginners
+
 1. **[QUICK_START.md](QUICK_START.md)** - 5-minute setup guide
    - Minimal setup
    - Deploy your first contract
@@ -18,15 +37,23 @@
    - Success criteria
 
 ### For Decision Makers
+
 - **[COMPLETION_REPORT.md](COMPLETION_REPORT.md)** - What was delivered
 - **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** - What's included
+
+### Contributor & Community Policies
+
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution workflow and PR process
+- **[Code of Conduct](.github/CODE_OF_CONDUCT.md)** - Community behavior expectations
 
 ---
 
 ## 📚 Comprehensive Guides
 
 ### Main Deployment Guide
+
 **[SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md)** - Complete deployment documentation
+
 - Overview of the system
 - Prerequisites and setup
 - Environment configuration
@@ -39,7 +66,9 @@
 - Best practices
 
 ### CI/CD Setup
+
 **[docs/ci-cd-setup.md](docs/ci-cd-setup.md)** - GitHub Actions configuration
+
 - Step-by-step CI/CD setup
 - GitHub Secrets configuration
 - Workflow triggers
@@ -49,8 +78,27 @@
 - Troubleshooting
 - Best practices for production
 
+### Contracts Fuzz Harness CI
+
+**[docs/contracts-fuzz.md](docs/contracts-fuzz.md)** - Fuzz harness coverage
+
+- Bolero in-process property tests (every PR)
+- cargo-fuzz / cargo-bolero coverage-guided harness (nightly)
+- Cross-contract message wire format stability
+- Local reproduction recipes
+
+### Fuzz-Harness Generator
+
+**[docs/fuzz-harness-generator.md](docs/fuzz-harness-generator.md)** - `sanctifier harness` CLI command
+
+- Generates native `afl.rs` / `honggfuzz` fuzz-target scaffolds from a contract's ABI
+- Bridges static analysis (AST-level function/parameter extraction) to dynamic analysis
+- `SorobanArbitrary`-based input generation, crate auto-detection, usage examples
+
 ### Technical Architecture
+
 **[ARCHITECTURE.md](ARCHITECTURE.md)** - System design and components
+
 - Component overview
 - Data flow diagrams
 - Deployment flow
@@ -63,8 +111,50 @@
 
 ## 🛠️ Component Documentation
 
+### sanctifier-core: Parser + Contract Discovery
+
+**[tooling/sanctifier-core/src/parser.rs](tooling/sanctifier-core/src/parser.rs)** — shared source parsing with input validation
+- `parse_source(source: &str) -> Result<ParsedSource, ParseError>` — single canonical entry point for all rules
+- Runs all guards from `input_validation` (size, null bytes) before any AST work
+- Returns `ParseError::Validation` or `ParseError::Syntax` on failure
+
+**[tooling/sanctifier-core/src/contract_discovery.rs](tooling/sanctifier-core/src/contract_discovery.rs)** — Soroban contract discovery
+- `discover_contracts(file: &syn::File) -> Vec<DiscoveredContract>` — maps `#[contract]` structs to their `#[contractimpl]` blocks
+- Collects public functions per contract and `#[contracttype]` storage types
+- `DiscoveredFunction.is_reserved` flags `__constructor` / `__check_auth` entry-points
+- `DiscoveredContract::public_functions()` iterator excludes reserved entry-points
+- Unit tests in each module; integration tests in `tests/parser_contract_discovery_test.rs`
+- Fixtures: `tests/fixtures/minimal_contract.rs`, `multi_contract.rs`, `contract_with_storage_types.rs`
+
+### Contract ABI / Interface Reference
+**[docs/contract-interfaces.md](docs/contract-interfaces.md)** - Public ABI for all contracts in `contracts/*`
+- Function signatures and descriptions for every contract
+- Error code tables
+- Machine-readable JSON at `docs/generated/contract-interfaces.json`
+- Regenerate with `make contract-docs`; CI enforces freshness via `make contract-docs-check`
+
+### Contract Security Disclaimers
+**[docs/contract-security-disclaimers.md](docs/contract-security-disclaimers.md)** - Security disclaimer framework for contracts
+- Security level classification (Critical, High, Medium, Low)
+- Disclaimer categories (Audit, Usage, Upgrade, Emergency)
+- Implementation guide and usage examples
+- Testing and validation procedures
+- Security best practices and monitoring
+- Integration examples for contract developers
+
+### Live Testnet Status Widget
+
+**[LIVE_TESTNET.md](LIVE_TESTNET.md)** — deployed contract addresses and on-chain verification
+- Three live Soroban Testnet contracts with real-time status
+- Live widget available at `/` (home page) via the `TestnetStatusWidget` component
+  ([frontend/app/components/TestnetStatusWidget.tsx](frontend/app/components/TestnetStatusWidget.tsx))
+- API route: `GET /api/testnet-status` — polls Soroban RPC + Stellar Expert, cached 30 s
+- See also: [docs/soroban-deployment.md](docs/soroban-deployment.md) for re-deployment instructions
+
 ### Runtime Guard Wrapper Contract
+
 **[contracts/runtime-guard-wrapper/README.md](contracts/runtime-guard-wrapper/README.md)**
+
 - Contract architecture
 - Public functions
 - Internal guards
@@ -78,56 +168,185 @@
 - Integration examples
 - Troubleshooting
 
+### VS Code Extension
+
+**Location:** [`vscode-extension/`](vscode-extension/)
+
+- **API stability** — `activate()` returns a typed `SanctifierExtensionApi` (`version`, `getFindings(uri)`) that other extensions can consume via `vscode.extensions.getExtension(...).exports`
+- **`sanctifier.minSeverity`** — filter in-editor diagnostics to `error`, `warning` (default), or `information`
+- **`sanctifier.toggleEnable`** — toggle the extension on/off from the command palette or status bar click
+- **`sanctifier.showOutput`** — reveal the persistent output channel
+- **`sanctifier.analyzeWorkspace`** — run the CLI and stream results to the output channel (respects `minSeverity`)
+- Status bar item shows live finding count; click to toggle
+
 ### Sanctifier CLI Deploy Command
+
 **Location:** `tooling/sanctifier-cli/src/commands/deploy.rs`
+
 - Integrated into sanctifier CLI
 - Single-command deployment
 - Automatic validation
 
+### Rule Authoring Guide
+
+**[docs/rule-authoring-guide.md](docs/rule-authoring-guide.md)**
+
+- Rule anatomy and matcher types
+- Built-in rules (`S001`–`S012`) overview
+- Custom rule authoring (TOML inline + YAML files)
+- `.sanctify.toml` configuration reference
+- Testing fixtures and CI validation
+- Severity guidelines and output stability
+- Contribution checklist for rule PRs
+
+### Finding Code Documentation
+
+**[docs/rules/s003-arithmetic-overflow.md](docs/rules/s003-arithmetic-overflow.md)** - S003: Arithmetic Overflow / Underflow Detection
+
+- Unchecked arithmetic operation detection (+, -, *, /, %, compound assignments)
+- Custom math method detection (mul_div, fixed_point_*)
+- Test code and index expression exclusions
+- Comprehensive remediation guidance with checked/saturating alternatives
+- Deduplication strategy and output formats
+- Known limitations and configuration options
+
+**[docs/rules/s001-auth-gap.md](docs/rules/s001-auth-gap.md)** - S001: Missing Authorization Guard (`auth_gap`)
+
+- What constitutes a privileged operation (storage mutation, external call)
+- Vulnerable vs fixed code examples
+- Input validation behaviour (null bytes, oversized source)
+- Auto-fix notes and suppression guidance
+
+**[docs/rules/s012-sep41-interface.md](docs/rules/s012-sep41-interface.md)** - S012: SEP-41 Token Interface Compliance
+
+- Complete SEP-41 standard interface verification
+- All 10 required function signatures
+- Authorization pattern checking
+- Issue types: MissingFunction, SignatureMismatch, AuthorizationMismatch
+- Examples and remediation guidance
+- Reference implementations and test coverage
+
+### Rule Engine Orchestration — Integration/E2E Coverage
+
+**[specs/rule-engine-behavior.md](specs/rule-engine-behavior.md)**
+
+- Formal specification: discovery order, filtering, deduplication, exit codes
+- Integration/e2e test suite: [`tooling/sanctifier-core/tests/rule_engine_orchestration_test.rs`](tooling/sanctifier-core/tests/rule_engine_orchestration_test.rs)
+  - Registry population and deduplication
+  - Per-rule firing and `run_all` consistency
+  - Determinism across repeated calls
+  - Custom regex rule execution
+  - Registry extensibility without breaking existing rules
+  - End-to-end multi-file scan pipeline
+  - Output format (`RuleViolation`) JSON stability
+- CI job: `rule-engine-e2e` in [`.github/workflows/rust.yml`](.github/workflows/rust.yml)
+
+### Z3 Backend Invariants (S011) — Module Boundaries
+
+**Finding code:** `S011` — see [`docs/error-codes.md`](docs/error-codes.md)
+
+**Module layout** (`tooling/sanctifier-core/src/smt/`):
+
+| Sub-module | File | Responsibility |
+|---|---|---|
+| `types` | [`src/smt/types.rs`](tooling/sanctifier-core/src/smt/types.rs) | All shared data types and error enums |
+| `invariants` | [`src/smt/invariants.rs`](tooling/sanctifier-core/src/smt/invariants.rs) | `#[invariant]` AST parsing + Z3 verification |
+| `backend` | [`src/smt/backend.rs`](tooling/sanctifier-core/src/smt/backend.rs) | `SmtVerifier`, fixed-point proof dispatch |
+| `benchmark` | [`src/smt/benchmark.rs`](tooling/sanctifier-core/src/smt/benchmark.rs) | Latency micro-benchmark for CI artifact |
+| `mod` | [`src/smt/mod.rs`](tooling/sanctifier-core/src/smt/mod.rs) | Public re-export facade (zero breaking surface) |
+
+- Integration/boundary test suite: [`tooling/sanctifier-core/tests/smt_module_boundaries_test.rs`](tooling/sanctifier-core/tests/smt_module_boundaries_test.rs)
+- CI job: `smt-module-boundaries` in [`.github/workflows/rust.yml`](.github/workflows/rust.yml)
+
+### WASM Module Versioning & Input Validation
+
+**[docs/wasm-versioning-alignment.md](docs/wasm-versioning-alignment.md)** - WASM module hardening
+
+- Versioning strategy
+- Input validation
+- API changes
+- Migration guide
+- Performance considerations
+- Testing guide
+- [CSP Security Hardening](docs/wasm-security-hardening.md)
+
 ### Bash Deployment Script
+
 **Location:** `scripts/deploy-soroban-testnet.sh`
+
 - Production-ready automation
 - Comprehensive configuration options
 - Detailed logging
 - Continuous validation support
 
 ### GitHub Actions Workflow
+
 **Location:** `.github/workflows/soroban-deploy.yml`
+
 - Automated CI/CD
 - Multiple job types
 - Scheduled validation
 - Artifact management
+
+### Sanctifier Scan GitHub Action
+
+**Location:** `action.yml`
+
+- Composite action for running `sanctifier analyze` in CI
+- Support matrix: `docs/github-action-support-matrix.md` (includes debug logging mode)
+- Threat model notes: `docs/github-action-threat-model.md`
+
+### Docs and Specs Maintenance
+
+- Docs/specs CI coverage: [docs/docs-specs-ci-coverage.md](docs/docs-specs-ci-coverage.md)
+- Troubleshooting guide boundaries: [docs/troubleshooting-guide.md](docs/troubleshooting-guide.md)
+- Support/compatibility matrix: [docs/github-action-support-matrix.md](docs/github-action-support-matrix.md)
+- API reference generation: [docs/api-reference-generation.md](docs/api-reference-generation.md)
+
+### Release Artifacts (data/ + schemas/)
+
+- Threat model and operational guarantees: [docs/release-artifacts-threat-model.md](docs/release-artifacts-threat-model.md)
+- How to verify a downloaded artifact: [docs/provenance-verification.md](docs/provenance-verification.md)
+- Canonical artifact list: [data/release-manifest.json](data/release-manifest.json)
+- Packaging and Installation Guide: [docs/PACKAGING_AND_INSTALL.md](docs/PACKAGING_AND_INSTALL.md)
 
 ---
 
 ## 📚 Documentation Map by Use Case
 
 ### "I want to deploy now"
+
 → **[QUICK_START.md](QUICK_START.md)** (5 min)  
 → Run: `./scripts/deploy-soroban-testnet.sh --network testnet`
 
 ### "I want to understand the system"
+
 → **[ARCHITECTURE.md](ARCHITECTURE.md)** (15 min)  
 → **[IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md)** (10 min)
 
 ### "I need to set up CI/CD"
+
 → **[docs/ci-cd-setup.md](docs/ci-cd-setup.md)** (20 min)  
 → Add GitHub secrets  
 → Push to main
 
 ### "I need complete details"
+
 → **[SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md)** (45 min)  
 → Complete reference
 
 ### "Something is broken"
+
 → **[SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md#troubleshooting)** - Troubleshooting  
 → Check logs: `tail -f .deployment.log`
 
 ### "I'm planning deployment"
+
 → **[COMPLETION_REPORT.md](COMPLETION_REPORT.md)**  
 → Check feature list and statistics
 
 ### "I need production guidelines"
+
 → **[docs/ci-cd-setup.md](docs/ci-cd-setup.md)** - Security section  
 → **[SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md)** - Best practices
 
@@ -136,34 +355,40 @@
 ## 🎯 Documentation by Topic
 
 ### Setup & Configuration
-| Document | Time | Topics |
-|----------|------|--------|
-| [QUICK_START.md](QUICK_START.md) | 5 min | Quick setup |
-| [GETTING_STARTED.md](GETTING_STARTED.md) | 10 min | Full checklist |
+
+| Document                                       | Time   | Topics            |
+| ---------------------------------------------- | ------ | ----------------- |
+| [QUICK_START.md](QUICK_START.md)               | 5 min  | Quick setup       |
+| [GETTING_STARTED.md](GETTING_STARTED.md)       | 10 min | Full checklist    |
 | [SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md) | 30 min | All setup options |
-| [docs/ci-cd-setup.md](docs/ci-cd-setup.md) | 20 min | GitHub setup |
+| [docs/ci-cd-setup.md](docs/ci-cd-setup.md)     | 20 min | GitHub setup      |
 
 ### Understanding the System
-| Document | Time | Topics |
-|----------|------|--------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | 15 min | System design |
-| [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) | 10 min | What's included |
-| [COMPLETION_REPORT.md](COMPLETION_REPORT.md) | 5 min | Deliverables |
-| Contract README | 20 min | Contract details |
+
+| Document                                               | Time   | Topics           |
+| ------------------------------------------------------ | ------ | ---------------- |
+| [ARCHITECTURE.md](ARCHITECTURE.md)                     | 15 min | System design    |
+| [IMPLEMENTATION_SUMMARY.md](IMPLEMENTATION_SUMMARY.md) | 10 min | What's included  |
+| [COMPLETION_REPORT.md](COMPLETION_REPORT.md)           | 5 min  | Deliverables     |
+| Contract README                                        | 20 min | Contract details |
+| [docs/rule-authoring-guide.md](docs/rule-authoring-guide.md) | 15 min | Rule authoring |
 
 ### Deployment Operations
-| Document | Time | Topics |
-|----------|------|--------|
-| [QUICK_START.md](QUICK_START.md) | 5 min | First deployment |
-| [SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md) | 30 min | All operations |
-| `.github/workflows/soroban-deploy.yml` | 10 min | CI/CD workflow |
+
+| Document                                       | Time   | Topics           |
+| ---------------------------------------------- | ------ | ---------------- |
+| [QUICK_START.md](QUICK_START.md)               | 5 min  | First deployment |
+| [SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md) | 30 min | All operations   |
+| `.github/workflows/soroban-deploy.yml`         | 10 min | CI/CD workflow   |
 
 ### Troubleshooting & Support
-| Document | Time | Topics |
-|----------|------|--------|
-| [SOROBAN_DEPLOYMENT.md#troubleshooting](SOROBAN_DEPLOYMENT.md#troubleshooting) | 15 min | Common issues |
-| [docs/ci-cd-setup.md#troubleshooting](docs/ci-cd-setup.md#troubleshooting) | 10 min | CI/CD issues |
-| [GETTING_STARTED.md#troubleshooting-quick-links](GETTING_STARTED.md#troubleshooting-quick-links) | 5 min | Quick answers |
+
+| Document                                                                                         | Time   | Topics        |
+| ------------------------------------------------------------------------------------------------ | ------ | ------------- |
+| [docs/troubleshooting-guide.md](docs/troubleshooting-guide.md)                                   | 5 min  | Owner map     |
+| [SOROBAN_DEPLOYMENT.md#troubleshooting](SOROBAN_DEPLOYMENT.md#troubleshooting)                   | 15 min | Common issues |
+| [docs/ci-cd-setup.md#troubleshooting](docs/ci-cd-setup.md#troubleshooting)                       | 10 min | CI/CD issues  |
+| [GETTING_STARTED.md#troubleshooting-quick-links](GETTING_STARTED.md#troubleshooting-quick-links) | 5 min  | Quick answers |
 
 ---
 
@@ -172,21 +397,27 @@
 ### Common Commands
 
 **Deploy**
+
 ```bash
 ./scripts/deploy-soroban-testnet.sh --network testnet
 ```
+
 See: [QUICK_START.md - Common Commands](QUICK_START.md#-common-commands)
 
 **Verify**
+
 ```bash
 cat .deployment-manifest.json | jq '.'
 ```
+
 See: [SOROBAN_DEPLOYMENT.md - Verification](SOROBAN_DEPLOYMENT.md#deployment-verification)
 
 **Monitor**
+
 ```bash
 tail -f .deployment.log
 ```
+
 See: [QUICK_START.md - Verification](QUICK_START.md#-check-results-1-min)
 
 ---
@@ -194,11 +425,24 @@ See: [QUICK_START.md - Verification](QUICK_START.md#-check-results-1-min)
 ## 🔐 Security & Best Practices
 
 **Secrets Management**
+
 - GitHub Secrets: [docs/ci-cd-setup.md](docs/ci-cd-setup.md#github-secrets-configuration)
 - Local Setup: [SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md#secret-management)
 - Best Practices: [SOROBAN_DEPLOYMENT.md - Security](SOROBAN_DEPLOYMENT.md#security-best-practices)
 
+**GitHub Action Hardening**
+
+- Support Matrix: [docs/github-action-support-matrix.md](docs/github-action-support-matrix.md)
+- Threat Model Notes: [docs/github-action-threat-model.md](docs/github-action-threat-model.md)
+- Docs/specs CI coverage: [docs/docs-specs-ci-coverage.md](docs/docs-specs-ci-coverage.md)
+- Action unit test fixtures: [tests/action/fixtures](tests/action/fixtures)
+- Vulnerability DB format and validation: [docs/vulnerability-database-format.md](docs/vulnerability-database-format.md)
+- Data + schemas performance budgets/benchmarks: [docs/data-schemas-performance.md](docs/data-schemas-performance.md)
+- Docs site navigation performance budgets/benchmarks: [docs/docs-navigation-performance.md](docs/docs-navigation-performance.md)
+- WASM CSP Security Hardening: [docs/wasm-security-hardening.md](docs/wasm-security-hardening.md)
+
 **Production Setup**
+
 - Branch Protection: [docs/ci-cd-setup.md](docs/ci-cd-setup.md#branch-protection-recommended)
 - Network Security: [SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md#network-security)
 - Audit Trails: [SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md#audit-trail)
@@ -208,22 +452,25 @@ See: [QUICK_START.md - Verification](QUICK_START.md#-check-results-1-min)
 ## 🎓 Learning Path
 
 ### Day 1: Getting Started
+
 1. Read [QUICK_START.md](QUICK_START.md) (5 min)
 2. Set up environment (5 min)
 3. Run dry-run (2 min)
 4. Deploy contract (5 min)
 5. Verify deployment (3 min)
-**Total: 20 minutes** ✅
+   **Total: 20 minutes** ✅
 
 ### Week 1: Production Setup
+
 1. Read [ARCHITECTURE.md](ARCHITECTURE.md) (15 min)
 2. Review [SOROBAN_DEPLOYMENT.md](SOROBAN_DEPLOYMENT.md) (30 min)
 3. Set up [GitHub Actions](docs/ci-cd-setup.md) (20 min)
 4. Configure branch protection (10 min)
 5. Test CI/CD (15 min)
-**Total: 90 minutes** ✅
+   **Total: 90 minutes** ✅
 
 ### Month 1: Advanced Topics
+
 1. Extend Runtime Guardians
 2. Multi-network deployment
 3. Custom monitoring
@@ -235,6 +482,7 @@ See: [QUICK_START.md - Verification](QUICK_START.md#-check-results-1-min)
 ## 📞 Checklists
 
 ### Pre-Deployment
+
 - [ ] Read [QUICK_START.md](QUICK_START.md)
 - [ ] Copy `.env.example` to `.env.local`
 - [ ] Add `SOROBAN_SECRET_KEY`
@@ -242,6 +490,7 @@ See: [QUICK_START.md - Verification](QUICK_START.md#-check-results-1-min)
 - [ ] Ready to deploy
 
 ### Post-Deployment
+
 - [ ] Check `.deployment-manifest.json`
 - [ ] Call `health_check()`
 - [ ] Review `.deployment.log`
@@ -249,6 +498,7 @@ See: [QUICK_START.md - Verification](QUICK_START.md#-check-results-1-min)
 - [ ] Deployment successful!
 
 ### CI/CD Setup
+
 - [ ] Add GitHub secrets
 - [ ] Review workflow file
 - [ ] Test manual dispatch
@@ -261,35 +511,40 @@ See: [QUICK_START.md - Verification](QUICK_START.md#-check-results-1-min)
 ## 🔗 External Resources
 
 ### Soroban Documentation
+
 - [Soroban Docs](https://soroban.stellar.org/docs)
 - [Soroban CLI Reference](https://soroban.stellar.org/docs/tools/cli)
 - [Stellar Networks](https://soroban.stellar.org/docs/networks)
 
 ### GitHub Resources
+
 - [GitHub Actions](https://docs.github.com/en/actions)
 - [Secrets Management](https://docs.github.com/en/actions/security-guides/encrypted-secrets)
 - [Workflow Syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions)
 
 ### Related Sanctifier Docs
+
 - [Getting Started](docs/getting-started.md)
 - [Kani Integration](docs/kani-integration.md)
+- [Benchmark Methodology](specs/BENCHMARK_METHODOLOGY.md)
+- [Supply-Chain Provenance Verification](docs/provenance-verification.md)
 - [Architecture Decisions](docs/adr/)
 
 ---
 
 ## 📊 Documentation Statistics
 
-| Document | Pages | Read Time | Focus |
-|----------|-------|-----------|-------|
-| QUICK_START.md | 4 | 5 min | Getting started |
-| GETTING_STARTED.md | 8 | 10 min | Planning |
-| SOROBAN_DEPLOYMENT.md | 12 | 30 min | Complete reference |
-| docs/ci-cd-setup.md | 10 | 20 min | GitHub Actions |
-| ARCHITECTURE.md | 10 | 15 min | System design |
-| IMPLEMENTATION_SUMMARY.md | 8 | 10 min | Deliverables |
-| COMPLETION_REPORT.md | 6 | 5 min | Summary |
-| Contract README | 11 | 20 min | Technical |
-| **Total** | **69** | **115 min** | **Complete** |
+| Document                  | Pages  | Read Time   | Focus              |
+| ------------------------- | ------ | ----------- | ------------------ |
+| QUICK_START.md            | 4      | 5 min       | Getting started    |
+| GETTING_STARTED.md        | 8      | 10 min      | Planning           |
+| SOROBAN_DEPLOYMENT.md     | 12     | 30 min      | Complete reference |
+| docs/ci-cd-setup.md       | 10     | 20 min      | GitHub Actions     |
+| ARCHITECTURE.md           | 10     | 15 min      | System design      |
+| IMPLEMENTATION_SUMMARY.md | 8      | 10 min      | Deliverables       |
+| COMPLETION_REPORT.md      | 6      | 5 min       | Summary            |
+| Contract README           | 11     | 20 min      | Technical          |
+| **Total**                 | **69** | **115 min** | **Complete**       |
 
 ---
 
@@ -305,21 +560,25 @@ See: [QUICK_START.md - Verification](QUICK_START.md#-check-results-1-min)
 ## ✅ What You Get
 
 ✅ **Complete Automation**
+
 - CLI tool
 - Bash script
 - GitHub Actions workflow
 
 ✅ **Comprehensive Documentation**
+
 - 7 guides
 - Code examples
 - Troubleshooting
 
 ✅ **Production Ready**
+
 - Error handling
 - Security hardened
 - Fully tested
 
 ✅ **Easy to Use**
+
 - 5-minute setup
 - Single command deployment
 - Automatic validation
@@ -328,6 +587,8 @@ See: [QUICK_START.md - Verification](QUICK_START.md#-check-results-1-min)
 
 **Last Updated:** February 25, 2026  
 **Version:** 1.0  
-**Status:** Production Ready  
+**Status:** Production Ready
 
 🎉 Start with [QUICK_START.md](QUICK_START.md) and deploy your first contract in 5 minutes!
+
+- [Schema publish pipeline & Typed Bindings](docs/schema-pipeline-bindings-notes.md)

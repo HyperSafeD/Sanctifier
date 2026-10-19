@@ -1,0 +1,19 @@
+[package]
+license.workspace = true
+name = "governance-contract"
+version = "0.2.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+soroban-sdk = { workspace = true }
+security-disclaimers = { path = "../security-disclaimers", optional = true }
+
+[dev-dependencies]
+soroban-sdk = { workspace = true, features = ["testutils"] }
+sanctifier-test-support = { workspace = true }
+
+[features]
+security-disclaimers = ["dep:security-disclaimers"]

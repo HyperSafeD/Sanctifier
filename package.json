@@ -1,0 +1,26 @@
+{
+  "name": "sanctifier",
+  "version": "1.0.0",
+  "description": "[![CI](https://github.com/HyperSafeD/Sanctifier/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/HyperSafeD/Sanctifier/actions/workflows/ci.yml) [![Codecov](https://codecov.io/gh/Jayy4rl/Sanctifier/graph/badge.svg)](https://codecov.io/gh/Jayy4rl/Sanctifier) [![crates.io](https://img.shields.io/crates/v/sanctifier-cli.svg)](https://crates.io/crates/sanctifier-cli) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/HyperSafeD/Sanctifier)",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "docs:specs:check": "node scripts/validate_docs_specs.js",
+    "format:db": "prettier --write \"data/**/*.{json,yaml,yml}\" \"schemas/**/*.json\"",
+    "format:db:check": "prettier --check \"data/**/*.{json,yaml,yml}\" \"schemas/**/*.json\"",
+    "lint:db": "node scripts/validate_db.js",
+    "lint:release-artifacts": "node scripts/validate_release_artifacts.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "ajv-cli": "^5.0.0",
+    "ajv-formats": "^3.0.1",
+    "prettier": "^3.8.3",
+    "yaml": "^2.8.3"
+  }
+}

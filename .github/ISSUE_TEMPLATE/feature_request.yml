@@ -1,0 +1,48 @@
+name: Feature request
+description: Suggest an improvement to Sanctifier or its developer experience.
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. Clear problem statements and use cases help us prioritize effectively.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem statement
+      description: What problem are you trying to solve?
+      placeholder: I cannot suppress a known false positive for a single rule in CI.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: Describe the workflow, API, UI, or behavior you want to see.
+      placeholder: Add a `--suppress S001` flag and matching config file support.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: List workarounds or alternative designs you considered.
+      placeholder: I currently post-process JSON output, but that is brittle.
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Expected impact
+      description: Explain who benefits and how this improves security analysis or contributor workflow.
+      placeholder: This would make CI adoption easier for teams with known accepted risks.
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add mockups, references, related issues, or example contracts if helpful.

@@ -4,12 +4,6 @@ This page tracks a short video series for learning formal verification basics in
 
 ## Series Overview
 
-| Episode | Topic | Length | Video |
-|---|---|---|---|
-| 1 | Reading Sanctifier security reports | 8 min | `TBD` |
-| 2 | Separating pure logic from Soroban host code | 10 min | `TBD` |
-| 3 | Writing your first Kani proof harness | 12 min | `TBD` |
-| 4 | Debugging failed proofs and fixing contracts | 12 min | `TBD` |
 
 ## Episode 1: Reading Sanctifier Security Reports
 

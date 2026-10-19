@@ -1,0 +1,6 @@
+review_checklist:
+  - Validate schema compatibility
+  - Verify no unsafe defaults introduced
+  - Ensure CI tests added
+  - Confirm output format stability
+  - Update docs

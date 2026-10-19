@@ -1,0 +1,2 @@
+sanctifier-cli = "0.3.7"    # CLI tool for Sanctifier — Stellar Soroban Security Suite
+sanctifier-core = "0.3.7"  # Core analysis library for Sanctifier

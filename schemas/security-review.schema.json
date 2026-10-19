@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Security Review",
+  "type": "object",
+  "required": ["defaults"],
+  "properties": {
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "require_review": { "type": "boolean" },
+        "block_merge_on_failure": { "type": "boolean" },
+        "require_schema_validation": { "type": "boolean" }
+      }
+    }
+  }
+}

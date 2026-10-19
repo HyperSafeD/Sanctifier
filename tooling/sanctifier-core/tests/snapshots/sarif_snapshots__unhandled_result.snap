@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "transfer",
+    "message": "Result returned from 'token :: Client :: new (& env , & token)' is not handled",
+    "rule_name": "unhandled_result",
+    "severity": "Warning",
+    "suggestion": "Use ?, match, or .unwrap()/.expect() to handle the Result"
+  }
+]

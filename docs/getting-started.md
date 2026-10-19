@@ -1,12 +1,16 @@
 # Getting Started with Sanctifier
 
-Welcome to **Sanctifier** — the comprehensive security and formal verification suite for [Stellar Soroban](https://soroban.stellar.org/) smart contracts. This guide walks you through everything you need to go from zero to running your first security scan.
+Welcome to **Sanctifier** — the comprehensive security and formal verification suite for [Stellar Soroban](https://soroban.stellar.org/) smart contracts. This guide walks you through scanning your first Soroban contract in under five minutes.
+
+> **Recording:** An asciinema walkthrough of this tutorial is available at
+> [`docs/assets/getting-started.cast`](./assets/getting-started.cast). Play it with
+> `asciinema play docs/assets/getting-started.cast` to see the full terminal session.
 
 ---
 
 ## 1. Prerequisites
 
-Before installing Sanctifier, make sure the following are present on your system.
+Before installing Sanctifier, make sure the following tools are available on your system.
 
 ### Rust & Cargo
 
@@ -49,78 +53,274 @@ soroban --version   # e.g. soroban 20.x.x
 
 ## 2. Installing Sanctifier
 
-Clone the Sanctifier repository and install the CLI from source:
+### Installation Methods
+
+| Method | Command | Best for |
+|--------|---------|----------|
+| **Cargo (recommended)** | `cargo install sanctifier-cli --locked` | Most users; includes Z3 verification |
+| **Cargo (no Z3)** | `cargo install sanctifier-cli --locked --no-default-features` | Faster install; all rules except S011 work |
+| **Docker** | `docker run --rm -v $PWD:/src ghcr.io/hypersafed/sanctifier analyze /src` | No local Rust toolchain needed |
+| **Pre-built binary** | Download from [Releases](https://github.com/HyperSafeD/Sanctifier/releases/latest) | No Rust toolchain required |
+
+### Install with Cargo
+
+Install the Sanctifier CLI directly from crates.io (Rust 1.78 or later is required):
 
 ```bash
-git clone https://github.com/your-org/sanctifier.git
-cd sanctifier
-cargo install --path tooling/sanctifier-cli
+cargo install sanctifier-cli --locked
 ```
 
 > **Note:** Ensure `~/.cargo/bin` is on your `PATH`. If not, add it to your shell profile:
 >
 > ```bash
+> # Linux/macOS
 > echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> ~/.bashrc
 > source ~/.bashrc
+> 
+> # Windows PowerShell
+> $PROFILE | ForEach-Object { if (!(Test-Path $_)) { New-Item -ItemType File -Path $_ -Force } }
+> Add-Content -Path $PROFILE -Value '[Environment]::SetEnvironmentVariable("PATH", "$Env:PATH;$Env:USERPROFILE\.cargo\bin")'
 > ```
 
-Confirm the installation succeeded:
+Verify the installation succeeded:
 
 ```bash
 sanctifier --version
 ```
 
-Update to the latest Sanctifier binary at any time:
+Update to the latest Sanctifier binary at any time with:
 
 ```bash
-sanctifier update
+cargo install sanctifier-cli --locked --force
+```
+
+**Installation troubleshooting:**
+- If you see `error: could not compile 'sanctifier-cli'`, ensure your Rust toolchain is up-to-date: `rustup update stable`
+- On macOS/Linux with Z3 linker errors, install: `brew install z3` (macOS) or `sudo apt install libz3-dev` (Ubuntu)
+- To skip Z3 compilation: `cargo install sanctifier-cli --locked --no-default-features`
+
+### Pre-built Binaries
+
+Download a prebuilt binary for your platform (no Rust toolchain is required):
+
+| Platform | Download |
+|----------|----------|
+| **Linux (x86_64)** | [sanctifier-linux-amd64](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64) |
+| **Linux (musl)** | [sanctifier-linux-amd64-musl](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64-musl) |
+| **macOS (Intel)** | [sanctifier-macos-amd64](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-amd64) |
+| **macOS (Apple Silicon)** | [sanctifier-macos-arm64](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-macos-arm64) |
+| **Windows** | [sanctifier-windows-amd64.exe](https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-windows-amd64.exe) |
+
+**Verifying binaries:** Each release includes SHA256 checksums for integrity verification:
+
+```bash
+# Linux/macOS
+curl -LO https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64
+curl -LO https://github.com/HyperSafeD/Sanctifier/releases/latest/download/sanctifier-linux-amd64.sha256
+sha256sum -c sanctifier-linux-amd64.sha256
+
+# Windows (PowerShell)
+(Get-FileHash sanctifier-windows-amd64.exe).Hash -eq (Get-Content sanctifier-windows-amd64.exe.sha256)
+```
+
+### System Requirements
+
+**Minimum:**
+- Rust 1.78+ (if installing via cargo)
+- 2GB RAM
+- 500MB disk space
+
+**For full features (including Z3 formal verification):**
+
+| Platform | Required Packages |
+|----------|------------------|
+| **Debian/Ubuntu** | `sudo apt-get install libz3-dev clang libclang-dev build-essential pkg-config` |
+| **Fedora/RHEL** | `sudo dnf install z3-devel clang clang-devel` |
+| **Arch Linux** | `sudo pacman -S z3 clang` |
+| **macOS** | `brew install z3 llvm` |
+| **Windows** | Install [Z3](https://github.com/Z3Prover/z3/releases) and [Visual Studio Build Tools](https://visualstudio.microsoft.com/downloads/) |
+
+**Optional:**
+- `soroban-cli` for contract deployment features: `cargo install soroban-cli`
+- `wasm-pack` for WASM analysis: `cargo install wasm-pack`
+
+### Shell Completions
+
+Sanctifier supports shell completions for Bash, Zsh, Fish, PowerShell, and Elvish. Generate completions for your shell:
+
+**Bash:**
+```bash
+sanctifier completions bash > ~/.local/share/bash-completion/completions/sanctifier
+```
+
+**Zsh:**
+```bash
+sanctifier completions zsh > ~/.zfunc/_sanctifier
+# Add to ~/.zshrc: fpath=(~/.zfunc $fpath)
+```
+
+**Fish:**
+```bash
+sanctifier completions fish > ~/.config/fish/completions/sanctifier.fish
+```
+
+**PowerShell:**
+```powershell
+sanctifier completions powershell | Out-String | Invoke-Expression
+```
+
+**Elvish:**
+```bash
+sanctifier completions elvish > ~/.elvish/lib/sanctifier.elv
+```
+
+After installing completions, restart your shell or source the completion file.
+
+---
+
+## 3. Create a Minimal Soroban Contract
+
+Create a fresh Cargo project and add the Soroban SDK dependency:
+
+```bash
+cargo new --lib my-contract
+cd my-contract
+```
+
+Replace `Cargo.toml` with:
+
+```toml
+[package]
+name = "my-contract"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+soroban-sdk = { version = "21.7.0", features = ["testutils"] }
+```
+
+Replace `src/lib.rs` with this intentionally vulnerable contract. It contains three findings
+for Sanctifier to catch:
+
+### Example Contract
+
+Here's a complete working example with clear security issues:
+
+```rust
+#![no_std]
+use soroban_sdk::{contract, contractimpl, Env, Address};
+
+#[contract]
+pub struct Counter;
+
+#[contractimpl]
+impl Counter {
+    // S001: missing require_auth — anyone can increment the counter
+    pub fn increment(env: Env, user: Address, by: u32) -> u32 {
+        let key = "count";
+        let current: u32 = env.storage().persistent().get(&key).unwrap_or(0);
+        // S003: unchecked arithmetic — can overflow
+        let next = current + by;
+        env.storage().persistent().set(&key, &next);
+        next
+    }
+
+    // S002: panic! aborts the contract
+    pub fn reset(env: Env) {
+        panic!("reset is not implemented yet");
+    }
+}
 ```
 
 ---
 
-## 3. Running Your First Scan
+## 4. Run `sanctifier analyze`
 
-### Option A — Analyze an entire contract directory
-
-Point `sanctifier analyze` at the root of any Soroban contract crate (a directory containing `Cargo.toml` with a `soroban-sdk` dependency):
+From inside the `my-contract` directory (created in step 3), run:
 
 ```bash
-sanctifier analyze ./contracts/my-token
+sanctifier analyze ./my-contract
 ```
 
-### Option B — Analyze a single source file
+Sanctifier will print findings for the three issues intentionally left in the contract:
 
-You can also target a specific `.rs` file:
+```
+🛑 Found potential Authentication Gaps!
+   -> Function `increment` is modifying state without require_auth()
 
-```bash
-sanctifier analyze ./contracts/my-token/src/lib.rs
+🛑 Found explicit Panics/Unwraps!
+   -> Function `reset`: panic! aborts the contract (src/lib.rs:reset)
+
+🔢 Found unchecked Arithmetic Operations!
+   -> Function `increment`: Unchecked `+` (src/lib.rs:increment)
 ```
 
-### Option C — Analyze the current directory
+### Other ways to invoke Sanctifier
 
-Running `sanctifier analyze` with no arguments defaults to `.`:
+| Target | Command |
+|--------|---------|
+| Entire contract directory | `sanctifier analyze ./my-contract` |
+| Single source file | `sanctifier analyze ./my-contract/src/lib.rs` |
+| Current directory | `cd my-contract && sanctifier analyze` |
+| JSON output (for CI) | `sanctifier analyze ./my-contract --format json` |
+
+### Machine-readable output
+
+For scripts or CI, use `--format json` instead of the default human-readable
+terminal output:
 
 ```bash
-cd my-soroban-project
-sanctifier analyze
+sanctifier analyze ./my-contract --format json
 ```
 
-### Optional flags
+```json
+{
+  "schema_version": "1.0.0",
+  "rule_violations": [
+    {
+      "file": "src/lib.rs",
+      "rule_name": "auth_gaps",
+      "severity": "Critical",
+      "message": "Function `increment` is modifying state without require_auth()",
+      "location": "src/lib.rs:increment",
+      "suggestion": "Call `user.require_auth()` before mutating storage."
+    },
+    {
+      "file": "src/lib.rs",
+      "rule_name": "panics",
+      "severity": "High",
+      "message": "panic! aborts the contract (src/lib.rs:reset)",
+      "location": "src/lib.rs:reset",
+      "suggestion": "Return a Result and propagate errors instead of panicking."
+    }
+  ],
+  "error_codes": ["S001", "S002", "S003", "..."],
+  "summary": {
+    "total_findings": 2,
+    "duration_ms": 84,
+    "version": "0.x.y"
+  }
+}
+```
 
-| Flag | Description | Default |
-|---|---|---|
-| `-f`, `--format` | Output format: `text` or `json` | `text` |
-| `-l`, `--limit` | Ledger entry size limit in bytes | `64000` |
-
-**JSON output** — useful for CI pipelines and tooling integrations:
+Filter the JSON output with [`jq`](https://jqlang.org/) to show only critical findings:
 
 ```bash
-sanctifier analyze ./contracts/my-token --format json
+sanctifier analyze ./my-contract --format json | jq '.rule_violations[] | select(.severity == "Critical")'
+```
+
+SARIF output is also available for GitHub code scanning:
+
+```bash
+sanctifier analyze ./my-contract --format sarif
 ```
 
 ---
 
-## 4. Project Configuration (`.sanctify.toml`)
+## 5. Project Configuration (`.sanctify.toml`)
 
 Sanctifier looks for a `.sanctify.toml` file in the target directory and its parents. Running `sanctifier init` in your project root scaffolds a default config:
 
@@ -134,6 +334,7 @@ This creates `.sanctify.toml` with sensible defaults:
 ignore_paths  = ["target", ".git"]
 enabled_rules = ["auth_gaps", "panics", "arithmetic", "ledger_size"]
 ledger_limit  = 64000
+telemetry     = false
 strict_mode   = false
 
 # Optional: define regex-based custom rules
@@ -149,10 +350,11 @@ severity = "warning"
 ```
 
 Adjust `enabled_rules` to enable or disable specific checks, and add entries to `[[custom_rules]]` to enforce your own patterns.
+If you want to opt in to telemetry, run `sanctifier init --telemetry on` or set `telemetry = true` in `.sanctify.toml`. Telemetry only sends rule IDs, analysis duration, and the sanitized tool version. To point it at your own collector, set `SANCTIFIER_TELEMETRY_URL`.
 
 ---
 
-## 5. Interpreting the Output
+## 6. Interpreting the Output
 
 A typical run produces output similar to the following:
 
@@ -230,10 +432,216 @@ Sanctifier checks for upgrade-related patterns (e.g. `Wasm::upgrade`, missing `i
 
 ---
 
-## 6. Next Steps
+## 7. Fix a Finding
+
+Let's address the three findings one by one. Open `my-contract/src/lib.rs` and apply
+these changes:
+
+**Fix S001 — add `require_auth`:**
+
+```rust
+pub fn increment(env: Env, user: Address, by: u32) -> u32 {
+    user.require_auth();                    // <- add this line
+    let key = "count";
+    let current: u32 = env.storage().persistent().get(&key).unwrap_or(0);
+    let next = current.checked_add(by).expect("overflow"); // <- fix S003 too
+    env.storage().persistent().set(&key, &next);
+    next
+}
+```
+
+**Fix S002 — remove `panic!` and return a structured error:**
+
+```rust
+pub fn reset(_env: Env) -> Result<(), &'static str> {
+    Err("reset is not yet supported")
+}
+```
+
+After applying these changes the file should look like this:
+
+```rust
+#![no_std]
+use soroban_sdk::{contract, contractimpl, Env, Address};
+
+#[contract]
+pub struct Counter;
+
+#[contractimpl]
+impl Counter {
+    pub fn increment(env: Env, user: Address, by: u32) -> u32 {
+        user.require_auth();
+        let key = "count";
+        let current: u32 = env.storage().persistent().get(&key).unwrap_or(0);
+        let next = current.checked_add(by).expect("overflow");
+        env.storage().persistent().set(&key, &next);
+        next
+    }
+
+    pub fn reset(_env: Env) -> Result<(), &'static str> {
+        Err("reset is not yet supported")
+    }
+}
+```
+
+---
+
+## 8. Re-run and Confirm Clean
+
+Run Sanctifier again on the fixed contract:
+
+```bash
+sanctifier analyze ./my-contract
+```
+
+This time the output should show no findings:
+
+```
+✨ Sanctifier: Valid Soroban project found at "./my-contract"
+🔍 Analyzing contract at "./my-contract"...
+✅ Static analysis complete.
+
+No findings — your contract looks clean!
+```
+
+Congratulations! You have installed Sanctifier, written a Soroban contract with known
+vulnerabilities, interpreted the findings, applied fixes, and confirmed a clean report.
+
+---
+
+## 9. CI Integration
+
+`sanctifier analyze` exits `0` when the run is clean, `1` when findings triggered the
+active profile (fail the build on this), and `2` on an unrecoverable error such as a
+bad path or unparseable config — so a plain exit-code check is enough to gate a
+pipeline without parsing any output at all:
+
+```yaml
+# .github/workflows/sanctifier.yml
+name: Sanctifier
+
+on: [pull_request]
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Sanctifier
+        run: cargo install sanctifier-cli --locked
+
+      - name: Run security scan
+        run: sanctifier analyze ./contracts --format json | tee sanctifier-report.json
+        # Exits 1 on findings, which fails this step (and the job) automatically.
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sanctifier-report
+          path: sanctifier-report.json
+```
+
+If you'd rather warn instead of fail on findings during a migration period, capture the
+exit code explicitly:
+
+```bash
+sanctifier analyze ./contracts --format json > report.json; code=$?
+if [ "$code" -eq 2 ]; then
+  echo "Sanctifier itself errored — treat as a build failure." >&2
+  exit 1
+elif [ "$code" -eq 1 ]; then
+  echo "::warning::Sanctifier found issues — see report.json"
+fi
+```
+
+## 10. Troubleshooting
+
+Common errors while working through this guide, and how to resolve them.
+
+### `error: no such command: 'install'` or `cargo: command not found`
+
+Rust/Cargo isn't on your `PATH` yet. Re-run `source ~/.cargo/env` in your current shell (rustup adds
+this to your shell profile, but it only takes effect in *new* shells), or open a new terminal. Confirm
+with `cargo --version` before retrying.
+
+### `error[E0463]: can't find crate for 'core'` (or similar) when building a contract
+
+The `wasm32-unknown-unknown` target isn't installed. Run:
+
+```bash
+rustup target add wasm32-unknown-unknown
+```
+
+If you're on a newer Rust toolchain (1.82+) and still see this, some Soroban SDK versions require
+`wasm32v1-none` instead — check your `soroban-sdk` version's release notes and, if needed:
+
+```bash
+rustup target add wasm32v1-none
+```
+
+### `error: failed to run custom build command for 'soroban-sdk'` during `cargo install sanctifier-cli`
+
+This usually means your Rust toolchain is older than what `soroban-sdk` requires. Update Rust first:
+
+```bash
+rustup update stable
+```
+
+then retry the install. If it still fails, check the exact `soroban-sdk` version Sanctifier depends
+on (`cargo tree -p sanctifier-cli | grep soroban-sdk` after a partial install, or check
+[`Cargo.toml`](../Cargo.toml)) against your installed toolchain's supported range.
+
+### `sanctifier: command not found` after a successful `cargo install`
+
+`cargo install` places binaries in `~/.cargo/bin`, which needs to be on your `PATH`. This is normally
+set up by the rustup shell profile changes from step 1 — if you skipped that, add it manually:
+
+```bash
+export PATH="$HOME/.cargo/bin:$PATH"
+```
+
+and add the line to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) so it persists across sessions.
+
+### `No Soroban project found at "..."` when running `sanctifier analyze`
+
+Sanctifier expects to find a `Cargo.toml` with a Soroban contract crate (a dependency on
+`soroban-sdk`) at or under the given path. Double-check:
+
+- You're pointing at the contract's directory (or a parent directory containing one), not an
+  unrelated path.
+- The target `Cargo.toml` actually lists `soroban-sdk` as a dependency — a plain Rust crate without
+  it won't be recognized as a Soroban project.
+- If you meant to scan a single file, pass the file path directly (`sanctifier analyze
+  src/lib.rs`) rather than a directory, per the usage shown in step 3.
+
+### Findings look stale after fixing the reported issue
+
+Sanctifier re-reads the file from disk on every run, so a stale result almost always means the fix
+wasn't saved, or you're pointing the CLI at a different path than the one you edited (e.g. a
+build artifact or a copy under `target/`). Re-run with the exact file/directory path you edited and
+confirm the timestamp on the file matches your edit.
+
+### Z3/Kani formal-verification steps fail with a solver timeout
+
+The default solver timeout is tuned for typical contract sizes; a very large or arithmetically dense
+function can exceed it. Findings reported as timeouts (rather than a concrete violation) are not
+proof of a bug — they mean the solver couldn't decide either way within the time budget. See
+[`docs/kani-integration.md`](./kani-integration.md) for how to raise the timeout or scope a harness
+to a smaller pure function (the same "Core Logic Separation" pattern used throughout
+`contracts/kani-poc`).
+
+### Still stuck?
+
+Open an issue with your OS, `rustc --version`, `cargo --version`, and the exact command + output —
+see `CONTRIBUTING.md` for the issue template.
+
+---
+
+## 11. Next Steps
 
 - **Formal Verification** — See [`docs/kani-integration.md`](./kani-integration.md) to add model-checking with the Kani verifier.
 - **Runtime Guards** — See [`docs/runtime-guards-integration.md`](./runtime-guards-integration.md) to add runtime invariant wrappers in your existing Soroban contract.
 - **Video Tutorials** — See [`docs/formal-verification-video-series.md`](./formal-verification-video-series.md) for short walkthrough episodes on report reading and Kani proofs.
-- **CI Integration** — Use `--format json` and pipe the output to your pipeline's static analysis step to fail builds on new findings.
 - **Contributing** — Bug reports and new rule ideas are welcome. See `CONTRIBUTING.md` for guidelines.

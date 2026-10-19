@@ -1,0 +1,10 @@
+[
+  { "action_ref": "v0.2.3", "requested": "", "expected": "0.2.3" },
+  { "action_ref": "main", "requested": "", "expected": "" },
+  { "action_ref": "8b7c1d3", "requested": "", "expected": "" },
+  { "action_ref": "v1", "requested": "", "expected": "" },
+  { "action_ref": "v0.2.3", "requested": "0.9.9", "expected": "0.9.9" },
+  { "action_ref": "v0.2.3", "requested": "v0.9.9", "expected": "0.9.9" },
+  { "action_ref": "", "requested": "  0.1.0  ", "expected": "0.1.0" }
+]
+
