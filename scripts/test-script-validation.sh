@@ -3,13 +3,37 @@
 #======================================================================
 # Validation Logic Test Suite
 #======================================================================
+#
+# Error-handling policy (#1929):
+#   * The script runs with `set -u -o pipefail` but deliberately NOT a global
+#     `set -e`. This is a test runner: assert_fails / assert_success run
+#     commands that are *expected* to exit non-zero, record the result in
+#     FAILED and carry on, so one run reports every failure. A global
+#     `set -e` would abort at the first expected failure.
+#   * The setup section below DOES run under `set -e`. If the mock directory
+#     or a mock tool cannot be created there is nothing valid to test, so stop
+#     immediately instead of running the suite against a broken environment.
 
-set -u
+set -uo pipefail
 
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
+
+# ── Setup (fail fast) ──────────────────────────────────────────────────
+set -e
+
+# Run from the repository root: the assertions below use relative script
+# paths, and from any other directory they would fail with a misleading
+# "Error mismatch" rather than saying the scripts were not found.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+for required in scripts/deploy-soroban-testnet.sh scripts/validate-runtime-guards.sh; do
+    if [ ! -f "$required" ]; then
+        echo "ERROR: $required not found (working directory: $(pwd))" >&2
+        exit 2
+    fi
+done
 
 # Mock tools
 MOCK_DIR=$(mktemp -d)
@@ -36,6 +60,9 @@ export PATH="$MOCK_DIR:$PATH"
 
 FAILED=0
 
+# The assertions below intentionally run commands that fail.
+set +e
+
 assert_fails() {
     local cmd=$1
     local expected_error=$2
@@ -53,7 +80,9 @@ assert_fails() {
         return 1
     fi
 
-    if echo "$output" | grep -q "$expected_error"; then
+    # Herestring + -F: no pipe for pipefail/SIGPIPE to misreport on large output,
+    # and the expected text is matched literally rather than as a regex.
+    if grep -qF -- "$expected_error" <<<"$output"; then
         echo -e "${GREEN}PASSED${NC}"
     else
         echo -e "${RED}FAILED${NC} (Error mismatch)"
