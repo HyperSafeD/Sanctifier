@@ -4,6 +4,34 @@ This directory contains the Soroban contracts used by Sanctifier for analysis, f
 
 ## Contract catalog
 
+- `allowance-race`: Demonstrates the classic ERC-20 `approve → transferFrom` race
+  condition with safe `increase_allowance` / `decrease_allowance` helpers.
+- `amm-pool`: Automated market-maker fixture for slippage and reserve-invariant checks.
+- `benchmark`: Performance benchmark harness with compile-time WASM-size and
+  CPU-instruction ceilings for token and vesting contracts.
+- `bridge`: Cross-domain transfer fixture for authorization and replay analysis.
+- `deposit-withdraw`: Demonstrates the auth-gap vulnerability (S001) — a `withdraw`
+  function without `require_auth` that can be drained by any caller.
+- `flashloan-token`: Flash-loan execution fixture for temporary-balance safety checks.
+- `governance`: Proposal and voting fixture for control-plane validation.
+- `kani-poc`: Model-checking fixture used by formal verification workflows.
+- `multisig`: Multi-party authorization fixture for threshold and signer-order checks.
+- `multisig-no-recovery`: Demonstrates the stuck-state vulnerability — an N-of-M multisig
+  with no signer rotation, guardian, or recovery path.
+- `my-contract`: Baseline token-like contract used for deterministic testing/fuzzing examples.
+- `oracle`: Price-feed fixture for stale-data and trust-boundary validation.
+- `private-transfer`: Zcash-style shielded-balance private transfer demo using Groth16
+  ZK proofs with hidden amounts and identities.
+- `proxy`: Upgradeability fixture that emits governance-relevant upgrade/admin events.
+- `reentrancy-guard`: Reentrancy defense fixture contract.
+- `runtime-guard-wrapper`: Runtime guard and monitoring wrapper fixture.
+- `security-disclaimers`: Standardized security disclaimers and safe usage guidelines
+  module with runtime safety checks and security levels (CRITICAL/HIGH/MEDIUM/LOW).
+- `sep41-compliance`: Standardized SEP-41 token-interface compliance suite that
+  verifies all ten SEP-41 functions across contracts.
+- `shadowing-example`: Demonstrates variable-shadowing patterns and safer alternatives.
+- `test-support`: Shared test helpers (Env, token, asserts, SEP-41 compliance harness)
+  to reduce CI compile times across contracts.
 - `allowance-race`: ERC-20 style `approve` → `transfer_from` race fixture, with safe `increase_allowance`/`decrease_allowance` helpers.
 - `amm-pool`: Automated market-maker fixture for slippage and reserve-invariant checks.
 - `benchmark`: Benchmark harness that checks the SEP-41 token and vesting contracts stay within WASM-size and CPU-instruction budgets.
@@ -39,6 +67,12 @@ This directory contains the Soroban contracts used by Sanctifier for analysis, f
 - Storage-collision fixture notes live in `runtime-guard-wrapper` and `shadowing-example`.
 - Unhandled-`Result` fixture notes live in `runtime-guard-wrapper` and `token-with-bugs`.
 - SEP-41 conformance fixtures live in `my-contract` and `fixtures/finding-codes/s012_token_interface.rs`.
+## Structure
+- `vulnerable-contract/`: A reference implementation demonstrating common security pitfalls Sanctifier can detect.
+- `fixtures/finding-codes/`: Scan fixtures mapped to `S001` through `S012`.
+- `scripts/`: Testnet deployment script (`testnet-deploy.sh`) for deploying contracts to testnet.
+- `fixtures/`: Additional fixture contracts and XDR construction examples (`auth_gap_contract.rs`, `xdr_raw_construction.rs`, `versioning/`).
+- `MIGRATION_NOTES.md`: Migration notes for security disclaimer updates across contracts.
 
 ## Other directories and files
 
