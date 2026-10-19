@@ -108,8 +108,8 @@ cargo run --bin sanctifier -- analyze examples/sep41-compliant-token.rs
 
 ### CI Validation
 
-✅ Existing CI jobs cover S012:
-- `rust-tests` job runs `cargo test -p sanctifier-core --all-features`
+✅ Existing CI jobs cover S012 (`.github/workflows/ci.yml`):
+- `ci` job runs `cargo test -p sanctifier-core --all-features`
 - `contracts-sep41-fixtures` job validates S012 in fixture output
 - E2E coverage and benchmark jobs include S012 tests
 
