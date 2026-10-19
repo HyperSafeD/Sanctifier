@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/rule_fixture_regressions_storage_test.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "deposit",
+    "message": "Function 'deposit' stores per-user data key `& user` in Instance storage (line 14). Instance storage is a single shared ledger entry; per-user data will cause it to grow unboundedly, ballooning rent costs.",
+    "rule_name": "instance_storage_misuse",
+    "severity": "Warning",
+    "suggestion": "Move per-user / per-account data to `env.storage().persistent()` (or `temporary()` for short-lived state). Reserve `instance()` for contract-wide singletons such as admin address, decimals, or feature flags."
+  }
+]
