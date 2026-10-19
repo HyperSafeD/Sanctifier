@@ -1,0 +1,16 @@
+{
+  "name": "sanctifier-browser-extension",
+  "version": "0.1.0",
+  "description": "Sanctifier browser extension for viewing recent security findings",
+  "scripts": {
+    "test": "jest"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": ["**/tests/**/*.test.js"]
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "jsdom": "^25.0.1"
+  }
+}

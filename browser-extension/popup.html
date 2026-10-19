@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sanctifier - Recent Findings</title>
+  <style>
+    body {
+      width: 400px;
+      min-height: 200px;
+      margin: 0;
+      padding: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      color: #333;
+      background: #f5f5f5;
+    }
+
+    h1 {
+      font-size: 18px;
+      margin: 0 0 16px 0;
+      color: #000;
+    }
+
+    .empty-state {
+      text-align: center;
+      color: #999;
+      padding: 32px 0;
+    }
+
+    .findings-list {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+    }
+
+    .finding-item {
+      background: white;
+      border-radius: 4px;
+      padding: 12px;
+      margin-bottom: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+
+    .finding-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .severity {
+      font-weight: bold;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-size: 12px;
+    }
+
+    .severity-error { background: #fee; color: #d00; }
+    .severity-warning { background: #ffeaa7; color: #d63031; }
+    .severity-info { background: #dfe6e9; color: #0984e3; }
+    .severity-unknown { background: #ccc; color: #666; }
+
+    .code {
+      color: #666;
+      font-size: 12px;
+    }
+
+    .message {
+      margin: 4px 0;
+      font-weight: 500;
+    }
+
+    .location {
+      margin: 4px 0 0 0;
+      font-size: 12px;
+      color: #999;
+    }
+  </style>
+</head>
+<body>
+  <h1>🛡️ Sanctifier Findings</h1>
+  <div id="findings-container"></div>
+  <script src="popup.js"></script>
+</body>
+</html>
