@@ -37,20 +37,58 @@ because `sanctifier-core` is then compiled with its default `smt` feature. See t
 ## Distribution
 
 When packaging `sanctifier` for distribution, note the following:
-- The released binaries carry no Z3 runtime dependency.
+- The released binaries carry no Z3 runtime dependency: the release workflow builds
+  `-p sanctifier-cli`, which compiles `sanctifier-core` without `smt`. (That workflow still installs
+  Z3 before building; the CLI build does not use it.)
+- The release workflow builds Linux x86_64 (glibc and musl), macOS x86_64 and arm64, and Windows
+  x86_64. There is **no Windows arm64 build**.
 - If you build a variant with the `smt` feature enabled, Z3 must be dynamically or statically
   linked; for static linking, follow the `z3-sys` static compilation instructions.
 
+## Release channels
+
+Every channel is driven by pushing a `v*` tag. Three separate workflows are involved:
+
+| Channel | Workflow / job | Notes |
+|---------|----------------|-------|
+| GitHub release binaries and `.sha256` files | `release.yml` | Tags containing `-mainnet` are first checked against the open issues in the *Mainnet Launch Readiness* milestone. |
+| Docker, `ghcr.io/hypersafed/sanctifier` | `release.yml` (`docker`) | Built from the musl binary. |
+| npm, `@hypersafed/sanctifier-cli` | `release.yml` (`npm-publish`) | Needs the `NPM_TOKEN` secret. The package downloads the release binary on first run. |
+| Homebrew, `HyperSafeD/sanctifier/sanctifier` | `release.yml` (`homebrew-update`) | Rewrites `homebrew/sanctifier.rb` and pushes it to the `HyperSafeD/homebrew-sanctifier` tap. **Skipped** (with a log message) when the `HOMEBREW_TAP_TOKEN` secret is not set. |
+| crates.io, `cargo install sanctifier-cli` | `publish.yml` | Publishes `sanctifier-core` first, waits for it to appear on crates.io, then publishes `sanctifier-cli`. Needs `CRATES_IO_TOKEN`. |
+| Scoop | `winget-scoop.yml` | Regenerates `scoop/sanctifier.json` and commits it to this repository. |
+| winget | `winget-scoop.yml` | Updates the manifests under `winget/` and opens a pull request against **this repository's** `main` (the step is `continue-on-error`). It does **not** submit to `microsoft/winget-pkgs`, so `winget install HyperSafeD.Sanctifier` only works once someone has submitted those manifests there. |
+
+Known gap: the generated Scoop manifest also lists a `sanctifier-windows-arm64.exe` download (reusing
+the x86_64 hash), but the release workflow does not build that asset.
+
+### Release status (checked 2026-10-19)
+
+No `v*` tag has been pushed yet and none of these workflows has run, so **the channels above are not
+populated yet**: `sanctifier-cli` and `sanctifier-core` are not on crates.io, `@hypersafed/sanctifier-cli`
+is not on npm, there are no GitHub releases, and `microsoft/winget-pkgs` has no `HyperSafeD`
+manifests. (The Homebrew tap repository could not be found from an account outside the
+organisation.) Until the first release, build from source as described above. To check the current
+state yourself:
+
+```sh
+gh release list -R HyperSafeD/Sanctifier
+cargo search sanctifier-cli
+npm view @hypersafed/sanctifier-cli version
+```
+
 ## Installation via Cargo
 
-You can install the CLI directly from crates.io:
+Once a release has been published to crates.io, you can install the CLI with:
 ```sh
 cargo install sanctifier-cli
 ```
 
-Other published channels — npm/npx, Homebrew, Scoop, winget, Docker — are listed in the
-[README install options](../README.md#installation-methods) and are updated automatically by the
-release workflow on each tagged version.
+Before that, build from a checkout of this repository as described in
+[Building from Source](#building-from-source).
+
+The other channels in the table above are listed, with commands, in the
+[README install options](../README.md#installation-methods).
 
 ## Running Backwards Compatibility Tests
 
