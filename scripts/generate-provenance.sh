@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# IMPORTANT: set -euo pipefail must be on line 2 (before any commands) to ensure
+# fail-fast behavior from the start. Without it, failing commands between the
+# shebang and this line would be silently ignored, potentially causing the script
+# to proceed with broken state (e.g., missing dependencies, malformed variables).
 set -euo pipefail
 
 # scripts/generate-provenance.sh
