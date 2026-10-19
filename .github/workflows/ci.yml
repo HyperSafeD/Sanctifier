@@ -94,6 +94,14 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all --check
 
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Lint shell scripts
+        run: shellcheck scripts/*.sh
+
       - name: Run Clippy (workspace)
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
