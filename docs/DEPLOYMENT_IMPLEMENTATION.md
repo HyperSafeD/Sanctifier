@@ -269,19 +269,21 @@ Test results are structured as:
 
 ### With Sanctifier Core
 
-The runtime guard wrapper integrates with sanctifier-core:
+The runtime guard wrapper can be extended to integrate with sanctifier-core:
 
 ```rust
-// In runtime-guard-wrapper/Cargo.toml
+// Add to runtime-guard-wrapper/Cargo.toml (not currently present)
 [dependencies]
 sanctifier-core = { path = "../../tooling/sanctifier-core" }
 ```
 
-Can be extended to use:
+Future integration would enable:
 - Storage collision detection
 - Auth gap detection
 - Arithmetic overflow detection
 - Gas estimation
+
+**Note**: This integration is not currently implemented; the wrapper uses only `soroban-sdk` dependencies.
 
 ### With GitHub Actions
 
