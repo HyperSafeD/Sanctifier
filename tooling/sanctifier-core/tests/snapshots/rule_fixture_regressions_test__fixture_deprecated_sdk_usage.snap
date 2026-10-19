@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/rule_fixture_regressions_test.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "register",
+    "message": "Deprecated SDK v22: `storage().*.bump()` was removed — use `extend_ttl()` instead (in `register` at line 16)",
+    "rule_name": "deprecated_sdk_usage",
+    "severity": "Warning",
+    "suggestion": "Replace `.bump(ledgers)` with `.extend_ttl(min_ledgers_to_live, max_ledgers_to_live)`. Both the minimum and maximum ledger bounds must be provided."
+  }
+]
