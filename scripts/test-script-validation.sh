@@ -3,13 +3,26 @@
 #======================================================================
 # Validation Logic Test Suite
 #======================================================================
+#
+# Error-handling policy (#1929):
+#   * The script runs with `set -u -o pipefail` but deliberately NOT a global
+#     `set -e`. This is a test runner: assert_fails / assert_success run
+#     commands that are *expected* to exit non-zero, record the result in
+#     FAILED and carry on, so one run reports every failure. A global
+#     `set -e` would abort at the first expected failure.
+#   * The setup section below DOES run under `set -e`. If the mock directory
+#     or a mock tool cannot be created there is nothing valid to test, so stop
+#     immediately instead of running the suite against a broken environment.
 
-set -u
+set -uo pipefail
 
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m'
+
+# ── Setup (fail fast) ──────────────────────────────────────────────────
+set -e
 
 # Mock tools
 MOCK_DIR=$(mktemp -d)
@@ -35,6 +48,9 @@ chmod +x "$MOCK_DIR"/*
 export PATH="$MOCK_DIR:$PATH"
 
 FAILED=0
+
+# The assertions below intentionally run commands that fail.
+set +e
 
 assert_fails() {
     local cmd=$1
