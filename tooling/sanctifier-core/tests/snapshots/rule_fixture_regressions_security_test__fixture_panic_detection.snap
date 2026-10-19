@@ -1,0 +1,27 @@
+---
+source: tooling/sanctifier-core/tests/rule_fixture_regressions_security_test.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "release",
+    "message": "Use of 'panic!' can cause contract failure",
+    "rule_name": "panic_detection",
+    "severity": "Error",
+    "suggestion": "Use Result types and proper error handling instead"
+  },
+  {
+    "location": "released",
+    "message": "Use of 'unwrap' can cause contract failure",
+    "rule_name": "panic_detection",
+    "severity": "Warning",
+    "suggestion": "Use Result types and proper error handling instead"
+  },
+  {
+    "location": "beneficiary_of",
+    "message": "Use of 'expect' can cause contract failure",
+    "rule_name": "panic_detection",
+    "severity": "Warning",
+    "suggestion": "Use Result types and proper error handling instead"
+  }
+]

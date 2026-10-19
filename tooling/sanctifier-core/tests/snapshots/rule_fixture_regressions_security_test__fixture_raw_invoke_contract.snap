@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/rule_fixture_regressions_security_test.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "line 24",
+    "message": "Cross-contract call via `invoke_contract` at line 24 panics on callee failure; use `try_invoke_contract` with explicit Result handling",
+    "rule_name": "raw_invoke_contract",
+    "severity": "Warning",
+    "suggestion": "Replace `env.invoke_contract::<T>(…)` with `env.try_invoke_contract::<T, E>(…)?` or match on the returned Result to handle callee errors without panicking"
+  }
+]
