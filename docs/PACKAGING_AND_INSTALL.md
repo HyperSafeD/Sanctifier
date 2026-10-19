@@ -4,14 +4,26 @@
 
 To build the `sanctifier-cli` from source:
 
-1. Ensure you have Rust 1.78 or newer installed (the workspace MSRV).
+1. Ensure you have **Rust 1.88 or newer** installed.
 2. Run `cargo build --release -p sanctifier-cli`.
 3. The compiled binary will be available at `target/release/sanctifier`.
 
+> **About the minimum Rust version.** The workspace manifest still declares
+> `rust-version = "1.78"` (`[workspace.package]` in `Cargo.toml`), but that
+> number is out of date and is not what limits you. With the committed
+> `Cargo.lock`, several dependencies in the CLI's build (for example `time`,
+> `darling`, `textwrap` and the `icu_*` crates) declare `rust-version = 1.88`,
+> and some use edition 2024. Rust 1.87 stops with
+> `rustc 1.87.0 is not supported by the following packages`, and Rust 1.78 fails
+> earlier still while parsing a dependency manifest. No CI job builds with the
+> declared minimum, and no member crate inherits the workspace value, so nothing
+> flags this drifting.
+
 The CLI depends on `sanctifier-core` with `default-features = false, features = ["parallel"]`, so
-**building it does not require Z3** and needs no C toolchain. libz3 is only needed when you build
-the whole workspace (`make build`, `make release`, `cargo test --workspace`), because
-`sanctifier-core` is then compiled with its default `smt` feature. See the
+**building it does not require Z3 or libz3**. It does still need a **C compiler**: the TLS stack
+(`reqwest` with `rustls`, which uses `ring`) compiles C and assembly during the build. libz3 is only
+needed when you build the whole workspace (`make build`, `make release`, `cargo test --workspace`),
+because `sanctifier-core` is then compiled with its default `smt` feature. See the
 [README System Requirements](../README.md#system-requirements) for the per-platform packages.
 
 ### `sanctifier-core` feature flags
