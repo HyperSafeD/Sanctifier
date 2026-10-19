@@ -24,6 +24,17 @@ NC='\033[0m'
 # ── Setup (fail fast) ──────────────────────────────────────────────────
 set -e
 
+# Run from the repository root: the assertions below use relative script
+# paths, and from any other directory they would fail with a misleading
+# "Error mismatch" rather than saying the scripts were not found.
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+for required in scripts/deploy-soroban-testnet.sh scripts/validate-runtime-guards.sh; do
+    if [ ! -f "$required" ]; then
+        echo "ERROR: $required not found (working directory: $(pwd))" >&2
+        exit 2
+    fi
+done
+
 # Mock tools
 MOCK_DIR=$(mktemp -d)
 trap 'rm -rf "$MOCK_DIR"' EXIT
@@ -69,7 +80,9 @@ assert_fails() {
         return 1
     fi
 
-    if echo "$output" | grep -q "$expected_error"; then
+    # Herestring + -F: no pipe for pipefail/SIGPIPE to misreport on large output,
+    # and the expected text is matched literally rather than as a regex.
+    if grep -qF -- "$expected_error" <<<"$output"; then
         echo -e "${GREEN}PASSED${NC}"
     else
         echo -e "${RED}FAILED${NC} (Error mismatch)"
