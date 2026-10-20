@@ -20,7 +20,11 @@
     "smart contracts"
   ],
   "activationEvents": [
-    "onLanguage:rust"
+    "workspaceContains:**/Cargo.toml",
+    "onCommand:sanctifier.analyzeWorkspace",
+    "onCommand:sanctifier.exportSarif",
+    "onCommand:sanctifier.importSarif",
+    "onCommand:sanctifier.toggleEnable"
   ],
   "main": "./out/extension.js",
   "contributes": {
