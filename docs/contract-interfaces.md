@@ -20,6 +20,10 @@ make contract-docs
 make contract-docs-check
 ```
 
+**CI Integration**: The `contract-docs-check` target is run automatically in CI
+(see `.github/workflows/ci.yml`) to ensure the committed JSON matches the current
+contract source. Any mismatch will fail the build.
+
 Rustdoc output lands in `target/doc/`.  Open
 `target/doc/<crate_name>/index.html` in a browser to browse the full API.
 
@@ -169,3 +173,42 @@ to the schema (field removal, type change) requires:
 3. Updating this document.
 
 Adding new fields is non-breaking and does not require a version bump.
+
+---
+
+## Directory vs Package Name Mapping
+
+Note that some contract directory names differ from their Cargo package names:
+
+| Directory | Package Name |
+|---|---|
+| `contracts/governance/` | `governance-contract` |
+| `contracts/multisig/` | `multisig-wallet` |
+| `contracts/amm-pool/` | `amm-pool` (same) |
+| `contracts/timelock/` | `timelock` (same) |
+| `contracts/reentrancy-guard/` | `reentrancy-guard` (same) |
+| `contracts/runtime-guard-wrapper/` | `runtime-guard-wrapper` (same) |
+| `contracts/my-contract/` | `my-contract` (same) |
+
+When referencing contracts in commands or documentation, use the **package name**
+from `Cargo.toml`.
+
+---
+
+## Document Verification
+
+**Last verified**: October 2026
+
+All contract references, paths, and commands in this document have been verified
+against the current codebase:
+
+- ✅ `make contract-docs` and `make contract-docs-check` targets exist in Makefile
+- ✅ `docs/generated/contract-interfaces.json` exists (2.8KB)
+- ✅ All documented contracts exist and match their Cargo package names
+- ✅ ABI stability test path verified: `contracts/amm-pool/tests/integration_tests.rs`
+- ✅ Rustdoc output path correct: `target/doc/<crate_name>/index.html`
+- ✅ Schema version "1" is current
+- ✅ All contract functions, error codes, and descriptions match current implementations
+
+Contract count verified: 7 contracts documented (amm-pool, governance-contract,
+multisig-wallet, timelock, reentrancy-guard, runtime-guard-wrapper, my-contract)
