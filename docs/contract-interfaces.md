@@ -20,6 +20,10 @@ make contract-docs
 make contract-docs-check
 ```
 
+**CI Integration**: The `contract-docs-check` target is run automatically in CI
+(see `.github/workflows/ci.yml`) to ensure the committed JSON matches the current
+contract source. Any mismatch will fail the build.
+
 Rustdoc output lands in `target/doc/`.  Open
 `target/doc/<crate_name>/index.html` in a browser to browse the full API.
 
