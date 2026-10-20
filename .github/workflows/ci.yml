@@ -175,7 +175,6 @@ jobs:
 
       - name: Generate coverage report
         run: cd frontend && npm run test:coverage
-        continue-on-error: true
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v6
