@@ -59,6 +59,15 @@ Examples:
 - `component:docs` - Documentation
 - `component:contracts` - Example/test contracts
 
+### Area Labels
+
+**Format**: `area:*`
+
+Used to scope issues to a broad technology domain or deployment target:
+
+- `area:zk` — Zero-knowledge proof work (ZK rules, circom/Noir parsers, ZK fixtures)
+- `area:mainnet` — Mainnet-launch-blocking work (security hardening, deployment ops, compliance)
+
 ### Type Labels
 
 **Format**: `type:*`
@@ -143,6 +152,11 @@ See #1252 for complete workstream breakdown.
 - Some older issues use `area:*` instead of `component:*`
 - Some use space-separated labels vs hyphenated
 - This document standardizes on current conventions
+
+**Wave-2 Additions** (2026-10-22):
+- `area:zk` — created for the ZK Integration wave (#1190–#1261); applied alongside the thematic `zk` label
+- `area:mainnet` — created for the Mainnet Launch Readiness wave (#1112–#1189); applied alongside the thematic `mainnet` label
+- `component:zk` — scoped component label for ZK-specific subsystem changes
 
 **Migration**: Not retroactively relabeling old issues; new issues follow this taxonomy.
 
