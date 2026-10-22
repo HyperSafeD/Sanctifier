@@ -1,5 +1,7 @@
 # Frontend Setup
 
+Install steps, Node.js/npm requirements, and the dev/test commands live in [frontend/README.md](../frontend/README.md). This page covers environment variables and runtime behavior only.
+
 ## Environment variables
 
 Copy `frontend/.env.local.example` to `frontend/.env.local` and set the values before starting the dev server.
