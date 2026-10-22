@@ -3389,6 +3389,7 @@ dependencies = [
  "chrono",
  "criterion",
  "insta",
+ "miette",
  "proc-macro2",
  "proptest",
  "quote",
