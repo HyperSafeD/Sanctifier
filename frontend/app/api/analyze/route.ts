@@ -6,6 +6,7 @@ import { mkdtemp, rm, writeFile } from "fs/promises";
 import { normalizeReport, transformReport } from "../../lib/transform";
 import { SANCTIFIER_BIN, RATE_LIMIT_REQUESTS_PER_MINUTE } from "../../lib/env";
 import { logger } from "../../../lib/logger";
+import { outcomeForExitCode, startAnalysisJob, trackAnalysisJob, withMetrics } from "../../../lib/metrics";
 
 export const runtime = "nodejs";
 
@@ -193,7 +194,7 @@ function sanitizeFileName(name: string): string {
   return sanitized;
 }
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const projectPath = searchParams.get("path") || ".";
 
@@ -208,6 +209,7 @@ export async function GET(request: NextRequest) {
           env: { ...process.env, FORCE_COLOR: "0" },
         }
       );
+      const finishJob = startAnalysisJob("/api/analyze");
 
       const sendLog = (data: string) => {
         const lines = data.split("\n");
@@ -227,6 +229,7 @@ export async function GET(request: NextRequest) {
       });
 
       cliProcess.on("close", (code) => {
+        finishJob(outcomeForExitCode(code));
         controller.enqueue(
           encoder.encode(
             `data: ${JSON.stringify(
@@ -238,6 +241,7 @@ export async function GET(request: NextRequest) {
       });
 
       cliProcess.on("error", (err) => {
+        finishJob("error");
         controller.enqueue(
           encoder.encode(
             `data: ${JSON.stringify(`Error spawning process: ${err.message}`)}\n\n`
@@ -257,7 +261,7 @@ export async function GET(request: NextRequest) {
   });
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   const requestId = request.headers.get("x-request-id") || `req-${Math.random().toString(36).substring(2, 11)}`;
   const startTime = Date.now();
   const clientIP = getClientIP(request);
@@ -348,7 +352,9 @@ export async function POST(request: NextRequest) {
     const contractPath = path.join(tempDir, sourcePayload.fileName);
     await writeFile(contractPath, sourcePayload.source, "utf8");
 
-    const { stdout, stderr, exitCode } = await runAnalyzeCommand(contractPath, EXECUTION_TIMEOUT_MS, requestId);
+    const { stdout, stderr, exitCode } = await trackAnalysisJob("/api/analyze", () =>
+      runAnalyzeCommand(contractPath, EXECUTION_TIMEOUT_MS, requestId)
+    );
     const report = parseJsonResponse(stdout);
     const durationMs = Date.now() - startTime;
 
@@ -416,3 +422,6 @@ export async function POST(request: NextRequest) {
     await rm(tempDir, { recursive: true, force: true }).catch(() => {});
   }
 }
+
+export const GET = withMetrics("/api/analyze", "GET", handleGET);
+export const POST = withMetrics("/api/analyze", "POST", handlePOST);

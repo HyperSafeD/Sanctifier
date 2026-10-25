@@ -19,6 +19,7 @@ const entries: EnvEntry[] = [
   { key: "API_RATE_LIMIT_PER_MINUTE",        value: process.env.API_RATE_LIMIT_PER_MINUTE,        defaultValue: "20", description: "Max v1 analyze requests per API key per minute" },
   { key: "AI_RATE_LIMIT_REQUESTS_PER_MINUTE", value: process.env.AI_RATE_LIMIT_REQUESTS_PER_MINUTE, defaultValue: "10", description: "Max AI explain requests per IP per minute" },
   { key: "AI_DAILY_COST_CAP_CENTS",          value: process.env.AI_DAILY_COST_CAP_CENTS,          defaultValue: "100", description: "Global daily AI cost cap in US cents" },
+  { key: "METRICS_TOKEN",                    value: process.env.METRICS_TOKEN,                    description: "Bearer token required to scrape /metrics (open when unset)" },
 ];
 
 function statusOf(entry: EnvEntry): Status {

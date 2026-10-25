@@ -11,6 +11,7 @@ import {
   API_KEYS,
   API_RATE_LIMIT_PER_MINUTE,
 } from "../../../lib/env";
+import { trackAnalysisJob, withMetrics } from "../../../../lib/metrics";
 
 export const runtime = "nodejs";
 
@@ -129,7 +130,7 @@ function jsonResponse(data: unknown, status = 200, headers?: Record<string, stri
   });
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   // Validate API key
   const apiKey = validateApiKey(request);
   if (!apiKey) {
@@ -226,7 +227,9 @@ export async function POST(request: NextRequest) {
     const contractPath = path.join(tempDir, sourcePayload.fileName);
     await writeFile(contractPath, sourcePayload.source, "utf8");
 
-    const { stdout, stderr, exitCode } = await runAnalyzeCommand(contractPath, EXECUTION_TIMEOUT_MS);
+    const { stdout, stderr, exitCode } = await trackAnalysisJob("/api/v1/analyze", () =>
+      runAnalyzeCommand(contractPath, EXECUTION_TIMEOUT_MS)
+    );
 
     // Parse result
     let report: unknown = null;
@@ -275,7 +278,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function GET() {
+async function handleGET() {
   return jsonResponse({
     service: "Sanctifier Security Analysis API",
     version: "1.0.0",
@@ -287,3 +290,6 @@ export async function GET() {
     documentation: "https://github.com/HyperSafeD/Sanctifier",
   });
 }
+
+export const GET = withMetrics("/api/v1/analyze", "GET", handleGET);
+export const POST = withMetrics("/api/v1/analyze", "POST", handlePOST);
