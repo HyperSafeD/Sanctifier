@@ -46,6 +46,15 @@ for a complete fixture with:
 - `increase_allowance` / `decrease_allowance` — safe atomic helpers
 - Tests proving the exploit and the mitigation
 
+[`contracts/allowance-race/tests/allowance_race.rs`](../contracts/allowance-race/tests/allowance_race.rs)
+replays the attack sequence above against a real Stellar Asset Contract token
+and asserts on balances: the `approve` path drains 150, while the
+`decrease_allowance` path caps the spender at the original 100.
+
+```bash
+cargo test -p allowance-race
+```
+
 ## Further reading
 
 - [EIP-20 known attack](https://docs.google.com/document/d/1YLPtQxZu1eV3304M9GnR4bKMBBHFXqoiDFBe5QLHM4/edit)

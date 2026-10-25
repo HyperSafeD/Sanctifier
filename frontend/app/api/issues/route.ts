@@ -1,4 +1,5 @@
 import { normalizeIssues, type GitHubIssue } from "../../lib/github-issues";
+import { withMetrics } from "../../../lib/metrics";
 
 export const runtime = "nodejs";
 
@@ -8,7 +9,7 @@ const PER_PAGE = 100;
 const MAX_PAGES = 3;
 const REVALIDATE_SECONDS = 300;
 
-export async function GET() {
+async function handleGET() {
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
@@ -51,3 +52,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withMetrics("/api/issues", "GET", handleGET);

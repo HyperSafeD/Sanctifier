@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { readFile } from "fs/promises";
 import { existsSync } from "fs";
 import path from "path";
+import { withMetrics } from "../../../lib/metrics";
 
 export const runtime = "nodejs";
 
@@ -10,7 +11,7 @@ const RECENT_FINDINGS_FILE = path.resolve(process.cwd(), ".recent-findings.json"
 let cachedFindings: unknown[] | null = null;
 let cachedTimestamp: number | null = null;
 
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const limitParam = searchParams.get("limit");
   const limit = limitParam ? Math.min(Math.max(parseInt(limitParam, 10) || 10, 1), 100) : 10;
@@ -60,7 +61,7 @@ export function updateRecentFindings(findings: unknown[]) {
   cachedTimestamp = Date.now();
 }
 
-export async function POST(request: NextRequest) {
+async function handlePOST(request: NextRequest) {
   try {
     const body = await request.json();
     const findings = Array.isArray(body.findings) ? body.findings : [];
@@ -71,3 +72,6 @@ export async function POST(request: NextRequest) {
     return Response.json({ status: "error", message: "Invalid payload" }, { status: 400 });
   }
 }
+
+export const GET = withMetrics("/api/recent-findings", "GET", handleGET);
+export const POST = withMetrics("/api/recent-findings", "POST", handlePOST);
