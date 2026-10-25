@@ -1,0 +1,17 @@
+# Trivy waivers for the Sanctifier container images.
+#
+# Every CRITICAL/HIGH finding fails .github/workflows/docker-scan.yml and the
+# release image gate unless it is listed here. Each waiver needs:
+#
+#   - a justification comment directly above it (why it is not exploitable
+#     here, or why no fix is available yet),
+#   - the tracking issue,
+#   - an expiry, so the waiver is re-reviewed instead of living forever.
+#
+# Format (Trivy re-reports the finding once `exp:` has passed):
+#
+#   # <package>: <why this is accepted> — tracked in #<issue>
+#   CVE-YYYY-NNNNN exp:YYYY-MM-DD
+#
+# No waivers are currently needed: the production image is distroless/static
+# with a statically linked binary (see docs/docker.md).
