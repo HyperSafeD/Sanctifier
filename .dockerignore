@@ -10,3 +10,9 @@ SECURITY.md
 build_errors*.log
 build_all_errors.log
 final_message.md
+**/node_modules/
+frontend/
+vscode-extension/
+browser-extension/
+e2e/
+benchmarks/
