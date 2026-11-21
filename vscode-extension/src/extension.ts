@@ -153,7 +153,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
 
   const debouncers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /** Cancel all pending debounced analyses and clear diagnostics/caches. */
+  function cancelAllPendingAnalyses(): void {
+    for (const [key, timer] of debouncers) {
+      clearTimeout(timer);
+      debouncers.delete(key);
+    }
+    collection.clear();
+    findingsCache.clear();
+    contentCache.clear();
+    scanning = false;
+    updateStatusBar();
+  }
+
   const runAnalysis = (doc: vscode.TextDocument) => {
+    if (!vscode.workspace.isTrusted) {
+      return;
+    }
     if (doc.languageId !== 'rust') {
       return;
     }
@@ -211,6 +227,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
   };
 
   const schedule = (doc: vscode.TextDocument) => {
+    if (!vscode.workspace.isTrusted) {
+      const key = doc.uri.toString();
+      const prev = debouncers.get(key);
+      if (prev) {
+        clearTimeout(prev);
+        debouncers.delete(key);
+      }
+      collection.delete(doc.uri);
+      findingsCache.delete(key);
+      updateStatusBar();
+      return;
+    }
     const onlySorobanWs = getConfig().get<boolean>('onlyInSorobanWorkspace');
     if (onlySorobanWs) {
       const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
@@ -287,8 +315,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
     }),
     vscode.window.onDidChangeActiveTextEditor(() => {
       updateStatusBar();
+    }),
+    vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      // Trust was just granted; re-schedule all open documents so findings
+      // that were suppressed in restricted mode are now produced.
+      invalidateWorkspaceCache();
+      contentCache.clear();
+      findingsCache.clear();
+      for (const doc of vscode.workspace.textDocuments) {
+        schedule(doc);
+      }
     })
   );
+
+  // If the workspace opens in restricted (untrusted) mode, cancel everything
+  // immediately so no analysis runs until the user explicitly grants trust.
+  if (!vscode.workspace.isTrusted) {
+    cancelAllPendingAnalyses();
+  }
 
   for (const doc of vscode.workspace.textDocuments) {
     schedule(doc);
