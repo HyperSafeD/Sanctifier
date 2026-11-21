@@ -653,7 +653,10 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str, network: &
                <td>{}</td><td><code>{}</code></td>\
                <td class=\"num\">{}</td>\
              </tr>\n",
-            row_class, cat, code, count
+            row_class,
+            html_escape(cat),
+            html_escape(code),
+            count
         ));
     }
     summary_rows.push_str(&format!(
