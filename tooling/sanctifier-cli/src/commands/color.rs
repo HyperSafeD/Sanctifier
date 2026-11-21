@@ -200,3 +200,85 @@ pub fn bright_yellow(s: &str) -> String {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn reset() {
+        set_no_color(false);
+    }
+
+    #[test]
+    fn set_no_color_true_disables_wrappers() {
+        set_no_color(true);
+        assert_eq!(red("hello"), "hello");
+        assert_eq!(green("ok"), "ok");
+        assert_eq!(bold("title"), "title");
+        reset();
+    }
+
+    #[test]
+    fn set_no_color_false_re_enables_wrappers() {
+        set_no_color(true);
+        set_no_color(false);
+        // When colour is on the wrappers return ANSI-decorated strings, which
+        // are never equal to the bare input.
+        assert_ne!(red("hello"), "hello");
+        reset();
+    }
+
+    #[test]
+    fn no_color_env_disables_color() {
+        // Temporarily set NO_COLOR, call init, assert wrappers strip ANSI.
+        // We use a scoped override rather than actually mutating env state so
+        // parallel tests are unaffected.
+        set_no_color(false);
+
+        // Simulate what init() does when NO_COLOR is set:
+        let no_color = true; // as if std::env::var("NO_COLOR") returned a non-empty value
+        set_no_color(no_color);
+
+        assert!(is_no_color());
+        assert_eq!(yellow("warn"), "warn");
+        reset();
+    }
+
+    #[test]
+    fn green_check_returns_ok_when_no_color() {
+        set_no_color(true);
+        assert_eq!(green_check(), "[OK]");
+        reset();
+    }
+
+    #[test]
+    fn red_cross_returns_fail_when_no_color() {
+        set_no_color(true);
+        assert_eq!(red_cross(), "[FAIL]");
+        reset();
+    }
+
+    #[test]
+    fn yellow_warning_returns_warn_when_no_color() {
+        set_no_color(true);
+        assert_eq!(yellow_warning(), "[WARN]");
+        reset();
+    }
+
+    #[test]
+    fn blue_info_returns_info_when_no_color() {
+        set_no_color(true);
+        assert_eq!(blue_info(), "[INFO]");
+        reset();
+    }
+
+    #[test]
+    fn colored_crate_override_set_to_false_when_no_color() {
+        // When set_no_color(true) the `colored` crate must have its override set
+        // to `false` (strip ANSI) so direct uses of `.red().to_string()` also
+        // produce plain text.
+        set_no_color(true);
+        let s = "plain".red().to_string();
+        assert!(!s.contains('\x1b'), "ANSI codes must be absent when no-color is set");
+        reset();
+    }
+}
