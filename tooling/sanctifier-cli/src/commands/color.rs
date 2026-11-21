@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 use colored::Colorize;
+use std::io::IsTerminal as _;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 static NO_COLOR: AtomicBool = AtomicBool::new(false);
@@ -7,15 +8,22 @@ static NO_COLOR: AtomicBool = AtomicBool::new(false);
 /// Initialise the colour-engine from environment variables and (optional) CLI flags.
 ///
 /// Priority (first wins):
-/// 1. The caller can call `set_no_color(true)` to force monochrome.
-/// 2. `NO_COLOR` environment variable (any non-empty value).
-/// 3. `CLICOLOR_FORCE` / `CLICOLOR` — see `colored` crate docs.
-/// 4. TTY auto-detection (handled by the `colored` crate).
+/// 1. `cli_no_color` — the caller passes `true` when `--no-color` / `--no-colour` is set.
+/// 2. `NO_COLOR` environment variable (any non-empty value disables colour per
+///    <https://no-color.org>).
+/// 3. `CLICOLOR=0` explicitly disables colour.
+/// 4. `CLICOLOR_FORCE` (any non-empty, non-`"0"` value) **re-enables** colour even when
+///    stdout is not a TTY.
+/// 5. Stdout TTY auto-detection: colour is disabled when stdout is not connected to a
+///    terminal (e.g. piped to a file, `grep`, CI log parser, or `webhook.rs`).
 pub fn init(cli_no_color: bool) {
+    let clicolor_force = std::env::var("CLICOLOR_FORCE")
+        .is_ok_and(|v| !v.is_empty() && v != "0");
+
     let no_color = cli_no_color
         || std::env::var("NO_COLOR").is_ok_and(|v| !v.is_empty())
-        || std::env::var("CLICOLOR_FORCE")
-            .is_err_and(|_| std::env::var("CLICOLOR").is_ok_and(|v| v == "0"));
+        || std::env::var("CLICOLOR").is_ok_and(|v| v == "0")
+        || (!clicolor_force && !std::io::stdout().is_terminal());
 
     set_no_color(no_color);
 }
@@ -23,8 +31,12 @@ pub fn init(cli_no_color: bool) {
 /// Force-disable colour output regardless of TTY / env.
 pub fn set_no_color(v: bool) {
     NO_COLOR.store(v, Ordering::Relaxed);
+    // Propagate to the `colored` crate so any direct `.red().to_string()` calls
+    // that bypass our wrappers also honour the setting.
+    // `set_override(false)` = always strip ANSI codes; `unset_override()` = let
+    // `colored` decide (it will re-check the TTY on each call).
     if v {
-        colored::control::set_override(true);
+        colored::control::set_override(false);
     } else {
         colored::control::unset_override();
     }
