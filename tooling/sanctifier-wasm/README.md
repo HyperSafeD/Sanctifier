@@ -22,6 +22,13 @@ Use `asset_cache_key()` or `cache_metadata().cache_key` when storing wasm assets
 
 To avoid blocking the main UI thread during intensive static analysis, it is recommended to run the `@sanctifier/wasm` module inside a Web Worker. See `examples/web_worker.js` for an implementation reference. By delegating analysis requests to background workers, you can ensure a smooth user experience even on large codebases.
 
+## Contributing shell scripts
+
+Any `.sh` files added to `tooling/sanctifier-wasm/scripts/` are automatically
+linted by the repo-wide ShellCheck CI job (`.github/workflows/shellcheck.yml`,
+`tooling/**/scripts/*.sh` glob). Run `shellcheck --severity=warning <script>`
+locally before opening a PR.
+
 ## API Surface Stability for Frontend
 
 The `@sanctifier/wasm` package maintains a strict API surface stability contract for frontend consumers. 
