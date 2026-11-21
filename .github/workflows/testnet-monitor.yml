@@ -45,9 +45,13 @@ jobs:
             const fs = require("node:fs");
             const failures = JSON.parse(fs.readFileSync("monitor/failures.json", "utf8"));
 
+            // Don't reopen an issue (or create a duplicate) for the same
+            // contract check if one was closed within the last hour.  This
+            // prevents notification spam when a testnet contract is flaky.
+            const COOLDOWN_MS = 60 * 60 * 1000; // 1 hour
+            const now = Date.now();
+
             for (const failure of failures) {
-              const query = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open label:testnet label:bug "${failure.id}"`;
-              const existing = await github.rest.search.issuesAndPullRequests({ q: query, per_page: 1 });
               const title = `Testnet health check failed: ${failure.name}`;
               const body = [
                 "The scheduled testnet health monitor could not verify a deployed contract.",
@@ -62,22 +66,47 @@ jobs:
                 "```",
               ].join("\n");
 
-              if (existing.data.items.length === 0) {
-                await github.rest.issues.create({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  title,
-                  body,
-                  labels: ["testnet", "bug"],
-                });
-              } else {
+              // 1. Check for an existing open issue to comment on instead of
+              //    creating a duplicate.
+              const openQuery = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:open label:testnet label:bug "${failure.id}"`;
+              const openResult = await github.rest.search.issuesAndPullRequests({ q: openQuery, per_page: 1 });
+
+              if (openResult.data.items.length > 0) {
                 await github.rest.issues.createComment({
                   owner: context.repo.owner,
                   repo: context.repo.repo,
-                  issue_number: existing.data.items[0].number,
+                  issue_number: openResult.data.items[0].number,
                   body,
                 });
+                continue;
               }
+
+              // 2. Check whether a matching issue was closed recently enough
+              //    to still be within the cooldown window.  If so, skip
+              //    creating a new issue to avoid reopen/close churn.
+              const closedQuery = `repo:${context.repo.owner}/${context.repo.repo} is:issue is:closed label:testnet label:bug "${failure.id}"`;
+              const closedResult = await github.rest.search.issuesAndPullRequests({ q: closedQuery, per_page: 1 });
+
+              if (closedResult.data.items.length > 0) {
+                const closedAt = new Date(closedResult.data.items[0].closed_at).getTime();
+                if (now - closedAt < COOLDOWN_MS) {
+                  core.info(
+                    `Skipping new issue for ${failure.name} (${failure.id}): ` +
+                    `a matching issue was closed less than 1 hour ago (${closedResult.data.items[0].closed_at}).`
+                  );
+                  continue;
+                }
+              }
+
+              // 3. No open issue and outside the cooldown window — create a
+              //    fresh tracking issue.
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+                labels: ["testnet", "bug"],
+              });
             }
 
       - name: Send alert notification
