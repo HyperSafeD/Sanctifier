@@ -167,6 +167,7 @@ pub fn exec(args: ReportArgs) -> anyhow::Result<()> {
 
 // ── Merged analysis data ──────────────────────────────────────────────────────
 
+#[derive(Default)]
 struct ReportData {
     auth_gaps: Vec<sanctifier_core::AuthGapIssue>,
     panic_issues: Vec<sanctifier_core::PanicIssue>,
@@ -659,7 +660,10 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str, network: &
                <td>{}</td><td><code>{}</code></td>\
                <td class=\"num\">{}</td>\
              </tr>\n",
-            row_class, cat, code, count
+            row_class,
+            html_escape(cat),
+            html_escape(code),
+            count
         ));
     }
     summary_rows.push_str(&format!(
@@ -669,6 +673,10 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str, network: &
          </tr>\n",
         total
     ));
+
+    let path_escaped = html_escape(&path.display().to_string());
+    let network_escaped = html_escape(network);
+    let vuln_db_version_escaped = html_escape(vuln_db_version);
 
     format!(
         r#"<!DOCTYPE html>
@@ -731,6 +739,11 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str, network: &
 </body>
 </html>
 "#,
+        path = path_escaped,
+        date = date,
+        version = version,
+        vuln_db_version = vuln_db_version_escaped,
+        network = network_escaped,
         path_escaped = path_escaped,
         date = date,
         version = version,
@@ -744,6 +757,24 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str, network: &
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+/// Escape the five characters that have special meaning in HTML so that
+/// user-controlled values (file paths, version strings, network names) cannot
+/// inject tags or entities into generated HTML reports.
+fn html_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for ch in s.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            other => out.push(other),
+        }
+    }
+    out
+}
 
 fn resolve_network(cli_network: &str) -> String {
     std::env::var("SOROBAN_NETWORK")
@@ -772,4 +803,69 @@ fn human_date() -> String {
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
     let y = if m <= 2 { y + 1 } else { y };
     format!("{:04}-{:02}-{:02}", y, m, d)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn html_escape_encodes_all_special_chars() {
+        let raw = r#"<script>alert('xss')</script> & "quotes""#;
+        let escaped = html_escape(raw);
+        assert!(!escaped.contains('<'), "< must be escaped");
+        assert!(!escaped.contains('>'), "> must be escaped");
+        assert!(!escaped.contains('&'), "& must be escaped (bare)");
+        assert!(!escaped.contains('"'), "\" must be escaped");
+        assert!(!escaped.contains('\''), "' must be escaped");
+        assert!(escaped.contains("&lt;script&gt;"));
+        assert!(escaped.contains("&amp;"));
+        assert!(escaped.contains("&quot;"));
+        assert!(escaped.contains("&#x27;"));
+    }
+
+    #[test]
+    fn html_escape_passthrough_safe_text() {
+        let safe = "testnet-2024.1 / some_path";
+        assert_eq!(html_escape(safe), safe);
+    }
+
+    #[test]
+    fn render_html_escapes_path_containing_script_tag() {
+        let data = ReportData::default();
+        let malicious_path = std::path::Path::new(
+            "/contracts/<script>alert('xss')</script>/lib.rs",
+        );
+        let html = render_html(&data, malicious_path, "1.0.0", "testnet");
+        assert!(
+            !html.contains("<script>"),
+            "raw <script> tag must not appear in HTML output"
+        );
+        assert!(
+            html.contains("&lt;script&gt;"),
+            "path must be HTML-escaped in output"
+        );
+    }
+
+    #[test]
+    fn render_html_escapes_network_containing_html() {
+        let data = ReportData::default();
+        let path = std::path::Path::new("contracts/lib.rs");
+        let html = render_html(&data, path, "1.0.0", "<img src=x onerror=alert(1)>");
+        assert!(
+            !html.contains("<img"),
+            "injected <img> tag must not appear unescaped"
+        );
+    }
+
+    #[test]
+    fn render_html_escapes_vuln_db_version_containing_html() {
+        let data = ReportData::default();
+        let path = std::path::Path::new("contracts/lib.rs");
+        let html = render_html(&data, path, "<b>evil</b>", "testnet");
+        assert!(
+            !html.contains("<b>"),
+            "injected <b> tag in vuln_db_version must be escaped"
+        );
+    }
 }
