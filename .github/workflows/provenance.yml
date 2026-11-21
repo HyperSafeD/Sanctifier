@@ -12,7 +12,9 @@ on:
       - "schemas/**"
       - "scripts/verify-artifacts.sh"
       - "scripts/generate-provenance.sh"
+      - "scripts/test-provenance-path.sh"
       - "scripts/validate_release_artifacts.js"
+      - "docs/provenance-verification.md"
       - ".github/workflows/provenance.yml"
       - "CHECKSUMS.txt"
 
@@ -35,6 +37,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Smoke-test provenance output path vs docs
+        run: bash scripts/test-provenance-path.sh
 
       - name: Verify artifact set against release manifest
         run: ./scripts/verify-artifacts.sh --check
