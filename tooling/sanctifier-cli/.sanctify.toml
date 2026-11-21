@@ -1,6 +1,10 @@
 ignore_paths = [
     "target",
     ".git",
+    # Intentional fixture: TODO comments here exist to trigger TEST-001 in
+    # minimal-vulndb.json.  Any repo-wide "no leftover TODO" policy must skip
+    # this file; listing it here documents that intent for future maintainers.
+    "tests/vulndb/todo_example.rs",
 ]
 enabled_rules = [
     "auth_gaps",
