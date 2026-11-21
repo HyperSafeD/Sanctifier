@@ -1,3 +1,24 @@
+# release.yml — GitHub Release & distribution artefacts
+#
+# RESPONSIBILITY: Everything that produces and publishes the *binary* release:
+#   1. Mainnet-readiness gate (blocks -mainnet tags if the milestone has open issues)
+#   2. Changelog generation via git-cliff → updates CHANGELOG.md and attaches
+#      release notes to the GitHub Release
+#   3. Cross-platform CLI builds (Linux gnu/musl, macOS amd64/arm64, Windows)
+#      with SLSA build-provenance attestations and SHA256 checksums
+#   4. GitHub Release creation (via softprops/action-gh-release)
+#   5. Docker image → ghcr.io
+#   6. npm package → npmjs.com  (@hypersafed/sanctifier-cli)
+#   7. Homebrew formula → HyperSafeD/homebrew-sanctifier tap
+#
+# TRIGGER: `push` on any tag matching `v*`, or manual `workflow_dispatch`.
+#
+# DO NOT add crates.io publishing here — that lives in publish.yml so the
+# two registries can fail and be re-run independently without duplicating
+# the binary build matrix.
+#
+# See also: .github/workflows/publish.yml (Rust crate publishing to crates.io)
+
 name: Release
 on:
   push:
