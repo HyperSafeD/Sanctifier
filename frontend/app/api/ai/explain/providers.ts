@@ -1,5 +1,18 @@
 import type { Finding } from "../../../types";
 
+// ── Input caps sent to external providers ─────────────────────────────────────
+// These are the per-field limits forwarded in the prompt.  The route already
+// rejects the whole request if the total exceeds MAX_INPUT_CHARS; these caps
+// are a secondary defence so a single very long field can't dominate the prompt
+// even if the total somehow passes the route check.
+const CAP_SNIPPET    = 2000;
+const CAP_SHORT_FIELD =  200; // code, title, category, location, suggestion
+
+function cap(value: string | undefined | null, limit: number): string {
+  if (!value) return "";
+  return value.length <= limit ? value : value.slice(0, limit) + "…";
+}
+
 // ── Cache ──────────────────────────────────────────────────────────────────────
 const explanationCache = new Map<string, { explanation: string; fixCode: string }>();
 
@@ -103,7 +116,7 @@ class OpenAIProvider implements AiProvider {
           { role: "system", content: "You are a Soroban smart contract security expert." },
           {
             role: "user",
-            content: `Explain this finding and suggest a code fix:\nCode: ${finding.code}\nCategory: ${finding.category}\nTitle: ${finding.title}\nLocation: ${finding.location}\nSnippet: ${(finding.snippet || "").slice(0, 1000)}\nSuggestion: ${finding.suggestion || "N/A"}\n\nRespond as JSON with keys: explanation (string), fixCode (string).`,
+            content: `Explain this finding and suggest a code fix:\nCode: ${cap(finding.code, CAP_SHORT_FIELD)}\nCategory: ${cap(finding.category, CAP_SHORT_FIELD)}\nTitle: ${cap(finding.title, CAP_SHORT_FIELD)}\nLocation: ${cap(finding.location, CAP_SHORT_FIELD)}\nSnippet: ${cap(finding.snippet, CAP_SNIPPET)}\nSuggestion: ${cap(finding.suggestion, CAP_SHORT_FIELD) || "N/A"}\n\nRespond as JSON with keys: explanation (string), fixCode (string).`,
           },
         ],
         temperature: 0.3,
@@ -145,7 +158,7 @@ class OpenAIProvider implements AiProvider {
           { role: "system", content: "You are a Soroban smart contract security expert." },
           {
             role: "user",
-            content: `Explain this finding and suggest a code fix:\nCode: ${finding.code}\nCategory: ${finding.category}\nTitle: ${finding.title}\nLocation: ${finding.location}\nSnippet: ${(finding.snippet || "").slice(0, 1000)}\nSuggestion: ${finding.suggestion || "N/A"}`,
+            content: `Explain this finding and suggest a code fix:\nCode: ${cap(finding.code, CAP_SHORT_FIELD)}\nCategory: ${cap(finding.category, CAP_SHORT_FIELD)}\nTitle: ${cap(finding.title, CAP_SHORT_FIELD)}\nLocation: ${cap(finding.location, CAP_SHORT_FIELD)}\nSnippet: ${cap(finding.snippet, CAP_SNIPPET)}\nSuggestion: ${cap(finding.suggestion, CAP_SHORT_FIELD) || "N/A"}`,
           },
         ],
         temperature: 0.3,
@@ -207,7 +220,7 @@ class AnthropicProvider implements AiProvider {
         messages: [
           {
             role: "user",
-            content: `You are a Soroban smart contract security expert. Explain this finding and suggest a code fix:\n\nCode: ${finding.code}\nCategory: ${finding.category}\nTitle: ${finding.title}\nLocation: ${finding.location}\nSnippet: ${(finding.snippet || "").slice(0, 1000)}\nSuggestion: ${finding.suggestion || "N/A"}\n\nRespond as JSON with keys: explanation (string), fixCode (string).`,
+            content: `You are a Soroban smart contract security expert. Explain this finding and suggest a code fix:\n\nCode: ${cap(finding.code, CAP_SHORT_FIELD)}\nCategory: ${cap(finding.category, CAP_SHORT_FIELD)}\nTitle: ${cap(finding.title, CAP_SHORT_FIELD)}\nLocation: ${cap(finding.location, CAP_SHORT_FIELD)}\nSnippet: ${cap(finding.snippet, CAP_SNIPPET)}\nSuggestion: ${cap(finding.suggestion, CAP_SHORT_FIELD) || "N/A"}\n\nRespond as JSON with keys: explanation (string), fixCode (string).`,
           },
         ],
       }),
@@ -249,7 +262,7 @@ class AnthropicProvider implements AiProvider {
         messages: [
           {
             role: "user",
-            content: `You are a Soroban smart contract security expert. Explain this finding and suggest a code fix:\n\nCode: ${finding.code}\nCategory: ${finding.category}\nTitle: ${finding.title}\nLocation: ${finding.location}\nSnippet: ${(finding.snippet || "").slice(0, 1000)}\nSuggestion: ${finding.suggestion || "N/A"}`,
+            content: `You are a Soroban smart contract security expert. Explain this finding and suggest a code fix:\n\nCode: ${cap(finding.code, CAP_SHORT_FIELD)}\nCategory: ${cap(finding.category, CAP_SHORT_FIELD)}\nTitle: ${cap(finding.title, CAP_SHORT_FIELD)}\nLocation: ${cap(finding.location, CAP_SHORT_FIELD)}\nSnippet: ${cap(finding.snippet, CAP_SNIPPET)}\nSuggestion: ${cap(finding.suggestion, CAP_SHORT_FIELD) || "N/A"}`,
           },
         ],
       }),
