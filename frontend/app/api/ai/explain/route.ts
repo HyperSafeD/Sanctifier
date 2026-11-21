@@ -1,7 +1,28 @@
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import type { Finding } from "../../../types";
 import { AI_EXPLAIN_PROVIDER } from "../../../lib/env";
 import { logger } from "../../../lib/logger";
+
+// Maximum total character count accepted across all Finding fields.
+// Keeps a single oversized request from inflating AI provider costs.
+// ~20 000 chars ≈ ~5 000 tokens, well above any real finding payload.
+const MAX_INPUT_CHARS = parseInt(
+  process.env.AI_MAX_INPUT_CHARS || "20000",
+  10,
+);
+
+function findingCharCount(finding: Finding): number {
+  return [
+    finding.code,
+    finding.title,
+    finding.category,
+    finding.location,
+    finding.snippet,
+    finding.suggestion,
+  ]
+    .map((v) => (typeof v === "string" ? v.length : 0))
+    .reduce((a, b) => a + b, 0);
+}
 
 export async function POST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") || `req-${Math.random().toString(36).substring(2, 11)}`;
@@ -27,6 +48,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Finding data is required" },
         { status: 400, headers: { "x-request-id": requestId } }
+      );
+    }
+
+    const inputChars = findingCharCount(finding);
+    if (inputChars > MAX_INPUT_CHARS) {
+      logger.warn("AI explain request exceeds input size limit", {
+        request_id: requestId,
+        input_chars: inputChars,
+        limit: MAX_INPUT_CHARS,
+      });
+      return NextResponse.json(
+        {
+          error: "Request payload too large",
+          detail: `Combined input length ${inputChars} chars exceeds the ${MAX_INPUT_CHARS}-char limit. Trim the contract snippet before submitting.`,
+        },
+        { status: 413, headers: { "x-request-id": requestId } }
       );
     }
 
