@@ -63,6 +63,14 @@ def analyze_contract(cli_path: pathlib.Path, contract_dir: pathlib.Path, root: p
 
 
 def main():
+    """Run Sanctifier against every Soroban example contract under *examples-root*.
+
+    Each example gets at most EXAMPLE_TIMEOUT seconds (default 60; override via
+    SANCTIFIER_EXAMPLE_TIMEOUT).  Timed-out examples are recorded in the output
+    JSON with ``timed_out: true`` and zero findings so the rest of the batch
+    still completes.  A summary warning is printed to stderr when any timeout
+    occurs.
+    """
     if len(sys.argv) != 4:
         raise SystemExit(
             "usage: analyze-soroban-examples.py <examples-root> <sanctifier-cli> <output-json>"
