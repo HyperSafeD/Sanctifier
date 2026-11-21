@@ -272,7 +272,9 @@ fn harness_contract_with_no_public_functions_warns_and_generates_nothing() {
         .arg(&output)
         .assert()
         .success()
-        .stdout(predicate::str::contains("No fuzzable public contract functions"));
+        .stdout(predicate::str::contains(
+            "No fuzzable public contract functions",
+        ));
 
     assert!(!output.exists(), "no output directory should be created");
 }

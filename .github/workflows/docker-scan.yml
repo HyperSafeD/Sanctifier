@@ -1,0 +1,153 @@
+name: Docker image scan
+
+# Builds the production Dockerfile, smoke-tests the hardened image and scans it
+# with Trivy. Unwaived CRITICAL/HIGH findings fail the job; waivers live in
+# .trivyignore. Also called from release.yml as a gate before images are pushed.
+
+on:
+  pull_request:
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - .trivyignore
+      - Cargo.toml
+      - Cargo.lock
+      - "tooling/**"
+      - .github/workflows/docker-scan.yml
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - .dockerignore
+      - .trivyignore
+      - Cargo.toml
+      - Cargo.lock
+      - "tooling/**"
+      - .github/workflows/docker-scan.yml
+  schedule:
+    # New CVEs are published against unchanged images; rescan weekly.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-scan-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  IMAGE: sanctifier:${{ github.sha }}
+  # Pinned: trivy-action tags were force-pushed in the March 2026 supply-chain
+  # incident, so the action is referenced by commit and the scanner by version.
+  TRIVY_VERSION: v0.75.0
+
+jobs:
+  scan:
+    name: Build, smoke-test and scan production image
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: ${{ env.IMAGE }}
+          cache-from: type=gha,scope=docker-scan
+          cache-to: type=gha,scope=docker-scan,mode=max
+
+      - name: Smoke test hardened image
+        run: |
+          set -euo pipefail
+          RUN="docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges"
+
+          user=$(docker image inspect "$IMAGE" --format '{{.Config.User}}')
+          echo "Image user: $user"
+          case "$user" in
+            ""|root|0|0:*|root:*) echo "::error::image must not run as root"; exit 1 ;;
+          esac
+
+          if docker run --rm --entrypoint /bin/sh "$IMAGE" -c true 2>/dev/null; then
+            echo "::error::final image must not contain a shell"; exit 1
+          fi
+
+          $RUN "$IMAGE" --version
+
+          # Exit 1 is FINDINGS_FOUND (the fixture is deliberately vulnerable);
+          # anything else is a broken image.
+          set +e
+          $RUN -v "$PWD/contracts/allowance-race:/workspace:ro" "$IMAGE" \
+            analyze /workspace --format json > analyze.json
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ] && [ "$code" -ne 1 ]; then
+            echo "::error::analyze exited with $code"; exit 1
+          fi
+          python3 -c "import json; r = json.load(open('analyze.json')); print('findings:', r['summary']['total_findings'])"
+
+      - name: Record image size
+        run: |
+          size=$(docker image inspect "$IMAGE" --format '{{.Size}}')
+          {
+            echo "### Production image"
+            echo ""
+            echo "Uncompressed size: $((size / 1024 / 1024)) MiB ($size bytes)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Full report (all severities) for the artifact; never fails the build.
+      - name: Trivy report (all severities)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln
+          format: json
+          output: trivy-report.json
+          trivyignores: .trivyignore
+          exit-code: "0"
+
+      - name: Trivy SARIF
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln
+          format: sarif
+          output: trivy-report.sarif
+          trivyignores: .trivyignore
+          exit-code: "0"
+          skip-setup-trivy: true
+
+      - name: Trivy gate (CRITICAL/HIGH)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          version: ${{ env.TRIVY_VERSION }}
+          image-ref: ${{ env.IMAGE }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          format: table
+          trivyignores: .trivyignore
+          exit-code: "1"
+          skip-setup-trivy: true
+
+      - name: Upload Trivy reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: trivy-report-${{ github.sha }}
+          path: |
+            trivy-report.json
+            trivy-report.sarif
+          if-no-files-found: warn
+          retention-days: 30

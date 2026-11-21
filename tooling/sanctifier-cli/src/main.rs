@@ -68,6 +68,8 @@ pub enum Commands {
     Verify(commands::verify::VerifyArgs),
     /// Verify an on-chain deployment matches expected local source or a pinned hash
     VerifyDeployment(commands::verify_deployment::VerifyDeploymentArgs),
+    /// Show version information
+    Version(commands::version::VersionArgs),
     /// Analyze an entire Cargo workspace (multiple contracts/libs)
     Workspace(commands::workspace::WorkspaceArgs),
     /// Watch for file changes and auto-rerun analysis
@@ -100,7 +102,10 @@ pub enum Commands {
 
 fn main() {
     if let Err(err) = run() {
-        eprintln!("Error: {}", err);
+        // Use miette's graphical report handler for rich, contextual error output.
+        // The error chain is preserved and displayed with source context.
+        let report = miette::Report::msg(format!("{err:#}"));
+        eprintln!("{:?}", report);
         std::process::exit(sanctifier_cli::exit_codes::ERROR);
     }
 }
@@ -112,14 +117,6 @@ fn run() -> anyhow::Result<()> {
         commands::color::set_no_color(true);
     }
 
-    // Print network indicator banner
-    let network_badge = match cli.network.as_str() {
-        "mainnet" => format!("{}", commands::color::red_bold("[ MAINNET ]")),
-        "futurenet" => format!("{}", commands::color::yellow_bold("[ FUTURENET ]")),
-        _ => format!("{}", commands::color::green_bold("[ TESTNET ]")),
-    };
-    eprintln!("{} Sanctifier — {}", network_badge, commands::color::dimmed(&cli.network));
-
     // Initialize structured logging before dispatching
     let log_format = match &cli.command {
         Commands::Analyze(args) if args.format == "json" || args.format == "sarif" => {
@@ -129,6 +126,21 @@ fn run() -> anyhow::Result<()> {
     };
     if let Err(e) = logging::init(log_format) {
         eprintln!("Warning: failed to init logging: {e}");
+    }
+
+    // Print network indicator banner (suppressed in JSON log mode so stderr
+    // stays machine-parseable).
+    if log_format != logging::LogOutput::Json {
+        let network_badge = match cli.network.as_str() {
+            "mainnet" => commands::color::red_bold("[ MAINNET ]").to_string(),
+            "futurenet" => commands::color::yellow_bold("[ FUTURENET ]").to_string(),
+            _ => commands::color::green_bold("[ TESTNET ]").to_string(),
+        };
+        eprintln!(
+            "{} Sanctifier — {}",
+            network_badge,
+            commands::color::dimmed(&cli.network)
+        );
     }
 
     match cli.command {
@@ -147,6 +159,7 @@ fn run() -> anyhow::Result<()> {
         Commands::Reentrancy(args) => commands::reentrancy::exec(args),
         Commands::Verify(args) => commands::verify::exec(args),
         Commands::VerifyDeployment(args) => commands::verify_deployment::exec(args),
+        Commands::Version(args) => commands::version::exec(args),
         Commands::Workspace(args) => commands::workspace::exec(args),
         Commands::Watch(args) => commands::watch::exec(args),
         Commands::Completions { shell } => {

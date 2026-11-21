@@ -1,6 +1,15 @@
 import Link from "next/link";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 
 export default function Home() {
+  return (
+    <ErrorBoundary>
+      <HomeContent />
+    </ErrorBoundary>
+  );
+}
+
+function HomeContent() {
   return (
     <div className="relative min-h-[calc(100vh-64px)] flex flex-col items-center overflow-hidden bg-white dark:bg-zinc-950 font-sans">
       {/* Decorative background Elements */}

@@ -39,6 +39,8 @@ enum DataKey {
 pub enum Error {
     InsufficientBalance = 1,
     ZeroAmount = 2,
+    Overflow = 3,
+    Underflow = 4,
 }
 
 // ─── Contract ─────────────────────────────────────────────────────────────────
@@ -61,17 +63,17 @@ impl DepositWithdraw {
 
         caller.require_auth();
 
-        // Pull tokens from caller into this contract
+        let key = DataKey::Balance(caller.clone());
+        let prev: i128 = env.storage().persistent().get(&key).unwrap_or(0);
+        let new_bal = prev.checked_add(amount).ok_or(Error::Overflow)?;
+
         token::Client::new(&env, &token).transfer(
             &caller,
             &env.current_contract_address(),
             &amount,
         );
 
-        // Credit balance
-        let key = DataKey::Balance(caller.clone());
-        let prev: i128 = env.storage().persistent().get(&key).unwrap_or(0);
-        env.storage().persistent().set(&key, &(prev + amount));
+        env.storage().persistent().set(&key, &new_bal);
 
         Ok(())
     }
@@ -97,6 +99,10 @@ impl DepositWithdraw {
         // ⚠️  `account.require_auth()` is intentionally omitted here.
         // `recipient` is accepted without any auth check — demonstrating the S001 auth-gap.
 
+        if amount <= 0 {
+            return Err(Error::ZeroAmount);
+        }
+
         let key = DataKey::Balance(account.clone());
         let bal: i128 = env.storage().persistent().get(&key).unwrap_or(0);
 
@@ -104,7 +110,8 @@ impl DepositWithdraw {
             return Err(Error::InsufficientBalance);
         }
 
-        env.storage().persistent().set(&key, &(bal - amount));
+        let new_bal = bal.checked_sub(amount).ok_or(Error::Underflow)?;
+        env.storage().persistent().set(&key, &new_bal);
 
         // Send tokens to `recipient` (caller-controlled, no auth check) — NOT to `account`
         token::Client::new(&env, &token).transfer(
@@ -130,6 +137,10 @@ impl DepositWithdraw {
         // ✅ Require the transaction to be authorised by `account`
         account.require_auth();
 
+        if amount <= 0 {
+            return Err(Error::ZeroAmount);
+        }
+
         let key = DataKey::Balance(account.clone());
         let bal: i128 = env.storage().persistent().get(&key).unwrap_or(0);
 
@@ -137,7 +148,8 @@ impl DepositWithdraw {
             return Err(Error::InsufficientBalance);
         }
 
-        env.storage().persistent().set(&key, &(bal - amount));
+        let new_bal = bal.checked_sub(amount).ok_or(Error::Underflow)?;
+        env.storage().persistent().set(&key, &new_bal);
 
         token::Client::new(&env, &token).transfer(
             &env.current_contract_address(),

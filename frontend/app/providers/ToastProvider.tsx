@@ -33,7 +33,7 @@ const COLORS: Record<ToastVariant, string> = {
 };
 
 const MAX_TOASTS = 3;
-const AUTO_DISMISS_MS = 4000;
+export const AUTO_DISMISS_MS = 5000;
 
 function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string) => void }) {
   useEffect(() => {
@@ -103,4 +103,18 @@ export function useToast(): ToastContextValue["toast"] {
   const ctx = useContext(ToastContext);
   if (!ctx) throw new Error("useToast must be used within ToastProvider");
   return ctx.toast;
+}
+
+const NOOP_TOAST: ToastContextValue["toast"] = {
+  success: () => {},
+  error: () => {},
+  info: () => {},
+};
+
+/**
+ * Like `useToast`, but returns a no-op outside a `ToastProvider` instead of
+ * throwing, so pages stay renderable in isolation (tests, Storybook).
+ */
+export function useOptionalToast(): ToastContextValue["toast"] {
+  return useContext(ToastContext)?.toast ?? NOOP_TOAST;
 }

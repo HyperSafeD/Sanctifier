@@ -47,7 +47,7 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 1607191258
+                    "lo": 192144614
                   }
                 }
               ]
@@ -60,7 +60,7 @@
     []
   ],
   "ledger": {
-    "protocol_version": 20,
+    "protocol_version": 21,
     "sequence_number": 0,
     "timestamp": 0,
     "network_id": "0000000000000000000000000000000000000000000000000000000000000000",
@@ -99,7 +99,7 @@
             },
             "ext": "v0"
           },
-          15
+          6311999
         ]
       ],
       [
@@ -132,7 +132,7 @@
             },
             "ext": "v0"
           },
-          15
+          6311999
         ]
       ],
       [
@@ -173,7 +173,7 @@
                 "val": {
                   "i128": {
                     "hi": 0,
-                    "lo": 1607191258
+                    "lo": 192144614
                   }
                 }
               }
@@ -374,7 +374,7 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 1607191258
+                    "lo": 192144614
                   }
                 }
               ]
@@ -431,7 +431,7 @@
                 {
                   "i128": {
                     "hi": 0,
-                    "lo": 2287759530
+                    "lo": 860120269
                   }
                 }
               ]
@@ -450,16 +450,23 @@
           "v0": {
             "topics": [
               {
-                "symbol": "fn_return"
+                "symbol": "error"
               },
               {
-                "symbol": "burn"
+                "error": {
+                  "contract": 3
+                }
               }
             ],
             "data": {
-              "error": {
-                "contract": 3
-              }
+              "vec": [
+                {
+                  "string": "failing with contract error"
+                },
+                {
+                  "u32": 3
+                }
+              ]
             }
           }
         }
@@ -484,7 +491,32 @@
               }
             ],
             "data": {
-              "string": "escalating Ok(ScErrorType::Contract) frame-exit to Err"
+              "string": "escalating error to panic"
+            }
+          }
+        }
+      },
+      "failed_call": true
+    },
+    {
+      "event": {
+        "ext": "v0",
+        "contract_id": "0000000000000000000000000000000000000000000000000000000000000002",
+        "type_": "diagnostic",
+        "body": {
+          "v0": {
+            "topics": [
+              {
+                "symbol": "error"
+              },
+              {
+                "error": {
+                  "contract": 3
+                }
+              }
+            ],
+            "data": {
+              "string": "caught error from function"
             }
           }
         }
@@ -524,7 +556,7 @@
                     {
                       "i128": {
                         "hi": 0,
-                        "lo": 2287759530
+                        "lo": 860120269
                       }
                     }
                   ]

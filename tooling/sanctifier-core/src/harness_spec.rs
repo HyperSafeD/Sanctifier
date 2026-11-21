@@ -33,7 +33,7 @@
 //! ```
 
 use std::collections::BTreeMap;
-use syn::{FnArg, Item, ImplItem, Pat, Type};
+use syn::{FnArg, ImplItem, Item, Pat, Type};
 
 use crate::contract_discovery::{has_attr_named, type_to_name, RESERVED_ENTRYPOINTS};
 

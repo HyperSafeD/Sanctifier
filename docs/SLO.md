@@ -33,7 +33,7 @@ This document defines Service Level Objectives (SLOs) for the Sanctifier hosted 
 | Metric | Target | Measurement Window | Measurement Method |
 |--------|--------|-------------------|-------------------|
 | **Uptime** | ≥ 99.5% | Monthly (30 days) | Prometheus `up{job="api"}` |
-| **Success Rate** | ≥ 99.0% | Monthly | `(2xx + 4xx) / total_requests` |
+| **Success Rate** | ≥ 99.0% | Monthly | `1 - (sum(rate(sanctifier_http_request_errors_total[30d])) or vector(0)) / sum(rate(sanctifier_http_requests_total[30d]))` |
 
 **What Counts as Downtime**:
 - ✅ HTTP 500, 502, 503, 504 (server errors)
@@ -62,7 +62,7 @@ This document defines Service Level Objectives (SLOs) for the Sanctifier hosted 
 **Measurement Method**:
 - Start: Request received by API gateway
 - End: Complete JSON/SARIF response sent to client
-- Metric: Prometheus histogram `http_request_duration_seconds{endpoint="/api/v1/analyze"}`
+- Metric: Prometheus histogram `sanctifier_http_request_duration_seconds{route="/api/v1/analyze"}` (see [metrics.md](./metrics.md))
 
 **Exclusions**:
 - Requests that hit rate limits (HTTP 429) - not measured
@@ -142,8 +142,8 @@ Example: 99.5% SLO over 1M requests = 5,000 allowed errors
 
 | Metric | Tool | Dashboard | Alert Channel |
 |--------|------|-----------|---------------|
-| **API Uptime** | Prometheus + Grafana | [API Health Dashboard](#) | #alerts (Slack) |
-| **Scan Latency** | Prometheus histograms | [Latency Dashboard](#) | #performance |
+| **API Uptime** | Prometheus + Grafana | [Sanctifier API dashboard](../monitoring/grafana/sanctifier-api.json) | #alerts (Slack) |
+| **Scan Latency** | Prometheus histograms | [Sanctifier API dashboard](../monitoring/grafana/sanctifier-api.json) (Latency row) | #performance |
 | **Queue Depth** | Redis metrics | [Queue Monitor](#) | #capacity |
 | **Dashboard Performance** | Vercel Analytics | [Web Vitals](#) | #frontend |
 | **Error Rate** | Sentry + Prometheus | [Error Budget](#) | #incidents |
@@ -286,7 +286,7 @@ Includes:
 
 - [API Pricing & Limits](./api-pricing-limits.md) - Rate limits and tier quotas
 - [Architecture Overview](../ARCHITECTURE.md) - System design and dependencies
-- [Monitoring Setup](#) - Prometheus/Grafana configuration (#1150)
+- [Monitoring Setup](./metrics.md) - Prometheus/Grafana configuration (#1150)
 - [Incident Response Playbook](#) - Detailed incident handling procedures
 - [Status Page](#) - Public-facing service status (#1147)
 

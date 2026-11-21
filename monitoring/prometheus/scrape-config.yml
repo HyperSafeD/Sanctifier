@@ -1,0 +1,21 @@
+# Prometheus scrape configuration for the Sanctifier hosted API.
+#
+# Merge the job below into your prometheus.yml (or the equivalent
+# scrape-config section of a managed provider). The API exposes
+# GET /metrics in Prometheus text format; see docs/metrics.md.
+
+scrape_configs:
+  - job_name: sanctifier-api
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    metrics_path: /metrics
+    scheme: https
+    # Required when the API is started with METRICS_TOKEN set.
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/sanctifier-metrics-token
+    static_configs:
+      - targets:
+          - sanctifier.example.com # replace with the API host(s)
+        labels:
+          service: sanctifier-api

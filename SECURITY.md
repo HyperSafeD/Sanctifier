@@ -73,7 +73,7 @@ This section documents the threat model for `contracts/*` and the mitigations
 enforced by the CI compile matrix introduced in
 [`.github/workflows/contracts-ci.yml`](.github/workflows/contracts-ci.yml).
 
-### Assets and trust boundaries
+### Assets and trust boundaries.
 
 | Asset | Threat | Trust boundary |
 |-------|--------|---------------|

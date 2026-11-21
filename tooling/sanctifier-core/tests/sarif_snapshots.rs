@@ -27,6 +27,7 @@ use sanctifier_core::rules::{
     zk_missing_constraint::ZkMissingConstraintRule,
     zk_missing_public_input_binding::ZkMissingPublicInputBindingRule,
     zk_missing_vk_integrity_check::ZkMissingVkIntegrityCheckRule,
+    zk_missing_vk_rotation_access_control::ZkMissingVkRotationAccessControlRule,
     zk_verification_result_ignored::ZkVerificationResultIgnoredRule,
     zk_verifier_skippable::ZkVerifierSkippableRule, Rule, RuleViolation,
 };
@@ -670,6 +671,51 @@ fn sarif_z005_clean() {
     with_settings!({ sort_maps => true }, {
         insta::assert_json_snapshot!(
             "z005_missing_vk_integrity_check_clean",
+            violations_json(&violations)
+        );
+    });
+}
+
+// ── Z010: missing_vk_rotation_access_control (#1206) ─────────────────────────
+
+#[test]
+fn sarif_z010_missing_vk_rotation_access_control_fixture() {
+    let source = fixture("z010_missing_vk_rotation_access_control.rs");
+    let violations = ZkMissingVkRotationAccessControlRule::new().check(&source);
+
+    // Only the unauthenticated rotation function may fire; the authenticated
+    // rotation, the authenticated initializer, and the read-only getter must
+    // not.
+    assert_eq!(
+        flagged_fns(&violations),
+        vec!["rotate_verifying_key_vulnerable"],
+        "Z010 flagged the wrong set of functions: {violations:?}"
+    );
+
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!(
+            "z010_missing_vk_rotation_access_control_trigger",
+            violations_json(&violations)
+        );
+    });
+}
+
+#[test]
+fn sarif_z010_clean() {
+    let source = r#"
+        impl Verifier {
+            pub fn rotate_verifying_key(env: Env, new_vk: Bytes) {
+                let admin: Address = env.storage().instance().get(&DataKey::Admin).expect("not initialized");
+                admin.require_auth();
+                env.storage().instance().set(&symbol_short!("VK"), &new_vk);
+            }
+        }
+    "#;
+    let violations = ZkMissingVkRotationAccessControlRule::new().check(source);
+    assert!(violations.is_empty(), "auth'd rotation must not fire");
+    with_settings!({ sort_maps => true }, {
+        insta::assert_json_snapshot!(
+            "z010_missing_vk_rotation_access_control_clean",
             violations_json(&violations)
         );
     });

@@ -1,0 +1,12 @@
+---
+source: tooling/sanctifier-core/tests/rule_fixture_regressions_storage_test.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "PriceArchive",
+    "message": "Struct 'PriceArchive' estimated size 72048 bytes exceeds or approaches limit",
+    "rule_name": "ledger_size",
+    "severity": "Error"
+  }
+]

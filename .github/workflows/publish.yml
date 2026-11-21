@@ -1,3 +1,27 @@
+# publish.yml — Rust crate publishing to crates.io
+#
+# RESPONSIBILITY: Publishes the Rust crates to crates.io in dependency order:
+#   1. sanctifier-core  (library crate — must land on crates.io first)
+#   2. Wait for sanctifier-core to become visible (index propagation ~2 min)
+#   3. sanctifier-cli   (depends on sanctifier-core, so order matters)
+#
+# TRIGGER: `push` on any tag matching `v*` (same trigger as release.yml).
+#
+# WHY SEPARATE FROM release.yml:
+#   - Publishing to crates.io is irreversible and subject to its own rate
+#     limits and propagation delays; keeping it isolated means a crates.io
+#     failure does not block or re-run the binary build matrix.
+#   - The binary artefacts (GitHub Release, Docker, npm, Homebrew) in
+#     release.yml do not depend on crates.io being up to date, so they
+#     can ship in parallel.
+#   - If a crates.io publish fails it can be re-triggered here without
+#     re-running the expensive cross-platform build matrix.
+#
+# DOES NOT: build binaries, create GitHub Releases, publish npm packages,
+#            update Homebrew, or push Docker images — those are in release.yml.
+#
+# See also: .github/workflows/release.yml (binary release + all other registries)
+
 name: Publish to Crates.io
 
 on:

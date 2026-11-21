@@ -60,6 +60,14 @@ impl VestingContract {
         env.storage()
             .instance()
             .set(&DataKey::Revocable, &revocable);
+
+        // Extend TTL to ensure vesting schedule persists for the entire vesting period.
+        // Add buffer to account for delays in claiming.
+        let ttl_duration = duration.saturating_add(duration / 2); // 1.5x duration as buffer
+        let min_ttl = duration;
+        env.storage()
+            .instance()
+            .extend_ttl(min_ttl as u32, ttl_duration as u32);
     }
 
     /// Returns the total amount vested based on current time.
@@ -118,6 +126,14 @@ impl VestingContract {
         env.storage()
             .instance()
             .set(&DataKey::Released, &(released + claimable));
+
+        // Extend TTL on every claim to ensure schedule remains accessible.
+        let duration: u64 = env.storage().instance().get(&DataKey::Duration).unwrap();
+        let ttl_duration = duration.saturating_add(duration / 2); // 1.5x duration as buffer
+        let min_ttl = duration;
+        env.storage()
+            .instance()
+            .extend_ttl(min_ttl as u32, ttl_duration as u32);
 
         let token_client = token::TokenClient::new(&env, &token_id);
         token_client.transfer(&env.current_contract_address(), &beneficiary, &claimable);

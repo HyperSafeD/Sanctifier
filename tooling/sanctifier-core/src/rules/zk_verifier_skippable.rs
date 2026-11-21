@@ -1,5 +1,5 @@
 use crate::rules::{Rule, RuleViolation, Severity};
-use syn::{parse_str, visit::Visit, Expr, File};
+use syn::{parse_str, visit::Visit, File};
 
 /// Z004 — Groth16/SNARK verifier call guarded by a skippable conditional.
 ///
@@ -31,14 +31,6 @@ impl SkippableVerifierVisitor {
             violations: Vec::new(),
             current_fn: String::new(),
         }
-    }
-
-    fn expr_contains_verifier(expr: &Expr) -> bool {
-        let s = quote::quote!(#expr).to_string();
-        s.contains("verify_proof")
-            || s.contains("groth16_verify")
-            || s.contains("snark_verify")
-            || s.contains("verify_groth16")
     }
 
     fn block_contains_verifier(block: &syn::Block) -> bool {

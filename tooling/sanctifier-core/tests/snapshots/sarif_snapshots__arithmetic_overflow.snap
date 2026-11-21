@@ -5,7 +5,7 @@ expression: violations_json(&violations)
 [
   {
     "location": "add",
-    "message": "Unchecked '+' operation could overflow",
+    "message": "Unchecked '+' operation in 'add': possible overflow of accumulated values",
     "rule_name": "arithmetic_overflow",
     "severity": "Warning",
     "suggestion": "Use .checked_add(rhs) or .saturating_add(rhs) to handle overflow"

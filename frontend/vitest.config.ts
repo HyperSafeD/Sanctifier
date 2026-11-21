@@ -11,6 +11,12 @@ export default defineConfig({
       provider: "v8",
       reportsDirectory: "./coverage",
       include: ["app/components/**/*.tsx", "app/lib/**/*.ts"],
+      thresholds: {
+        lines: 60,
+        functions: 60,
+        branches: 50,
+        statements: 60,
+      },
     },
   },
   resolve: {

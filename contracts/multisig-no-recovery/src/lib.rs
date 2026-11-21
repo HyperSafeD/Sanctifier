@@ -8,24 +8,47 @@
 //!
 //! Compare with `contracts/multisig/src/lib.rs` which adds a guardian-gated
 //! timelock recovery path.
+//!
+//! ## ⚠️ Intentionally vulnerable — do not deploy
+//!
+//! This crate is a test fixture. It deliberately omits any recovery or escape
+//! hatch, so any value governed by a wallet built on this pattern would be
+//! **permanently locked** if enough signers lose their keys.
+//!
+//! ### Risk
+//!
+//! - **Key loss:** with an `M`-of-`N` threshold, losing `N - M + 1` keys makes
+//!   `execute` impossible forever (`ThresholdNotMet`).
+//! - **No signer rotation:** there is no `add_signer`, `remove_signer` or
+//!   `set_threshold`, so a lost or compromised key can never be replaced, even
+//!   while a quorum is still alive.
+//! - **No guardian, timelock or emergency withdrawal:** nothing can override
+//!   the threshold once it cannot be met.
+//! - **Expiring approvals:** proposals and approvals are kept in `temporary`
+//!   storage, so they can also expire before a proposal reaches quorum.
+//!
+//! ### Mitigation
+//!
+//! Use `contracts/multisig`, which adds a guardian-initiated recovery with a
+//! 7-day timelock (`initiate_recovery` / `execute_recovery` /
+//! `cancel_recovery`), signer rotation, and persistent proposal storage. An
+//! emergency withdrawal with an even longer timelock is a possible further
+//! hardening, but is intentionally not implemented here.
 
-use soroban_sdk::{
-    contract, contracterror, contractimpl, contracttype,
-    Address, Bytes, Env, Vec,
-};
+use soroban_sdk::{contract, contracterror, contractimpl, contracttype, Address, Bytes, Env, Vec};
 
 #[contracterror]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, PartialOrd, Ord)]
 #[repr(u32)]
 pub enum Error {
-    NotInitialized    = 1,
+    NotInitialized = 1,
     AlreadyInitialized = 2,
-    InvalidThreshold  = 3,
-    Unauthorized      = 4,
-    ProposalNotFound  = 5,
-    AlreadyApproved   = 6,
-    ThresholdNotMet   = 7,
-    AlreadyExecuted   = 8,
+    InvalidThreshold = 3,
+    Unauthorized = 4,
+    ProposalNotFound = 5,
+    AlreadyApproved = 6,
+    ThresholdNotMet = 7,
+    AlreadyExecuted = 8,
 }
 
 #[contracttype]
@@ -57,12 +80,16 @@ impl MultisigNoRecovery {
             env.panic_with_error(Error::InvalidThreshold);
         }
         env.storage().instance().set(&DataKey::Signers, &signers);
-        env.storage().instance().set(&DataKey::Threshold, &threshold);
+        env.storage()
+            .instance()
+            .set(&DataKey::Threshold, &threshold);
     }
 
     pub fn approve(env: Env, signer: Address, hash: Bytes) {
         signer.require_auth();
-        let signers: Vec<Address> = env.storage().instance()
+        let signers: Vec<Address> = env
+            .storage()
+            .instance()
             .get(&DataKey::Signers)
             .unwrap_or_else(|| env.panic_with_error(Error::NotInitialized));
         if !signers.contains(&signer) {
@@ -74,20 +101,31 @@ impl MultisigNoRecovery {
         }
         env.storage().temporary().set(&approval_key, &true);
 
-        let mut info: ProposalInfo = env.storage().temporary()
+        let mut info: ProposalInfo = env
+            .storage()
+            .temporary()
             .get(&DataKey::Proposal(hash.clone()))
-            .unwrap_or(ProposalInfo { approval_count: 0, executed: false });
+            .unwrap_or(ProposalInfo {
+                approval_count: 0,
+                executed: false,
+            });
         info.approval_count += 1;
-        env.storage().temporary().set(&DataKey::Proposal(hash), &info);
+        env.storage()
+            .temporary()
+            .set(&DataKey::Proposal(hash), &info);
     }
 
     // BUG: if signers drop below threshold (lost keys, compromise), this
     // function can never succeed — the contract is permanently stuck.
     pub fn execute(env: Env, hash: Bytes) {
-        let threshold: u32 = env.storage().instance()
+        let threshold: u32 = env
+            .storage()
+            .instance()
             .get(&DataKey::Threshold)
             .unwrap_or_else(|| env.panic_with_error(Error::NotInitialized));
-        let info: ProposalInfo = env.storage().temporary()
+        let info: ProposalInfo = env
+            .storage()
+            .temporary()
             .get(&DataKey::Proposal(hash.clone()))
             .unwrap_or_else(|| env.panic_with_error(Error::ProposalNotFound));
         if info.executed {
@@ -98,7 +136,9 @@ impl MultisigNoRecovery {
         }
         let mut updated = info;
         updated.executed = true;
-        env.storage().temporary().set(&DataKey::Proposal(hash), &updated);
+        env.storage()
+            .temporary()
+            .set(&DataKey::Proposal(hash), &updated);
         // No recovery path — if we reach stuck state, nothing can help.
     }
 }
@@ -126,7 +166,18 @@ mod tests {
         // With threshold=2, no proposal can ever reach execution.
         // There is NO recovery function to call.
         // The contract is permanently stuck.
-        assert!(c.try_execute(&soroban_sdk::Bytes::from_array(&env, &[0u8; 32])).is_err(),
-            "stuck state: execute must fail when threshold cannot be met");
+        let hash = soroban_sdk::Bytes::from_array(&env, &[0u8; 32]);
+        c.approve(&s1, &hash);
+
+        // One approval against a threshold of two: execute can never succeed,
+        // and there is no function that can change that.
+        let result = c.try_execute(&hash);
+        assert_eq!(
+            result,
+            Err(Ok(soroban_sdk::Error::from_contract_error(
+                Error::ThresholdNotMet as u32
+            ))),
+            "stuck state: execute must fail with ThresholdNotMet"
+        );
     }
 }

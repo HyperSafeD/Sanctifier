@@ -12,6 +12,7 @@ use crate::commands::analyze::{
     analyze_single_file, collect_rs_files, is_soroban_project, load_config, run_with_timeout,
     FileAnalysisResult,
 };
+use crate::commands::report_templates::html_escape;
 use crate::vulndb::{VulnDatabase, VulnMatch};
 use clap::Args;
 use rayon::prelude::*;
@@ -50,7 +51,7 @@ pub struct ReportArgs {
 
     /// Target network (testnet, futurenet, mainnet).
     /// Overrides SOROBAN_NETWORK env var. Default: testnet.
-    #[arg(short = 'n', long, default_value = "testnet")]
+    #[arg(long, default_value = "testnet")]
     pub network: String,
 }
 
@@ -562,6 +563,12 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str, network: &
 
     let version = env!("CARGO_PKG_VERSION");
     let date = human_date();
+    // Escape every user-controlled value before HTML interpolation so that a
+    // crafted file path, --network value, or vuln-db version string cannot
+    // inject markup or script content into the generated report (#2076).
+    let path_escaped = html_escape(&path.display().to_string());
+    let network_escaped = html_escape(network);
+    let vuln_db_version_escaped = html_escape(vuln_db_version);
     let overall_class = if data.has_critical {
         "critical"
     } else if data.has_high {
@@ -677,7 +684,7 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str, network: &
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sanctifier Security Report — {path}</title>
+<title>Sanctifier Security Report — {path_escaped}</title>
 <style>
   :root {{
     --critical: #dc2626; --high: #ea580c; --medium: #d97706;
@@ -709,11 +716,11 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str, network: &
 <body>
 <h1>Sanctifier Security Report</h1>
 <table>
-  <tr><th>Contract path</th><td><code>{path}</code></td></tr>
+  <tr><th>Contract path</th><td><code>{path_escaped}</code></td></tr>
   <tr><th>Analysis date</th><td>{date}</td></tr>
   <tr><th>Tool version</th><td>{version}</td></tr>
-  <tr><th>Network</th><td><code>{network}</code></td></tr>
-  <tr><th>Vuln DB version</th><td>{vuln_db_version}</td></tr>
+  <tr><th>Network</th><td><code>{network_escaped}</code></td></tr>
+  <tr><th>Vuln DB version</th><td>{vuln_db_version_escaped}</td></tr>
   <tr><th>Overall</th><td><span class="badge {overall_class}">{overall_label}</span></td></tr>
 </table>
 
@@ -737,6 +744,11 @@ fn render_html(data: &ReportData, path: &Path, vuln_db_version: &str, network: &
         version = version,
         vuln_db_version = vuln_db_version_escaped,
         network = network_escaped,
+        path_escaped = path_escaped,
+        date = date,
+        version = version,
+        vuln_db_version_escaped = vuln_db_version_escaped,
+        network_escaped = network_escaped,
         overall_class = overall_class,
         overall_label = overall_label,
         summary_rows = summary_rows,

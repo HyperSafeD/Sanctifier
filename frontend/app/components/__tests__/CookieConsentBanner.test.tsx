@@ -81,7 +81,7 @@ describe("CookieConsentBanner", () => {
     const customizeButton = screen.getByText(/Customize/i);
     fireEvent.click(customizeButton);
 
-    expect(screen.getByText(/Essential Cookies/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /Essential Cookies/i })).toBeInTheDocument();
     expect(screen.getByText(/Analytics & Performance/i)).toBeInTheDocument();
     expect(screen.getByText(/Save Preferences/i)).toBeInTheDocument();
   });

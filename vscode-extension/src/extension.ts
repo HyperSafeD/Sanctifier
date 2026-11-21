@@ -66,6 +66,29 @@ function validateSanctifierPath(exePath: string): void {
   }
 }
 
+/**
+ * Activation strategy (performance considerations):
+ *
+ * The extension activates when VS Code detects a Cargo.toml file in the workspace
+ * (see package.json activationEvents: "workspaceContains:**/Cargo.toml"), not on
+ * every Rust file open. This prevents the extension from slowing down editor
+ * startup for users working in non-Cargo/non-Soroban Rust projects.
+ *
+ * Once activated, the extension registers language providers (hover, diagnostics)
+ * for Rust files, but actual analysis is gated by:
+ *
+ * 1. `looksLikeSorobanSource(text)` — quick content heuristic (checks for
+ *    soroban_sdk imports, #[contract], etc.)
+ * 2. `onlyInSorobanWorkspace` setting (default: true) — when enabled, only
+ *    files in workspaces whose Cargo.toml references soroban-sdk will be analyzed
+ *    (see folderLooksLikeSorobanProject in workspace.ts)
+ *
+ * This two-level check ensures:
+ * - No activation overhead for non-Rust/non-Cargo projects
+ * - No analysis overhead for general Rust projects (unless user opts in)
+ * - Minimal false positives in mixed Rust workspaces (e.g., workspace with both
+ *   Soroban and non-Soroban crates)
+ */
 export async function activate(context: vscode.ExtensionContext): Promise<SanctifierExtensionApi> {
   const collection = vscode.languages.createDiagnosticCollection(SOURCE);
   const outputChannel = vscode.window.createOutputChannel('Sanctifier');
@@ -130,7 +153,23 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
 
   const debouncers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /** Cancel all pending debounced analyses and clear diagnostics/caches. */
+  function cancelAllPendingAnalyses(): void {
+    for (const [key, timer] of debouncers) {
+      clearTimeout(timer);
+      debouncers.delete(key);
+    }
+    collection.clear();
+    findingsCache.clear();
+    contentCache.clear();
+    scanning = false;
+    updateStatusBar();
+  }
+
   const runAnalysis = (doc: vscode.TextDocument) => {
+    if (!vscode.workspace.isTrusted) {
+      return;
+    }
     if (doc.languageId !== 'rust') {
       return;
     }
@@ -150,6 +189,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
     }
 
     const key = doc.uri.toString();
+    // Race-condition mitigation: contentCache comparison prevents redundant
+    // re-analysis of unchanged documents. Combined with the debounce mechanism
+    // in schedule(), this ensures:
+    // 1. Rapid edits cancel earlier debounced runs (clearTimeout in schedule)
+    // 2. If content hasn't changed since last analysis, we skip re-run
+    // 3. analyzeSorobanSource is synchronous and pure (no state/async), so
+    //    each invocation's results correspond exactly to the input text
+    //
+    // This design prevents out-of-order diagnostics: the most recent edit always
+    // wins because earlier timeouts are cleared, and the content check prevents
+    // redundant work. See analyzer.test.ts "race condition resilience" tests.
     if (contentCache.get(key) === text) {
       return;
     }
@@ -177,6 +227,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
   };
 
   const schedule = (doc: vscode.TextDocument) => {
+    if (!vscode.workspace.isTrusted) {
+      const key = doc.uri.toString();
+      const prev = debouncers.get(key);
+      if (prev) {
+        clearTimeout(prev);
+        debouncers.delete(key);
+      }
+      collection.delete(doc.uri);
+      findingsCache.delete(key);
+      updateStatusBar();
+      return;
+    }
     const onlySorobanWs = getConfig().get<boolean>('onlyInSorobanWorkspace');
     if (onlySorobanWs) {
       const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
@@ -253,8 +315,24 @@ export async function activate(context: vscode.ExtensionContext): Promise<Sancti
     }),
     vscode.window.onDidChangeActiveTextEditor(() => {
       updateStatusBar();
+    }),
+    vscode.workspace.onDidGrantWorkspaceTrust(() => {
+      // Trust was just granted; re-schedule all open documents so findings
+      // that were suppressed in restricted mode are now produced.
+      invalidateWorkspaceCache();
+      contentCache.clear();
+      findingsCache.clear();
+      for (const doc of vscode.workspace.textDocuments) {
+        schedule(doc);
+      }
     })
   );
+
+  // If the workspace opens in restricted (untrusted) mode, cancel everything
+  // immediately so no analysis runs until the user explicitly grants trust.
+  if (!vscode.workspace.isTrusted) {
+    cancelAllPendingAnalyses();
+  }
 
   for (const doc of vscode.workspace.textDocuments) {
     schedule(doc);
