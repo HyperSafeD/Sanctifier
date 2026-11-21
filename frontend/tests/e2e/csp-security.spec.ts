@@ -20,16 +20,21 @@ test.describe("WASM CSP Security", () => {
       await route.fulfill({ response, headers });
     });
 
-    // 2. Navigate to a page that uses WASM (e.g. playground or scan)
-    await page.goto("/playground");
-
-    // 3. Set up console monitoring for CSP violations before WASM loading
+    // 2. Set up console monitoring for CSP violations before navigation
     const logs: string[] = [];
-    page.on("console", (msg: any) => {
-      if (msg.type() === "error" && msg.text().includes("Content Security Policy")) {
-        logs.push(msg.text());
+    page.on("console", (msg: ConsoleMessage) => {
+      const text = msg.text();
+      if (
+        msg.type() === "error" &&
+        text.includes("Content Security Policy") &&
+        !text.includes("React requires eval() in development mode")
+      ) {
+        logs.push(text);
       }
     });
+
+    // 3. Navigate to a page that uses WASM (e.g. playground or scan)
+    await page.goto("/playground");
 
     // 4. Wait for page to load completely
     await page.waitForLoadState("networkidle");
@@ -52,18 +57,6 @@ test.describe("WASM CSP Security", () => {
 
     // 6. Check for violations after a small delay to allow async loading
     await page.waitForTimeout(2000);
-    // 4. Verify no CSP violations were logged to console
-    const logs: string[] = [];
-    page.on("console", (msg: ConsoleMessage) => {
-      const text = msg.text();
-      if (
-        msg.type() === "error" &&
-        text.includes("Content Security Policy") &&
-        !text.includes("React requires eval() in development mode")
-      ) {
-        logs.push(text);
-      }
-    });
 
     // 7. Verify the test behavior - the key is that the page should not crash completely
     // WASM loading under strict CSP can be unpredictable, so we accept various outcomes
@@ -81,5 +74,21 @@ test.describe("WASM CSP Security", () => {
     // 8. Additional check: Ensure the page is still functional
     const pageTitle = await page.title();
     expect(pageTitle).toBeTruthy();
+  });
+
+  test("/playground is served the global script-src without eval allowances", async ({ page }: { page: Page }) => {
+    // No route interception: assert the header Next.js actually sends for this route.
+    const response = await page.goto("/playground");
+    expect(response).not.toBeNull();
+
+    const headers = response!.headers();
+    const csp = headers["content-security-policy"] ?? headers["content-security-policy-report-only"];
+    expect(csp).toBeDefined();
+
+    const scriptSrc = csp!
+      .split(";")
+      .map((directive) => directive.trim())
+      .find((directive) => directive.startsWith("script-src"));
+    expect(scriptSrc).toBe("script-src 'self'");
   });
 });

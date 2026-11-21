@@ -1,6 +1,25 @@
 /**
  * Lightweight in-editor checks aligned with sanctifier-core finding codes.
  * Line numbers are 1-based (VS Code Document convention).
+ *
+ * DESIGN: All analysis functions in this module are synchronous and pure by design.
+ * They do not:
+ * - Shell out to external processes
+ * - Maintain internal state between invocations
+ * - Perform async operations
+ *
+ * This ensures:
+ * 1. No race conditions from out-of-order async results
+ * 2. Predictable performance (no process spawn overhead)
+ * 3. Results always correspond exactly to the input text
+ * 4. Safe for rapid repeated invocations (typing in editor)
+ *
+ * Race-condition handling is delegated to extension.ts, which uses:
+ * - Debouncing (clearTimeout on new edits)
+ * - Content caching (skip analysis if text unchanged)
+ * - Synchronous invocation (no async result ordering issues)
+ *
+ * See "race condition resilience" tests in analyzer.test.ts for verification.
  */
 
 export const CODES = {

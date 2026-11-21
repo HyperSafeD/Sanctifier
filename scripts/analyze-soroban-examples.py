@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 import json
+import os
 import pathlib
 import subprocess
 import sys
+
+# Per-example wall-clock budget in seconds.  Overridable via the
+# SANCTIFIER_EXAMPLE_TIMEOUT environment variable for slower CI machines.
+_DEFAULT_TIMEOUT = 60
+EXAMPLE_TIMEOUT: int = int(os.environ.get("SANCTIFIER_EXAMPLE_TIMEOUT", _DEFAULT_TIMEOUT))
 
 
 def iter_contract_dirs(root: pathlib.Path):
@@ -11,19 +17,41 @@ def iter_contract_dirs(root: pathlib.Path):
 
 
 def analyze_contract(cli_path: pathlib.Path, contract_dir: pathlib.Path, root: pathlib.Path):
-    proc = subprocess.run(
-        [str(cli_path), "analyze", str(contract_dir), "--format", "json"],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
-    report = json.loads(proc.stdout)
+    rel_path = str(contract_dir.relative_to(root)).replace("\\", "/")
+    try:
+        proc = subprocess.run(
+            [str(cli_path), "analyze", str(contract_dir), "--format", "json"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=EXAMPLE_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        print(
+            f"[TIMEOUT] {rel_path} did not complete within {EXAMPLE_TIMEOUT}s — skipping",
+            file=sys.stderr,
+        )
+        return {
+            "path": rel_path,
+            "exit_code": -1,
+            "timed_out": True,
+            "total_findings": 0,
+            "auth_gaps": 0,
+            "panic_issues": 0,
+            "arithmetic_issues": 0,
+            "size_warnings": 0,
+            "unhandled_results": 0,
+            "smt_issues": 0,
+        }
+
+    report = json.loads(proc.stdout) if proc.stdout.strip() else {}
     summary = report.get("summary", {})
     return {
-        "path": str(contract_dir.relative_to(root)).replace("\\", "/"),
+        "path": rel_path,
         "exit_code": proc.returncode,
+        "timed_out": False,
         "total_findings": summary.get("total_findings", 0),
         "auth_gaps": summary.get("auth_gaps", 0),
         "panic_issues": summary.get("panic_issues", 0),
@@ -35,6 +63,14 @@ def analyze_contract(cli_path: pathlib.Path, contract_dir: pathlib.Path, root: p
 
 
 def main():
+    """Run Sanctifier against every Soroban example contract under *examples-root*.
+
+    Each example gets at most EXAMPLE_TIMEOUT seconds (default 60; override via
+    SANCTIFIER_EXAMPLE_TIMEOUT).  Timed-out examples are recorded in the output
+    JSON with ``timed_out: true`` and zero findings so the rest of the batch
+    still completes.  A summary warning is printed to stderr when any timeout
+    occurs.
+    """
     if len(sys.argv) != 4:
         raise SystemExit(
             "usage: analyze-soroban-examples.py <examples-root> <sanctifier-cli> <output-json>"
@@ -45,10 +81,12 @@ def main():
     output_path = pathlib.Path(sys.argv[3]).resolve()
 
     results = [analyze_contract(cli_path, contract_dir, root) for contract_dir in iter_contract_dirs(root)]
+    timed_out = [r for r in results if r.get("timed_out")]
     aggregate = {
         "crates_scanned": len(results),
+        "crates_timed_out": len(timed_out),
         "crates_with_findings": sum(1 for item in results if item["total_findings"] > 0),
-        "crates_without_findings": sum(1 for item in results if item["total_findings"] == 0),
+        "crates_without_findings": sum(1 for item in results if item["total_findings"] == 0 and not item.get("timed_out")),
         "total_findings": sum(item["total_findings"] for item in results),
         "total_auth_gaps": sum(item["auth_gaps"] for item in results),
         "total_panic_issues": sum(item["panic_issues"] for item in results),
@@ -56,6 +94,12 @@ def main():
         "total_unhandled_results": sum(item["unhandled_results"] for item in results),
         "total_smt_issues": sum(item["smt_issues"] for item in results),
     }
+    if timed_out:
+        print(
+            f"[WARNING] {len(timed_out)} example(s) timed out after {EXAMPLE_TIMEOUT}s: "
+            + ", ".join(r["path"] for r in timed_out),
+            file=sys.stderr,
+        )
 
     payload = {"aggregate": aggregate, "results": results}
     output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")

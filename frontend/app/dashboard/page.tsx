@@ -130,6 +130,14 @@ export default function DashboardPage() {
     }
   }, [actions, applyReport, persistScanRecord, setWorkspace]);
 
+  // Clear stale findings when workspace changes
+  useEffect(() => {
+    // Reset to findings tab when workspace changes to avoid showing stale data
+    if (workspace) {
+      actions.setActiveTab("findings");
+    }
+  }, [workspace?.workspace, actions]);
+
   const loadReport = useCallback(() => {
     parseReport(jsonInput);
   }, [jsonInput, parseReport]);

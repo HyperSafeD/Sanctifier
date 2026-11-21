@@ -1,0 +1,5 @@
+# ShellCheck configuration for scripts/
+# Disable specific warnings that may not apply to all scripts
+
+# SC2086: Double quote to prevent globbing and word splitting
+# (Selectively enabled per-script where needed)

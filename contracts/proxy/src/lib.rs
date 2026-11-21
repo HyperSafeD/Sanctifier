@@ -61,7 +61,8 @@
 #[cfg(feature = "security-disclaimers")]
 use security_disclaimers::{DisclaimerCategory, SecurityLevel};
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, Address, BytesN, Env, Symbol,
+    contract, contractimpl, contracterror, contracttype, symbol_short, Address, BytesN, Env,
+    Symbol,
 };
 
 #[cfg(not(feature = "security-disclaimers"))]
@@ -89,7 +90,7 @@ const MONTH_IN_LEDGERS: u32 = 30 * WEEK_IN_LEDGERS / 7;
 
 // ── Error codes ─────────────────────────────────────────────────────────────────
 
-#[contracttype]
+#[contracterror]
 #[derive(Copy, Clone, Eq, PartialEq)]
 pub enum ProxyError {
     /// Contract has not been initialised.
@@ -149,21 +150,30 @@ impl UupsProxy {
 
     /// Initialise the proxy. Can only be called once.
     ///
+    /// # Errors
+    ///
+    /// Returns [`ProxyError::AlreadyInitialised`] if the contract has already
+    /// been initialised. All callers must handle this `Result`.
+    ///
+    /// # Parameters
+    ///
     /// * `admin`     — address that controls upgrades.
     /// * `impl_hash` — SHA-256 hash of the initial implementation WASM (32 bytes).
-    pub fn initialize(env: Env, admin: Address, impl_hash: BytesN<32>) {
+    pub fn initialize(env: Env, admin: Address, impl_hash: BytesN<32>) -> Result<(), ProxyError> {
         if env.storage().instance().has(&INITIALISED) {
-            panic!("already initialised");
+            return Err(ProxyError::AlreadyInitialised);
         }
         env.storage().instance().set(&INITIALISED, &true);
         env.storage().instance().set(&ADMIN, &admin);
         env.storage().instance().set(&VERSION, &1u32);
         env.storage().instance().set(&IMPL_HASH, &impl_hash);
-        
+
         env.storage().instance().extend_ttl(WEEK_IN_LEDGERS, MONTH_IN_LEDGERS);
 
         env.events()
             .publish((symbol_short!("init"),), (admin, 1u32));
+
+        Ok(())
     }
 
     // ── Upgrade ────────────────────────────────────────────────────────────────

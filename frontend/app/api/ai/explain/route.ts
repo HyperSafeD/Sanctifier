@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Finding } from "../../../types";
 import { AI_EXPLAIN_PROVIDER } from "../../../lib/env";
 import { logger } from "../../../lib/logger";
+import { withMetrics } from "../../../../lib/metrics";
 
 // Maximum total character count accepted across all Finding fields.
 // Keeps a single oversized request from inflating AI provider costs.
@@ -25,6 +26,7 @@ function findingCharCount(finding: Finding): number {
 }
 
 export async function POST(req: NextRequest) {
+async function handlePOST(req: NextRequest) {
   const requestId = req.headers.get("x-request-id") || `req-${Math.random().toString(36).substring(2, 11)}`;
   logger.info("Received AI explanation request", {
     request_id: requestId,
@@ -116,3 +118,5 @@ pub enum DataKey {
     );
   }
 }
+
+export const POST = withMetrics("/api/ai/explain", "POST", handlePOST);

@@ -1,8 +1,9 @@
 import { loadContractSource } from "../../../../lib/contracts-catalog";
+import { withMetrics } from "../../../../../lib/metrics";
 
 export const runtime = "nodejs";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ name: string }> }) {
+async function handleGET(_request: Request, { params }: { params: Promise<{ name: string }> }) {
   const { name } = await params;
   const source = await loadContractSource(name);
 
@@ -11,3 +12,5 @@ export async function GET(_request: Request, { params }: { params: Promise<{ nam
   }
   return Response.json({ name, source });
 }
+
+export const GET = withMetrics("/api/contracts/[name]/source", "GET", handleGET);

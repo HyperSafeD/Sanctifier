@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { spawn } from "child_process";
 import { SANCTIFIER_BIN } from "../../../lib/env";
+import { outcomeForExitCode, startAnalysisJob, withMetrics } from "../../../../lib/metrics";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ export const dynamic = "force-dynamic";
 
 
  */
-export async function GET(request: NextRequest) {
+async function handleGET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const contractPath = searchParams.get("path") ?? ".";
 
@@ -40,6 +41,7 @@ export async function GET(request: NextRequest) {
       const child = spawn(bin, ["analyze", contractPath, "--format", "json"], {
         stdio: ["ignore", "pipe", "pipe"],
       });
+      const finishJob = startAnalysisJob("/api/analyze/stream");
 
       let buffer = "";
 
@@ -64,6 +66,7 @@ export async function GET(request: NextRequest) {
       });
 
       child.on("close", (code) => {
+        finishJob(outcomeForExitCode(code));
         if (buffer.trim()) {
           try {
             send({ type: "result", payload: JSON.parse(buffer.trim()) });
@@ -76,6 +79,7 @@ export async function GET(request: NextRequest) {
       });
 
       child.on("error", (err) => {
+        finishJob("error");
         send({ type: "error", message: err.message });
         controller.close();
       });
@@ -97,3 +101,7 @@ export async function GET(request: NextRequest) {
     },
   });
 }
+
+// Latency here is time-to-first-byte; the analysis itself is covered by the
+// sanctifier_analysis_job_* series.
+export const GET = withMetrics("/api/analyze/stream", "GET", handleGET);

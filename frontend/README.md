@@ -27,6 +27,8 @@ Requires **Node.js 20+** and **npm 10+** (enforced by the `engines` field in `pa
    npm test
    ```
 
+Environment variables and runtime configuration are documented in [docs/frontend-setup.md](../docs/frontend-setup.md).
+
 ## State management
 
 Shared state lives in providers under `app/providers/`, not in page-level `useState` calls:
