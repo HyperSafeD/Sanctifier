@@ -220,7 +220,8 @@ impl OutputFormatter {
     pub fn display_success(installed_hooks: &[PathBuf], use_husky: bool) {
         if installed_hooks.is_empty() {
             println!(
-                "{} No hooks were installed (already exist, use --force to overwrite)",
+                "{} No hooks were installed (Sanctifier hooks already up to date; \
+                 use --force to overwrite)",
                 c::yellow("⚠")
             );
             return;
