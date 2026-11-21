@@ -1,0 +1,16 @@
+{
+  "name": "Sanctifier Dev – prebuilt image (fixture)",
+  "image": "ghcr.io/hypersafed/sanctifier-devcontainer:latest",
+  "features": {
+    "ghcr.io/devcontainers/features/sanctifier-cli:1": {}
+  },
+  "postCreateCommand": "cargo build --workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "sanctifier.sanctifier-soroban",
+        "rust-lang.rust-analyzer"
+      ]
+    }
+  }
+}

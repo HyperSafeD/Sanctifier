@@ -161,6 +161,153 @@ describe('devcontainer fixture contract', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Dockerfile-based devcontainer detection
+// ---------------------------------------------------------------------------
+
+describe('devcontainer – Dockerfile-based configuration', () => {
+  let config: Record<string, unknown>;
+
+  beforeAll(() => {
+    const raw = readFixture('dockerfile-devcontainer.json');
+    config = JSON.parse(raw) as Record<string, unknown>;
+  });
+
+  it('uses build.dockerfile rather than a top-level image field', () => {
+    // A Dockerfile-based devcontainer specifies container build instructions
+    // via a nested `build` object; it must NOT have a bare top-level `image`.
+    expect(config.build).toBeDefined();
+    const build = config.build as Record<string, unknown>;
+    expect(typeof build.dockerfile).toBe('string');
+    expect(build.dockerfile).toBeTruthy();
+    expect(config.image).toBeUndefined();
+  });
+
+  it('build.dockerfile path is a non-empty string without path traversal', () => {
+    const build = config.build as Record<string, unknown>;
+    const dockerfile = build.dockerfile as string;
+    const segments = dockerfile.split('/');
+    expect(segments.every((seg) => seg !== '..')).toBe(true);
+  });
+
+  it('build context is defined alongside dockerfile', () => {
+    const build = config.build as Record<string, unknown>;
+    expect(build.context).toBeDefined();
+  });
+
+  it('sanctifier-cli feature is present in a Dockerfile-based container', () => {
+    expect(hasSanctifierFeature(config)).toBe(true);
+  });
+
+  it('extension can locate the sanctifier binary when using a Dockerfile build', () => {
+    // The binary lookup strategy for a Dockerfile-based container is the same
+    // as for a prebuilt image: check the devcontainer features map for the
+    // sanctifier-cli feature key.  Confirm the detection path works here.
+    const features = config.features as Record<string, unknown>;
+    const featureKeys = Object.keys(features);
+    expect(featureKeys.some((k) => k.includes('sanctifier-cli'))).toBe(true);
+  });
+
+  it('has a name field', () => {
+    expect(typeof config.name).toBe('string');
+    expect((config.name as string).length).toBeGreaterThan(0);
+  });
+
+  it('fixture JSON round-trips cleanly', () => {
+    const raw = readFixture('dockerfile-devcontainer.json');
+    expect(() => JSON.parse(raw)).not.toThrow();
+    const parsed = JSON.parse(raw);
+    expect(JSON.stringify(JSON.parse(JSON.stringify(parsed)))).toBe(JSON.stringify(parsed));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Prebuilt-image-based devcontainer detection
+// ---------------------------------------------------------------------------
+
+describe('devcontainer – prebuilt-image-based configuration', () => {
+  let config: Record<string, unknown>;
+
+  beforeAll(() => {
+    const raw = readFixture('prebuilt-image-devcontainer.json');
+    config = JSON.parse(raw) as Record<string, unknown>;
+  });
+
+  it('uses a top-level image field rather than build.dockerfile', () => {
+    // A prebuilt-image devcontainer specifies the container via a top-level
+    // `image` field; it must NOT have a `build.dockerfile` entry.
+    expect(typeof config.image).toBe('string');
+    expect((config.image as string).length).toBeGreaterThan(0);
+    if (config.build !== undefined) {
+      const build = config.build as Record<string, unknown>;
+      expect(build.dockerfile).toBeUndefined();
+    }
+  });
+
+  it('image reference is a non-empty string', () => {
+    expect((config.image as string).trim().length).toBeGreaterThan(0);
+  });
+
+  it('sanctifier-cli feature is present in a prebuilt-image container', () => {
+    expect(hasSanctifierFeature(config)).toBe(true);
+  });
+
+  it('extension can locate the sanctifier binary when using a prebuilt image', () => {
+    // For a prebuilt-image devcontainer the binary is installed via the
+    // sanctifier-cli feature; confirm the feature key is present.
+    const features = config.features as Record<string, unknown>;
+    const featureKeys = Object.keys(features);
+    expect(featureKeys.some((k) => k.includes('sanctifier-cli'))).toBe(true);
+  });
+
+  it('has a name field', () => {
+    expect(typeof config.name).toBe('string');
+    expect((config.name as string).length).toBeGreaterThan(0);
+  });
+
+  it('fixture JSON round-trips cleanly', () => {
+    const raw = readFixture('prebuilt-image-devcontainer.json');
+    expect(() => JSON.parse(raw)).not.toThrow();
+    const parsed = JSON.parse(raw);
+    expect(JSON.stringify(JSON.parse(JSON.stringify(parsed)))).toBe(JSON.stringify(parsed));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cross-configuration: Dockerfile vs. prebuilt-image shape differences
+// ---------------------------------------------------------------------------
+
+describe('devcontainer – Dockerfile vs. prebuilt-image shape comparison', () => {
+  let dockerfileConfig: Record<string, unknown>;
+  let imageConfig: Record<string, unknown>;
+
+  beforeAll(() => {
+    dockerfileConfig = JSON.parse(readFixture('dockerfile-devcontainer.json'));
+    imageConfig = JSON.parse(readFixture('prebuilt-image-devcontainer.json'));
+  });
+
+  it('exactly one of the two fixtures uses build.dockerfile', () => {
+    const dfHasBuild =
+      dockerfileConfig.build !== undefined &&
+      typeof (dockerfileConfig.build as Record<string, unknown>).dockerfile === 'string';
+    const imgHasBuild =
+      imageConfig.build !== undefined &&
+      typeof (imageConfig.build as Record<string, unknown>).dockerfile === 'string';
+    expect(dfHasBuild).toBe(true);
+    expect(imgHasBuild).toBe(false);
+  });
+
+  it('exactly one of the two fixtures uses a top-level image field', () => {
+    expect(typeof dockerfileConfig.image).not.toBe('string');
+    expect(typeof imageConfig.image).toBe('string');
+  });
+
+  it('sanctifier-cli feature detection works for both configurations', () => {
+    expect(hasSanctifierFeature(dockerfileConfig)).toBe(true);
+    expect(hasSanctifierFeature(imageConfig)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Sanctifier feature detection
 // ---------------------------------------------------------------------------
 
