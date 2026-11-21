@@ -1,0 +1,20 @@
+{
+  "name": "Sanctifier Dev – Dockerfile build (fixture)",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/sanctifier-cli:1": {},
+    "ghcr.io/devcontainers-contrib/features/soroban-cli:1": {}
+  },
+  "postCreateCommand": "cargo build --workspace",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "sanctifier.sanctifier-soroban",
+        "rust-lang.rust-analyzer"
+      ]
+    }
+  }
+}
