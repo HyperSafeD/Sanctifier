@@ -54,7 +54,7 @@ jobs:
         uses: codecov/codecov-action@ab904c41d6ece82784817410c45d8b8c02684457 # v3
         with:
           file: cobertura.xml
-          fail_ci_if_error: false
+          fail_ci_if_error: true
 
   action-tests:
     name: Action Integration Tests
