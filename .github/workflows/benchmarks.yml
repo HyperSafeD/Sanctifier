@@ -1,9 +1,19 @@
 name: Performance Benchmarks
 
 on:
-  # Pruned to manual-only: this workflow was persistently red on push/PR/schedule.
-  # Run on demand from the Actions tab.
+  # Manual trigger kept for ad-hoc runs.
   workflow_dispatch: {}
+  # Also run on PRs that touch performance-sensitive paths so regressions are
+  # caught before merge rather than after.
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "tooling/sanctifier-core/**"
+      - "tooling/sanctifier-detector/**"
+      - "tooling/sanctifier-cli/**"
+      - "benchmarks/**"
+      - "scripts/compare-benchmarks.py"
+      - ".github/workflows/benchmarks.yml"
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -103,3 +113,58 @@ jobs:
         run: |
           date >> benchmarks/nightly_perf.log
           echo "Benchmark results recorded."
+
+      # ── Regression threshold check ────────────────────────────────────────
+      # Save the current snapshot as "current.json" so compare-benchmarks.py
+      # can diff it against the base-branch baseline stored in the repo.
+      # On the first run (no baseline.json) the script bootstraps a baseline
+      # and exits 0.  On subsequent runs it fails if any benchmark's mean
+      # latency regresses by more than 20 % vs the base-branch snapshot.
+      - name: Prepare benchmark comparison inputs
+        if: github.event_name == 'pull_request'
+        run: |
+          # Merge the two Python benchmark snapshots into the format expected
+          # by compare-benchmarks.py: { "benchmarks": [ { "name", "mean": { "estimate" } } ] }
+          python3 - <<'PY'
+          import json, pathlib
+
+          def snapshot_to_benches(path, prefix):
+              try:
+                  data = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
+              except FileNotFoundError:
+                  return []
+              benches = []
+              for item in data.get("metrics", []):
+                  name = prefix + "/" + item.get("file", item.get("path", "unknown"))
+                  read_ns  = item.get("read_ms",  0.0) * 1_000_000
+                  parse_ns = item.get("parse_ms", 0.0) * 1_000_000
+                  if read_ns:
+                      benches.append({"name": name + "/read",  "mean": {"estimate": read_ns}})
+                  if parse_ns:
+                      benches.append({"name": name + "/parse", "mean": {"estimate": parse_ns}})
+              return benches
+
+          benches  = snapshot_to_benches("benchmarks/data_schemas_perf.json", "data_schemas")
+          benches += snapshot_to_benches("benchmarks/docs_nav_perf.json",      "docs_nav")
+          pathlib.Path("benchmarks/current.json").write_text(
+              json.dumps({"benchmarks": benches}, indent=2), encoding="utf-8"
+          )
+          print(f"Wrote {len(benches)} benchmark entries to benchmarks/current.json")
+          PY
+
+      - name: Fetch base-branch benchmark baseline
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.base_ref }} --depth=1
+          git show origin/${{ github.base_ref }}:benchmarks/current.json \
+            > benchmarks/baseline.json 2>/dev/null \
+            || echo '{"benchmarks":[]}' > benchmarks/baseline.json
+          echo "Baseline loaded ($(python3 -c "import json; d=json.load(open('benchmarks/baseline.json')); print(len(d['benchmarks']),'entries')"))"
+
+      - name: Check for performance regressions (threshold 20 %)
+        if: github.event_name == 'pull_request'
+        run: |
+          python3 scripts/compare-benchmarks.py \
+            --baseline benchmarks/baseline.json \
+            --current  benchmarks/current.json \
+            --threshold 0.20
