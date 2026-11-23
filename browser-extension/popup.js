@@ -238,9 +238,22 @@ if (typeof chrome !== "undefined" && chrome.storage) {
         if (!res.ok) {
           throw new Error("HTTP " + res.status + ": " + res.statusText);
         }
+        // Check content type to ensure we're getting JSON
+        const contentType = res.headers.get("content-type");
+        if (!contentType || !contentType.includes("application/json")) {
+          throw new Error(
+            "Dashboard returned " +
+              (contentType || "unknown content type") +
+              " (expected JSON). The dashboard may be restarting.",
+          );
+        }
         return res.json();
       })
       .then(function (data) {
+        // Validate JSON structure
+        if (!data || typeof data !== "object") {
+          throw new Error("Invalid response structure from dashboard");
+        }
         if (data.status === "ok") {
           setStatus(
             "connected",
