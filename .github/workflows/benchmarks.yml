@@ -1,6 +1,19 @@
 name: Performance Benchmarks
 
 on:
+  # Run on PRs and pushes to main so regressions are caught before merge.
+  pull_request:
+    paths:
+      - 'tooling/**'
+      - 'benchmarks/**'
+      - '.github/workflows/benchmarks.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'tooling/**'
+      - 'benchmarks/**'
+      - '.github/workflows/benchmarks.yml'
   # Manual trigger kept for ad-hoc runs.
   workflow_dispatch: {}
   # Also run on PRs that touch performance-sensitive paths so regressions are
@@ -108,6 +121,23 @@ jobs:
           print(f"- Docs index size: {docs.get('size_bytes', 0)} bytes")
           print(f"- Docs links: {docs.get('total_links', 0)} total, {docs.get('dead_links_count', 0)} dead")
           PY
+
+      - name: Regression threshold check (fail if >20% worse than baseline)
+        run: |
+          python3 benchmarks/check_regression.py \
+            --data   benchmarks/data_schemas_perf.json \
+            --docs   benchmarks/docs_nav_perf.json \
+            --baseline benchmarks/baseline.json \
+            --threshold 0.20
+
+      - name: Update baseline on main (post-merge)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          python3 benchmarks/check_regression.py \
+            --data   benchmarks/data_schemas_perf.json \
+            --docs   benchmarks/docs_nav_perf.json \
+            --baseline benchmarks/baseline.json \
+            --update-baseline
 
       - name: Log Performance Metrics
         run: |
