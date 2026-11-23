@@ -11,29 +11,29 @@
  * @param {Array} findings - Array of finding objects from background.js.
  */
 function renderFindings(findings) {
-  const container = document.getElementById('findings-container');
+  const container = document.getElementById("findings-container");
   if (!container) return;
 
   // Clear existing content
-  container.innerHTML = '';
+  container.innerHTML = "";
 
   if (!Array.isArray(findings) || findings.length === 0) {
     container.innerHTML = '<p class="empty-state">No findings available.</p>';
     return;
   }
 
-  const list = document.createElement('ul');
-  list.className = 'findings-list';
+  const list = document.createElement("ul");
+  list.className = "findings-list";
 
   findings.slice(0, 10).forEach((finding, index) => {
-    const item = document.createElement('li');
-    item.className = 'finding-item';
+    const item = document.createElement("li");
+    item.className = "finding-item";
 
     // Safely extract fields with fallbacks for malformed data
-    const severity = finding.severity || 'unknown';
-    const code = finding.code || 'N/A';
-    const message = finding.message || 'No description available';
-    const location = finding.location || 'Unknown location';
+    const severity = finding.severity || "unknown";
+    const code = finding.code || "N/A";
+    const message = finding.message || "No description available";
+    const location = finding.location || "Unknown location";
 
     item.innerHTML = `
       <div class="finding-header">
@@ -59,55 +59,66 @@ function renderFindings(findings) {
  * @returns {string} HTML-escaped string.
  */
 function escapeHtml(str) {
-  if (typeof str !== 'string') return String(str);
-  const div = document.createElement('div');
+  if (typeof str !== "string") return String(str);
+  const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
 }
 
 // Export for testing (Node.js environment)
-if (typeof module !== 'undefined' && module.exports) {
+if (typeof module !== "undefined" && module.exports) {
   module.exports = { renderFindings, escapeHtml };
 }
 
 // Browser environment: fetch findings from storage and render
-if (typeof chrome !== 'undefined' && chrome.storage) {
-  chrome.storage.local.get(['recentFindings'], (result) => {
+if (typeof chrome !== "undefined" && chrome.storage) {
+  chrome.storage.local.get(["recentFindings"], (result) => {
     renderFindings(result.recentFindings || []);
   });
 }
 (function () {
-  'use strict';
+  "use strict";
 
-  const DASHBOARD_URL = 'http://localhost:3000';
-  const API_URL = DASHBOARD_URL + '/api/recent-findings';
+  const DASHBOARD_URL = "http://localhost:3000";
+  const API_URL = DASHBOARD_URL + "/api/recent-findings";
+  const STALENESS_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
-  const badgeEl = document.getElementById('badge');
-  const statusDot = document.getElementById('statusDot');
-  const statusText = document.getElementById('statusText');
-  const contentEl = document.getElementById('content');
+  const badgeEl = document.getElementById("badge");
+  const statusDot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  const contentEl = document.getElementById("content");
 
   function setStatus(state, text) {
-    statusDot.className = 'dot ' + state;
+    statusDot.className = "dot " + state;
     statusText.textContent = text;
   }
 
+  function showLoadingState() {
+    contentEl.innerHTML =
+      '<div class="empty-state">' +
+      '<div class="icon">⏳</div>' +
+      "<p>Loading findings...</p>" +
+      '<p style="margin-top:4px;font-size:12px;">Fetching data from dashboard.</p>' +
+      "</div>";
+    setBadge("loading", "Loading...");
+  }
+
   function setBadge(state, text) {
-    badgeEl.className = 'badge ' + state;
+    badgeEl.className = "badge " + state;
     badgeEl.textContent = text;
   }
 
   function severityClass(severity) {
-    return 'severity-' + (severity || 'low');
+    return "severity-" + (severity || "low");
   }
 
   function escHtml(str) {
-    if (!str) return '';
+    if (!str) return "";
     return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
   }
 
   function renderFindings(data) {
@@ -119,41 +130,88 @@ if (typeof chrome !== 'undefined' && chrome.storage) {
       contentEl.innerHTML =
         '<div class="empty-state">' +
         '<div class="icon">🔍</div>' +
-        '<p>No recent findings.</p>' +
+        "<p>No recent findings.</p>" +
         '<p style="margin-top:4px;font-size:12px;">Run a scan in the dashboard.</p>' +
-        '</div>';
-      setBadge('ok', 'No findings');
+        "</div>";
+      setBadge("ok", "No findings");
       return;
     }
 
-    let html = '';
+    let html = "";
     for (const f of findings) {
-      const statusClass = (f.status === 'added' || f.status === 'regression') ? ' finding added' : '';
+      const statusClass =
+        f.status === "added" || f.status === "regression"
+          ? " finding added"
+          : "";
       html +=
-        '<div class="finding' + statusClass + '" data-id="' + escHtml(f.id) + '">' +
+        '<div class="finding' +
+        statusClass +
+        '" data-id="' +
+        escHtml(f.id) +
+        '">' +
         '<div class="finding-header">' +
-        '<span class="finding-code">' + escHtml(f.code) + '</span>' +
-        '<span class="finding-severity ' + severityClass(f.severity) + '">' +
+        '<span class="finding-code">' +
+        escHtml(f.code) +
+        "</span>" +
+        '<span class="finding-severity ' +
+        severityClass(f.severity) +
+        '">' +
         escHtml(f.severity) +
-        '</span>' +
-        '</div>' +
-        '<div class="finding-title">' + escHtml(f.title) + '</div>' +
-        '<div class="finding-location">' + escHtml(f.location) + '</div>' +
-        '</div>';
+        "</span>" +
+        "</div>" +
+        '<div class="finding-title">' +
+        escHtml(f.title) +
+        "</div>" +
+        '<div class="finding-location">' +
+        escHtml(f.location) +
+        "</div>" +
+        "</div>";
     }
 
     contentEl.innerHTML = html;
 
     // Attach click handlers for deep linking
-    contentEl.querySelectorAll('.finding').forEach(function (el) {
-      el.addEventListener('click', function () {
-        chrome.tabs.create({ url: DASHBOARD_URL + '/dashboard' });
+    contentEl.querySelectorAll(".finding").forEach(function (el) {
+      el.addEventListener("click", function () {
+        chrome.tabs.create({ url: DASHBOARD_URL + "/dashboard" });
       });
     });
 
-    setBadge('ok', count + ' finding' + (count !== 1 ? 's' : ''));
+    setBadge("ok", count + " finding" + (count !== 1 ? "s" : ""));
     if (count < total) {
-      setBadge('ok', count + ' of ' + total);
+      setBadge("ok", count + " of " + total);
+    }
+  }
+
+  function checkAndShowStaleness(lastUpdated) {
+    if (!lastUpdated) return;
+
+    const age = Date.now() - lastUpdated;
+    const ageMinutes = Math.floor(age / (60 * 1000));
+
+    if (age > STALENESS_THRESHOLD_MS) {
+      const warningEl = document.createElement("div");
+      warningEl.className = "staleness-warning";
+      warningEl.style.cssText =
+        "background: #fff3cd; border: 1px solid #ffc107; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 12px; color: #856404;";
+      warningEl.textContent =
+        "⚠️ Data is " +
+        ageMinutes +
+        " minutes old. Dashboard may be unreachable.";
+      contentEl.insertBefore(warningEl, contentEl.firstChild);
+    } else if (ageMinutes > 0) {
+      // Show "last updated" indicator
+      const timestampEl = document.createElement("div");
+      timestampEl.className = "last-updated";
+      timestampEl.style.cssText =
+        "font-size: 11px; color: #6c757d; padding: 4px 8px; text-align: center;";
+      timestampEl.textContent =
+        "Last updated " +
+        ageMinutes +
+        " minute" +
+        (ageMinutes !== 1 ? "s" : "") +
+        " ago";
+      contentEl.insertBefore(timestampEl, contentEl.firstChild);
     }
   }
 
@@ -161,36 +219,47 @@ if (typeof chrome !== 'undefined' && chrome.storage) {
     contentEl.innerHTML =
       '<div class="empty-state">' +
       '<div class="icon">⚠️</div>' +
-      '<p>' + escHtml(msg) + '</p>' +
+      "<p>" +
+      escHtml(msg) +
+      "</p>" +
       '<p style="margin-top:4px;font-size:12px;">Ensure the Sanctifier dashboard is running at ' +
-      escHtml(DASHBOARD_URL) + '.</p>' +
-      '</div>';
-    setBadge('error', 'Error');
+      escHtml(DASHBOARD_URL) +
+      ".</p>" +
+      "</div>";
+    setBadge("error", "Error");
   }
 
   function fetchFindings() {
-    setStatus('loading', 'Fetching findings…');
+    setStatus("loading", "Fetching findings…");
+    showLoadingState();
 
     fetch(API_URL)
       .then(function (res) {
         if (!res.ok) {
-          throw new Error('HTTP ' + res.status + ': ' + res.statusText);
+          throw new Error("HTTP " + res.status + ": " + res.statusText);
         }
         return res.json();
       })
       .then(function (data) {
-        if (data.status === 'ok') {
-          setStatus('connected', 'Connected · Last ' + (data.count || 0) + ' findings');
+        if (data.status === "ok") {
+          setStatus(
+            "connected",
+            "Connected · Last " + (data.count || 0) + " findings",
+          );
           renderFindings(data);
-        } else if (data.status === 'no_data') {
+          // Check for staleness and show appropriate indicator
+          chrome.storage.local.get(["lastUpdated"], function (result) {
+            checkAndShowStaleness(result.lastUpdated);
+          });
+        } else if (data.status === "no_data") {
           renderFindings({ findings: [], count: 0, total_available: 0 });
         } else {
-          renderError('Unexpected response from server.');
+          renderError("Unexpected response from server.");
         }
       })
       .catch(function (err) {
-        setStatus('disconnected', 'Disconnected');
-        renderError('Could not connect: ' + err.message);
+        setStatus("disconnected", "Disconnected");
+        renderError("Could not connect: " + err.message);
       });
   }
 
@@ -201,7 +270,7 @@ if (typeof chrome !== 'undefined' && chrome.storage) {
   var refreshInterval = setInterval(fetchFindings, 30000);
 
   // Clean up interval when popup closes
-  window.addEventListener('unload', function () {
+  window.addEventListener("unload", function () {
     clearInterval(refreshInterval);
   });
 })();

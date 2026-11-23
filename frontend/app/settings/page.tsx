@@ -32,6 +32,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<"analyzer" | "ai" | "theme" | "telemetry">("analyzer");
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   useEffect(() => {
     // Load settings from localStorage
@@ -41,7 +42,8 @@ export default function SettingsPage() {
         setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(stored) });
       }
     } catch (error) {
-      console.error("Failed to load settings:", error);
+      // Don't log the error which might contain sensitive data
+      toast.error("Failed to load settings");
     }
   }, []);
 
@@ -53,7 +55,7 @@ export default function SettingsPage() {
       toast.success("Settings saved");
       setTimeout(() => setSaved(false), 3000);
     } catch (error) {
-      console.error("Failed to save settings:", error);
+      // Don't log the error which might contain sensitive data
       toast.error("Failed to save settings. Storage may be full.");
     }
   };
@@ -254,16 +256,26 @@ export default function SettingsPage() {
                 >
                   API Key
                 </label>
-                <input
-                  type="password"
-                  id="aiApiKey"
-                  value={settings.aiApiKey}
-                  onChange={(e) =>
-                    setSettings({ ...settings, aiApiKey: e.target.value })
-                  }
-                  placeholder="sk-..."
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
+                <div className="relative">
+                  <input
+                    type={showApiKey ? "text" : "password"}
+                    id="aiApiKey"
+                    value={settings.aiApiKey}
+                    onChange={(e) =>
+                      setSettings({ ...settings, aiApiKey: e.target.value })
+                    }
+                    placeholder="sk-..."
+                    autoComplete="off"
+                    className="w-full px-3 py-2 pr-20 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+                  >
+                    {showApiKey ? "Hide" : "Show"}
+                  </button>
+                </div>
                 <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
                   Your API key will be stored locally and never sent to our servers
                 </p>
