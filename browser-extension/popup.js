@@ -81,6 +81,7 @@ if (typeof chrome !== "undefined" && chrome.storage) {
 
   const DASHBOARD_URL = "http://localhost:3000";
   const API_URL = DASHBOARD_URL + "/api/recent-findings";
+  const STALENESS_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
 
   const badgeEl = document.getElementById("badge");
   const statusDot = document.getElementById("statusDot");
@@ -90,6 +91,16 @@ if (typeof chrome !== "undefined" && chrome.storage) {
   function setStatus(state, text) {
     statusDot.className = "dot " + state;
     statusText.textContent = text;
+  }
+
+  function showLoadingState() {
+    contentEl.innerHTML =
+      '<div class="empty-state">' +
+      '<div class="icon">⏳</div>' +
+      "<p>Loading findings...</p>" +
+      '<p style="margin-top:4px;font-size:12px;">Fetching data from dashboard.</p>' +
+      "</div>";
+    setBadge("loading", "Loading...");
   }
 
   function setBadge(state, text) {
@@ -172,6 +183,38 @@ if (typeof chrome !== "undefined" && chrome.storage) {
     }
   }
 
+  function checkAndShowStaleness(lastUpdated) {
+    if (!lastUpdated) return;
+
+    const age = Date.now() - lastUpdated;
+    const ageMinutes = Math.floor(age / (60 * 1000));
+
+    if (age > STALENESS_THRESHOLD_MS) {
+      const warningEl = document.createElement("div");
+      warningEl.className = "staleness-warning";
+      warningEl.style.cssText =
+        "background: #fff3cd; border: 1px solid #ffc107; padding: 8px; margin: 8px 0; border-radius: 4px; font-size: 12px; color: #856404;";
+      warningEl.textContent =
+        "⚠️ Data is " +
+        ageMinutes +
+        " minutes old. Dashboard may be unreachable.";
+      contentEl.insertBefore(warningEl, contentEl.firstChild);
+    } else if (ageMinutes > 0) {
+      // Show "last updated" indicator
+      const timestampEl = document.createElement("div");
+      timestampEl.className = "last-updated";
+      timestampEl.style.cssText =
+        "font-size: 11px; color: #6c757d; padding: 4px 8px; text-align: center;";
+      timestampEl.textContent =
+        "Last updated " +
+        ageMinutes +
+        " minute" +
+        (ageMinutes !== 1 ? "s" : "") +
+        " ago";
+      contentEl.insertBefore(timestampEl, contentEl.firstChild);
+    }
+  }
+
   function renderError(msg) {
     contentEl.innerHTML =
       '<div class="empty-state">' +
@@ -188,6 +231,7 @@ if (typeof chrome !== "undefined" && chrome.storage) {
 
   function fetchFindings() {
     setStatus("loading", "Fetching findings…");
+    showLoadingState();
 
     fetch(API_URL)
       .then(function (res) {
@@ -216,6 +260,10 @@ if (typeof chrome !== "undefined" && chrome.storage) {
             "Connected · Last " + (data.count || 0) + " findings",
           );
           renderFindings(data);
+          // Check for staleness and show appropriate indicator
+          chrome.storage.local.get(["lastUpdated"], function (result) {
+            checkAndShowStaleness(result.lastUpdated);
+          });
         } else if (data.status === "no_data") {
           renderFindings({ findings: [], count: 0, total_available: 0 });
         } else {
