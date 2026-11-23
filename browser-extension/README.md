@@ -19,6 +19,7 @@ npm test
 ## Test Coverage
 
 The test suite (#1893) covers:
+
 - Empty findings array renders "No findings available" message
 - Non-array findings (null, undefined, string) render empty state
 - Valid findings display with severity, code, message, and location
@@ -29,7 +30,7 @@ The test suite (#1893) covers:
   - Missing `location` → "Unknown location"
 - Only first 10 findings are rendered when more than 10 are provided
 - HTML in messages is escaped to prevent XSS attacks
-A Chrome/Firefox MV3 extension that provides a quick preview of recent Sanctifier security scans without opening the full dashboard.
+  A Chrome/Firefox MV3 extension that provides a quick preview of recent Sanctifier security scans without opening the full dashboard.
 
 ## Features
 
@@ -65,6 +66,25 @@ Or generate placeholder PNGs using any image editor.
 3. Select the `manifest.json` file
 
 ## Usage
+
+**Important:** The extension requires the Sanctifier dashboard to be running on the default ports:
+
+- Dashboard: `http://localhost:3000` (or `http://127.0.0.1:9100`)
+
+If you're running the dashboard on a different port (e.g., because port 3000 is already in use), the extension will not be able to connect due to Manifest V3's strict host permissions. To use a custom port, you'll need to:
+
+1. Edit `manifest.json` and add your custom port to `host_permissions`:
+   ```json
+   "host_permissions": [
+     "http://localhost:3000/*",
+     "http://127.0.0.1:9100/*",
+     "http://localhost:YOUR_PORT/*"
+   ]
+   ```
+2. Update `DASHBOARD_URL` in `background.js` and `popup.js` to match your port
+3. Reload the extension in your browser
+
+### Steps to use:
 
 1. Ensure the Sanctifier dashboard is running at `http://localhost:3000`
 2. Click the Sanctifier icon in the browser toolbar
