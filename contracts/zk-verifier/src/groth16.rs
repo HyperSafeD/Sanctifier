@@ -72,7 +72,13 @@ impl VerifyingKey {
             gamma_abc.push_back(bytes.slice(offset..offset + 48));
             offset += 48;
         }
-        Ok(Self { alpha_g1, beta_g2, gamma_g2, delta_g2, gamma_abc })
+        Ok(Self {
+            alpha_g1,
+            beta_g2,
+            gamma_g2,
+            delta_g2,
+            gamma_abc,
+        })
     }
 
     pub fn num_public_inputs(&self) -> usize {
@@ -83,13 +89,13 @@ impl VerifyingKey {
 pub fn verify(
     vk: &VerifyingKey,
     proof: &Proof,
-    public_inputs: &[BytesN<32>],
+    public_inputs: &Vec<BytesN<32>>,
 ) -> Result<(), ProofError> {
     let expected_inputs = vk.num_public_inputs();
-    if public_inputs.len() != expected_inputs {
+    if public_inputs.len() as usize != expected_inputs {
         return Err(ProofError::PublicInputCountMismatch {
             expected: expected_inputs,
-            got: public_inputs.len(),
+            got: public_inputs.len() as usize,
         });
     }
     pairing_check(vk, proof)
@@ -209,9 +215,7 @@ mod field_arithmetic_proofs {
             for i in 0..N {
                 let mut carry = 0u64;
                 for j in 0..N - i {
-                    let v = result[i + j] as u64
-                        + self.0[i] as u64 * other.0[j] as u64
-                        + carry;
+                    let v = result[i + j] as u64 + self.0[i] as u64 * other.0[j] as u64 + carry;
                     result[i + j] = v as u8;
                     carry = v >> 8;
                 }
@@ -373,6 +377,7 @@ mod tests {
         let env = Env::default();
         let mut gamma_abc: Vec<G1Point> = Vec::new(&env);
         gamma_abc.push_back(make_g1(&env, 0x05));
+        gamma_abc.push_back(make_g1(&env, 0x06));
         let vk = VerifyingKey {
             alpha_g1: make_g1(&env, 0x01),
             beta_g2: make_g2(&env, 0x02),
@@ -385,7 +390,9 @@ mod tests {
             b: make_g2(&env, 0x0B),
             c: make_g1(&env, 0x0C),
         };
-        let result = verify(&vk, &proof, &[]);
+        // VK exposes one public input (gamma_abc.len() - 1); pass none.
+        let empty = Vec::from_array(&env, []);
+        let result = verify(&vk, &proof, &empty);
         assert!(result.is_err());
     }
 
@@ -407,7 +414,8 @@ mod tests {
             b: make_g2(&env, 0x0B),
             c: make_g1(&env, 0x0C),
         };
-        let result = verify(&vk, &proof, &[BytesN::from_array(&env, &[0x10; 32])]);
+        let inputs = Vec::from_array(&env, [BytesN::from_array(&env, &[0x10; 32])]);
+        let result = verify(&vk, &proof, &inputs);
         assert_eq!(result, Err(ProofError::ZeroProofElement));
     }
 
@@ -415,7 +423,7 @@ mod tests {
     fn bind_public_inputs_produces_deterministic_hash() {
         let env = Env::default();
         let input = BytesN::from_array(&env, &[0xAA; 32]);
-        let h1 = bind_public_inputs(&env, &[input.clone()]);
+        let h1 = bind_public_inputs(&env, core::slice::from_ref(&input));
         let h2 = bind_public_inputs(&env, &[input]);
         assert_eq!(h1, h2);
     }

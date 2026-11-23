@@ -62,6 +62,35 @@ pub fn render_template(template: &str, vars: &TemplateVars) -> String {
     out
 }
 
+/// Escape a string for safe interpolation into an HTML document.
+///
+/// Replaces the five characters that have special meaning in HTML/XML so that
+/// user-controlled values (file paths, `--network`, vuln-db version strings,
+/// finding messages, code snippets) cannot inject markup or script content into
+/// a generated HTML report.
+///
+/// | Input | Output |
+/// |-------|--------|
+/// | `&`   | `&amp;` |
+/// | `<`   | `&lt;`  |
+/// | `>`   | `&gt;`  |
+/// | `"`   | `&quot;` |
+/// | `'`   | `&#x27;` |
+pub fn html_escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#x27;"),
+            other => out.push(other),
+        }
+    }
+    out
+}
+
 /// Return all `{{KEY}}` placeholders that were not replaced by `render_template`.
 pub fn unreplaced_placeholders(rendered: &str) -> Vec<String> {
     let mut found = Vec::new();
@@ -266,6 +295,47 @@ mod tests {
             validate_output_path(&json_path).unwrap(),
             ReportFormat::Json
         );
+    }
+
+    // ── html_escape ───────────────────────────────────────────────────────────
+
+    #[test]
+    fn html_escape_leaves_plain_text_unchanged() {
+        assert_eq!(html_escape("hello world 123"), "hello world 123");
+    }
+
+    #[test]
+    fn html_escape_escapes_ampersand() {
+        assert_eq!(html_escape("a & b"), "a &amp; b");
+    }
+
+    #[test]
+    fn html_escape_escapes_angle_brackets() {
+        assert_eq!(html_escape("<b>bold</b>"), "&lt;b&gt;bold&lt;/b&gt;");
+    }
+
+    #[test]
+    fn html_escape_escapes_double_quote() {
+        assert_eq!(html_escape(r#"say "hi""#), "say &quot;hi&quot;");
+    }
+
+    #[test]
+    fn html_escape_escapes_single_quote() {
+        assert_eq!(html_escape("it's"), "it&#x27;s");
+    }
+
+    #[test]
+    fn html_escape_neutralises_script_injection() {
+        let malicious = r#"<script>alert('xss')</script>"#;
+        let escaped = html_escape(malicious);
+        assert!(!escaped.contains('<'), "escaped output must not contain '<'");
+        assert!(!escaped.contains('>'), "escaped output must not contain '>'");
+        assert!(escaped.contains("&lt;script&gt;"));
+    }
+
+    #[test]
+    fn html_escape_handles_empty_string() {
+        assert_eq!(html_escape(""), "");
     }
 
     // ── write_report_atomic ───────────────────────────────────────────────────

@@ -311,6 +311,19 @@ Test coverage:
 - Unhandled-`Result` fixture behavior
 - Event-emission fixture boundaries
 
+### Fuzz Testing
+
+A `cargo fuzz` harness drives `execute_guarded` and its accessors through
+arbitrary byte sequences (random function names, argument counts/values, and
+init ordering) to confirm the contract never panics and always resolves
+unexpected input to a typed `RuntimeGuardError`.
+
+```bash
+cd contracts/runtime-guard-wrapper
+cargo install cargo-fuzz
+cargo +nightly fuzz run fuzz_execute_guarded
+```
+
 ## Contribution notes
 
 - Keep event names/status values stable unless there is a migration note and consumer update.

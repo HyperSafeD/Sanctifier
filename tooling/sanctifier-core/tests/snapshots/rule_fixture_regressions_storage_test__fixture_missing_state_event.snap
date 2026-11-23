@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/rule_fixture_regressions_storage_test.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "line 19",
+    "message": "Function 'pause' changes privileged state without emitting an event",
+    "rule_name": "missing_state_event",
+    "severity": "Warning",
+    "suggestion": "Add env.events().publish() after state changes for off-chain observability"
+  }
+]

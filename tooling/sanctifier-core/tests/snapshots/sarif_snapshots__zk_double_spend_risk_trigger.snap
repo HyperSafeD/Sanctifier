@@ -1,5 +1,6 @@
 ---
 source: tooling/sanctifier-core/tests/sarif_snapshots.rs
+assertion_line: 460
 expression: violations_json(&violations)
 ---
 [
@@ -7,7 +8,7 @@ expression: violations_json(&violations)
     "location": "withdraw",
     "message": "Function 'withdraw' verifies a ZK proof but never checks a nullifier set. The same valid proof can be replayed to drain funds multiple times.",
     "rule_name": "zk_double_spend_risk",
-    "severity": "Critical",
+    "severity": "Error",
     "suggestion": "Before processing a proof, load the nullifier from storage and assert it has not been used. After successful verification, mark the nullifier as spent. Use persistent storage so the nullifier set survives ledger compaction."
   }
 ]

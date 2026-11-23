@@ -9,7 +9,8 @@
     "sanctifier_wasm.js",
     "sanctifier_wasm.d.ts"
   ],
-  "main": "sanctifier_wasm.js",
+  "main": "index.js",
+  "module": "index.js",
   "types": "sanctifier_wasm.d.ts",
   "sideEffects": [
     "./snippets/*"

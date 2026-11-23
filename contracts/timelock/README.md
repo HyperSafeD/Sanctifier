@@ -2,6 +2,14 @@
 
 A teaching-focused Soroban smart contract demonstrating timelock mechanisms with both **safe** and **vulnerable** implementations.
 
+## Timestamp safety
+
+The safe execution path waits an additional 10 seconds after a proposal's
+scheduled timestamp before allowing execution. This buffer accounts for the
+small amount of timestamp drift validators may introduce when closing a
+ledger. Applications requiring stricter, deterministic timing should consider
+representing delays in ledger sequence numbers instead of wall-clock seconds.
+
 ## Overview
 
 The contract implements a role-based timelock system with:

@@ -195,6 +195,28 @@ jobs:
           path: .deployment-manifest.json
           retention-days: 30
 
+      - name: Send deployment outcome alert
+        if: always()
+        continue-on-error: true
+        env:
+          ALERT_WEBHOOK_URLS: ${{ secrets.ALERT_WEBHOOK_URLS }}
+          ALERT_WEBHOOK_SECRET: ${{ secrets.ALERT_WEBHOOK_SECRET }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            SEVERITY=info
+            TITLE="Testnet deployment succeeded"
+          else
+            SEVERITY=critical
+            TITLE="Testnet deployment failed"
+          fi
+          node .github/scripts/alert.js \
+            --event "deploy.${{ job.status }}" \
+            --title "$TITLE" \
+            --message "Runtime Guard Wrapper deployment workflow finished with status: ${{ job.status }}." \
+            --severity "$SEVERITY" \
+            --field "target=testnet" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
   # ── Mainnet deploy (gated by GitHub Environment + manual approval) ───────
   mainnet-deploy:
     name: Deploy to Soroban Mainnet
@@ -290,6 +312,28 @@ jobs:
           name: deployment-manifest-mainnet-${{ github.run_id }}
           path: .deployment-manifest.json
           retention-days: 90
+
+      - name: Send deployment outcome alert
+        if: always()
+        continue-on-error: true
+        env:
+          ALERT_WEBHOOK_URLS: ${{ secrets.ALERT_WEBHOOK_URLS }}
+          ALERT_WEBHOOK_SECRET: ${{ secrets.ALERT_WEBHOOK_SECRET }}
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then
+            SEVERITY=info
+            TITLE="Mainnet deployment succeeded"
+          else
+            SEVERITY=critical
+            TITLE="Mainnet deployment failed"
+          fi
+          node .github/scripts/alert.js \
+            --event "deploy.${{ job.status }}" \
+            --title "$TITLE" \
+            --message "Runtime Guard Wrapper deployment workflow finished with status: ${{ job.status }}. A failure means the deployment/upgrade proposal path was NOT completed — follow ROLLBACK_PROCEDURE.md before retrying." \
+            --severity "$SEVERITY" \
+            --field "target=mainnet" \
+            --run-url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
   # ── Summary ──────────────────────────────────────────────────────────────
   summary:

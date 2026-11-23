@@ -1,0 +1,13 @@
+---
+source: tooling/sanctifier-core/tests/rule_fixture_regressions_test.rs
+expression: violations_json(&violations)
+---
+[
+  {
+    "location": "reset_limit",
+    "message": "Function 'reset_limit' performs privileged storage mutations without authentication.\n╰─ Missing require_auth() or require_auth_for_args() check",
+    "rule_name": "auth_gap",
+    "severity": "Critical",
+    "suggestion": "🔐 Add require_auth() or require_auth_for_args() before any state mutation or external contract call.\nExample:\n  admin.require_auth();\n  env.storage().instance().set(&key, &value);"
+  }
+]

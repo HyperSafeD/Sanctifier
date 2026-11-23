@@ -375,7 +375,10 @@ fn render_harness_source(
         }
         None => {
             let _ = writeln!(out, "// TODO: could not auto-detect the contract crate.");
-            let _ = writeln!(out, "// use your_contract_crate::{{{contract_ty}, {client_ty}}};");
+            let _ = writeln!(
+                out,
+                "// use your_contract_crate::{{{contract_ty}, {client_ty}}};"
+            );
         }
     }
     let _ = writeln!(out);
@@ -500,7 +503,10 @@ mod tests {
         let manifest = render_manifest(
             Backend::Honggfuzz,
             Some(&info),
-            &[("my_contract_transfer".to_string(), "src/bin/my_contract_transfer.rs".to_string())],
+            &[(
+                "my_contract_transfer".to_string(),
+                "src/bin/my_contract_transfer.rs".to_string(),
+            )],
         );
         assert!(manifest.contains("honggfuzz = \"0.5\""));
         assert!(manifest.contains("my-contract = { path"));

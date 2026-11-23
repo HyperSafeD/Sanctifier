@@ -188,7 +188,10 @@ mod tests {
             }
         "#;
         let violations = rule.check(source);
-        assert!(!violations.is_empty(), "missing range check must be flagged");
+        assert!(
+            !violations.is_empty(),
+            "missing range check must be flagged"
+        );
         assert!(violations[0].message.contains("range"));
         assert!(violations[0].message.contains("RangeCircuit"));
     }
@@ -235,7 +238,10 @@ mod tests {
             }
         "#;
         let violations = rule.check(source);
-        assert!(violations.is_empty(), "range check present — should be clean");
+        assert!(
+            violations.is_empty(),
+            "range check present — should be clean"
+        );
     }
 
     #[test]
@@ -298,6 +304,9 @@ mod tests {
                 }
             }
         "#;
-        assert!(rule.check(source).is_empty(), "no allocations — nothing to check");
+        assert!(
+            rule.check(source).is_empty(),
+            "no allocations — nothing to check"
+        );
     }
 }

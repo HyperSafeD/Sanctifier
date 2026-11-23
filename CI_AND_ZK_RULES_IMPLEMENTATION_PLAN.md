@@ -15,7 +15,7 @@ This document provides comprehensive implementation frameworks for:
 3. **ZK Rule Z002**: Insecure/predictable randomness in circuit/proof inputs
 4. **ZK Rule Z006**: Missing proof nonce/uniqueness enforcement (replay attacks)
 
-### Implementation Approach
+### Implementation Approach.
 
 - **Issues #1180, #1182**: Enhanced CI workflows with matrix testing and benchmark comparison
 - **Issues #1198, #1202**: Implementation plans for ZK-specific detection rules (depend on #1192, #1194, #1197)

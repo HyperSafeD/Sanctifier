@@ -1,0 +1,44 @@
+name: ShellCheck
+
+on:
+  push:
+    paths:
+      - "scripts/**"
+      - "tooling/**/scripts/**"
+      - ".github/workflows/shellcheck.yml"
+  pull_request:
+    paths:
+      - "scripts/**"
+      - "tooling/**/scripts/**"
+      - ".github/workflows/shellcheck.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run shellcheck on top-level scripts/
+        run: |
+          mapfile -t scripts < <(find scripts -name "*.sh" -type f)
+          if [ "${#scripts[@]}" -gt 0 ]; then
+            shellcheck --severity=warning "${scripts[@]}"
+          else
+            echo "No .sh files found under scripts/ — skipping."
+          fi
+
+      - name: Run shellcheck on tooling/**/scripts/
+        run: |
+          mapfile -t scripts < <(find tooling -path "*/scripts/*.sh" -type f)
+          if [ "${#scripts[@]}" -gt 0 ]; then
+            shellcheck --severity=warning "${scripts[@]}"
+          else
+            echo "No .sh files found under tooling/**/scripts/ — skipping."
+          fi

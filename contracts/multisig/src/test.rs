@@ -1,6 +1,5 @@
 extern crate std;
-
-use crate::{MultisigWallet, MultisigWalletClient};
+use crate::{Error, MultisigWallet, MultisigWalletClient, MAX_SIGNERS};
 use soroban_sdk::{
     contract, contractimpl, symbol_short,
     testutils::{Address as _, Logs},
@@ -168,6 +167,85 @@ fn test_signer_management() {
         &vec![&env, 20u32.into_val(&env)],
         &Bytes::from_array(&env, &[2u8; 32]),
     );
+}
+
+fn contract_err(e: Error) -> soroban_sdk::Error {
+    soroban_sdk::Error::from_contract_error(e as u32)
+}
+
+#[test]
+fn test_add_signer_beyond_limit_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let wallet_id = env.register_contract(None, MultisigWallet);
+    let client = MultisigWalletClient::new(&env, &wallet_id);
+
+    let mut signers = soroban_sdk::Vec::new(&env);
+    for _ in 0..(MAX_SIGNERS - 1) {
+        signers.push_back(Address::generate(&env));
+    }
+    client.init(&signers, &1);
+
+    client.add_signer(&Address::generate(&env));
+
+    let result = client.try_add_signer(&Address::generate(&env));
+    assert_eq!(result, Err(Ok(contract_err(Error::TooManySigners))));
+}
+
+#[test]
+fn test_add_existing_signer_at_limit_is_noop() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let wallet_id = env.register_contract(None, MultisigWallet);
+    let client = MultisigWalletClient::new(&env, &wallet_id);
+
+    let existing = Address::generate(&env);
+    let mut signers = soroban_sdk::Vec::new(&env);
+    signers.push_back(existing.clone());
+    for _ in 1..MAX_SIGNERS {
+        signers.push_back(Address::generate(&env));
+    }
+    client.init(&signers, &1);
+
+    client.add_signer(&existing);
+}
+
+#[test]
+fn test_init_with_too_many_signers_fails() {
+    let env = Env::default();
+    let wallet_id = env.register_contract(None, MultisigWallet);
+    let client = MultisigWalletClient::new(&env, &wallet_id);
+
+    let mut signers = soroban_sdk::Vec::new(&env);
+    for _ in 0..=MAX_SIGNERS {
+        signers.push_back(Address::generate(&env));
+    }
+    let result = client.try_init(&signers, &1);
+    assert_eq!(result, Err(Ok(contract_err(Error::TooManySigners))));
+}
+
+#[test]
+fn test_initiate_recovery_with_too_many_signers_fails() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let wallet_id = env.register_contract(None, MultisigWallet);
+    let client = MultisigWalletClient::new(&env, &wallet_id);
+
+    let signer1 = Address::generate(&env);
+    client.init(&vec![&env, signer1], &1);
+
+    let guardian = Address::generate(&env);
+    client.set_recovery_guardian(&guardian);
+
+    let mut too_many = soroban_sdk::Vec::new(&env);
+    for _ in 0..=MAX_SIGNERS {
+        too_many.push_back(Address::generate(&env));
+    }
+    let result = client.try_initiate_recovery(&guardian, &too_many, &1);
+    assert_eq!(result, Err(Ok(contract_err(Error::TooManySigners))));
 }
 
 // ── Property-based tests ─────────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withMetrics } from "../../../lib/metrics";
 
 const SOROBAN_RPC = "https://soroban-testnet.stellar.org";
 const STELLAR_EXPERT_BASE =
@@ -92,7 +93,7 @@ async function getContractInfo(
   }
 }
 
-export async function GET(): Promise<NextResponse<TestnetStatusResponse>> {
+async function handleGET(): Promise<NextResponse<TestnetStatusResponse>> {
   const [networkResult, ...contractResults] = await Promise.allSettled([
     getRpcHealth(),
     ...CONTRACTS.map((c) => getContractInfo(c.address)),
@@ -129,3 +130,5 @@ export async function GET(): Promise<NextResponse<TestnetStatusResponse>> {
     },
   );
 }
+
+export const GET = withMetrics("/api/testnet-status", "GET", handleGET);

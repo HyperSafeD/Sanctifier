@@ -1,6 +1,6 @@
 extern crate std;
 
-use crate::{TimelockController, TimelockControllerClient};
+use crate::{TimelockController, TimelockControllerClient, TIMESTAMP_DRIFT_BUFFER_SECS};
 use soroban_sdk::{
     contract, contractimpl, testutils::Address as _, testutils::Ledger as _, Address, BytesN, Env,
     IntoVal, Symbol, Val, Vec,
@@ -45,7 +45,7 @@ fn test_timelock_flow() {
 
     // Fast forward time
     env.ledger().with_mut(|li| {
-        li.timestamp += 3601;
+        li.timestamp += 3600 + TIMESTAMP_DRIFT_BUFFER_SECS;
     });
 
     // Execute
@@ -124,9 +124,9 @@ fn test_safe_execute_enforces_delay() {
     // Attempting to execute immediately should fail (panic)
     // This test just verifies the behavior by fast-forwarding to success
 
-    // Fast forward time exactly to the ready time
+    // Fast forward past the ready time and validator-drift buffer.
     env.ledger().with_mut(|li| {
-        li.timestamp += delay;
+        li.timestamp += delay + TIMESTAMP_DRIFT_BUFFER_SECS;
     });
 
     // Now execute succeeds
@@ -136,6 +136,38 @@ fn test_safe_execute_enforces_delay() {
         result_u32, 31u32,
         "Safe execution succeeded after delay elapsed"
     );
+}
+
+#[test]
+fn test_safe_execute_rejects_timestamp_inside_drift_buffer() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let admin = Address::generate(&env);
+    let proposer = Address::generate(&env);
+    let executor = Address::generate(&env);
+    let timelock_id = env.register_contract(None, TimelockController);
+    let timelock = TimelockControllerClient::new(&env, &timelock_id);
+    timelock.init(
+        &admin,
+        &100,
+        &Vec::from_array(&env, [proposer.clone()]),
+        &Vec::from_array(&env, [executor.clone()]),
+    );
+
+    let mock_id = env.register_contract(None, MockContract);
+    let fn_name = Symbol::new(&env, "action");
+    let args = Vec::from_array(&env, [10u32.into_val(&env)]);
+    let salt = BytesN::from_array(&env, &[3u8; 32]);
+    timelock.schedule(&proposer, &mock_id, &fn_name, &args, &salt, &100);
+
+    env.ledger().with_mut(|li| {
+        li.timestamp += 100 + TIMESTAMP_DRIFT_BUFFER_SECS - 1;
+    });
+
+    assert!(timelock
+        .try_execute(&executor, &mock_id, &fn_name, &args, &salt)
+        .is_err());
 }
 
 #[test]

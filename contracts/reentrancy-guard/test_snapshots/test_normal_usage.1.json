@@ -42,7 +42,11 @@
                     "storage": [
                       {
                         "key": {
-                          "symbol": "RE_GRD"
+                          "vec": [
+                            {
+                              "symbol": "Guard"
+                            }
+                          ]
                         },
                         "val": {
                           "u32": 0

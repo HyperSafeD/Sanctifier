@@ -4,6 +4,24 @@
 
 ---
 
+## 🆕 Recent Improvements
+
+### Rule Engine & Z3 Backend Hardening (Latest)
+
+**What's New:**
+- ✅ **Rule Engine Orchestration:** 20 new integration tests covering registry population, determinism, custom regex rules, and workspace-scale e2e scans
+- ✅ **Z3 Backend Refactor:** Modular architecture with clear boundaries (types, invariants, backend, benchmark) + 21 integration tests
+- ✅ **CI Coverage:** Dedicated `rule-engine-e2e` and `smt-module-boundaries` jobs ensure production reliability
+- ✅ **Documentation:** Complete formal specs and test suite references
+
+**Key Benefits:**
+- Production-ready rule engine with predictable outputs
+- Cleaner Z3 backend module boundaries for easier maintenance
+- Comprehensive test coverage in CI
+- Stable JSON output formats
+
+---
+
 ## 🚀 Getting Started (Start Here!)
 
 ### For Beginners

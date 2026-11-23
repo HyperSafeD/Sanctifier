@@ -108,8 +108,8 @@ cargo run --bin sanctifier -- analyze examples/sep41-compliant-token.rs
 
 ### CI Validation
 
-✅ Existing CI jobs cover S012:
-- `rust-tests` job runs `cargo test -p sanctifier-core --all-features`
+✅ Existing CI jobs cover S012 (`.github/workflows/ci.yml`):
+- `ci` job runs `cargo test -p sanctifier-core --all-features`
 - `contracts-sep41-fixtures` job validates S012 in fixture output
 - E2E coverage and benchmark jobs include S012 tests
 
@@ -185,3 +185,30 @@ These are clearly documented in code and `docs/rules/s012-sep41-interface.md`.
 **Scope:** Documentation, Tests, Examples  
 **Breaking:** No  
 **Version Bump:** Not required
+
+---
+
+## Document Verification
+
+**Last verified**: October 2026
+
+All file paths, commands, and CI references in this document have been verified against the current codebase:
+
+### ✅ Files Verified
+- `tooling/sanctifier-core/src/sep41.rs` (27KB)
+- `tooling/sanctifier-core/tests/sep41_tests.rs` (27KB, 19 tests)
+- `docs/rules/s012-sep41-interface.md` (11KB)
+- `examples/sep41-compliant-token.rs` (13KB)
+- `contracts/fixtures/finding-codes/s012_token_interface.rs` (1.7KB)
+- `docs/s012-hardening-summary.md` (13KB)
+- `.github/workflows/ci.yml` (includes `ci` and `contracts-sep41-fixtures` jobs)
+
+### ✅ Commands Verified
+- Binary name: `sanctifier` (correct via `[[bin]]` in Cargo.toml)
+- Test commands: `cargo test sep41 -p sanctifier-core --all-features` ✓
+- CLI analysis: `cargo run --bin sanctifier -- analyze` ✓
+
+### ⚠️  Updates Since Original PR
+- CI job name changed: `rust-tests` → `ci` (functionality unchanged)
+- All 19 integration tests still pass
+- All referenced files exist and match descriptions

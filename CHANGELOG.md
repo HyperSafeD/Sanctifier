@@ -13,6 +13,39 @@ See [VERSIONING_POLICY.md](./VERSIONING_POLICY.md) for the detailed policy on wh
 - Bullet points start with `-` and describe user-facing changes
 - Reference issue/PR numbers where applicable
 
+## [Unreleased]
+
+### Added
+
+- Frontend: breadcrumb navigation, a `/contracts` explorer (search, risk filter, sort, risk badges), a `/audit`
+  report page with PDF and SARIF export, and a global ⌘K / Ctrl+K command palette (#1672, #1674, #1675, #1677).
+
+- `AuthGapRule::check_many` / `AuthGapRule::fix_many` — rayon-backed batch APIs that analyse many
+  sources concurrently, one task per source, with index-aligned results. Documented in
+  [`docs/rules/s001-auth-gap.md`](docs/rules/s001-auth-gap.md).
+- New `parallel` feature on `sanctifier-core` (default on, enabled by `sanctifier-cli`, off for
+  wasm32) gating the rayon dependency. The batch APIs remain available without it and run serially.
+- `DashboardProvider` — a `useReducer` + Context store for dashboard view state, replacing fourteen
+  page-level `useState` hooks in `frontend/app/dashboard/page.tsx`. State and actions are exposed
+  through separate contexts so dispatch-only consumers do not re-render on unrelated state changes.
+- Unit tests for `CallGraph` (23 cases covering empty/undefined input, the large-graph guard,
+  layout, label truncation, edge routing, and accessibility) and for `DashboardProvider` (20 cases).
+
+### Changed
+
+- Frontend theme state now uses the ThemeProvider-managed `data-theme` attribute as the CSS
+  source of truth, with the pre-hydration bootstrap honoring light, dark, system, and
+  high-contrast preferences (#1349).
+- The reentrancy-guard reference now documents and regression-tests its typed
+  `StorageKey::Guard` key against legacy string-key collisions (#1340).
+- Improved grammar and terminology throughout the getting-started guide (#1341).
+- Added configuration-driven CLI integration coverage for JSON and SARIF output (#1348).
+- README, `frontend/README.md` and `docs/PACKAGING_AND_INSTALL.md` installation guides corrected:
+  `sanctifier-cli` builds `sanctifier-core` with default features off, so installing it never
+  compiles Z3 and `--no-default-features` was a no-op on the CLI. libz3 is required only for
+  workspace-from-source builds. Added the npm/npx, Homebrew, Scoop and winget channels, the
+  Node.js 20+ / npm 10+ dashboard requirement, and a `sanctifier-core` feature-flag table.
+
 ## [v1.0.0-mainnet] - 2026-07-27
 
 ### Added

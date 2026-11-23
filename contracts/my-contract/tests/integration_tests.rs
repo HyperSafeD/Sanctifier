@@ -1,9 +1,11 @@
 #![cfg(test)]
 #![allow(unexpected_cfgs)]
 
+use core::fmt::Debug;
+
 use soroban_sdk::{
     testutils::{Address as _, Ledger as _},
-    Address, Env, String,
+    Address, Env, InvokeError, String,
 };
 
 use my_contract::{Token, TokenClient, TokenError};
@@ -11,6 +13,31 @@ use my_contract::{Token, TokenClient, TokenError};
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/// Asserts that a `try_*` client call failed with exactly `expected`.
+///
+/// Unlike `result.unwrap_err().unwrap()`, a failure here states which call
+/// was being checked and whether it unexpectedly succeeded, failed with a
+/// different contract error, or aborted with a non-contract host error.
+fn assert_contract_error<T: Debug, C: Debug>(
+    result: Result<Result<T, C>, Result<soroban_sdk::Error, InvokeError>>,
+    expected: TokenError,
+    context: &str,
+) {
+    let expected_err: soroban_sdk::Error = expected.into();
+    match result {
+        Err(Ok(actual)) => assert_eq!(
+            actual, expected_err,
+            "{context}: expected contract error {expected:?}, got {actual:?}"
+        ),
+        Err(Err(invoke_err)) => panic!(
+            "{context}: expected contract error {expected:?}, but the call aborted with host error {invoke_err:?}"
+        ),
+        Ok(value) => panic!(
+            "{context}: expected contract error {expected:?}, but the call succeeded with {value:?}"
+        ),
+    }
+}
 
 fn setup(env: &Env) -> (TokenClient<'_>, Address) {
     let admin = Address::generate(env);
@@ -180,8 +207,11 @@ fn transfer_from_fails_on_expired_allowance() {
     env.ledger().with_mut(|l| l.sequence_number = 6);
 
     let result = client.try_transfer_from(&bob, &alice, &carol, &100i128);
-    let err = result.unwrap_err().unwrap();
-    assert_eq!(err, TokenError::AllowanceExpired.into());
+    assert_contract_error(
+        result,
+        TokenError::AllowanceExpired,
+        "transfer_from after the allowance expiration ledger",
+    );
 }
 
 #[test]
@@ -195,9 +225,10 @@ fn double_initialize_fails() {
         &String::from_str(&env, "Test Token"),
         &String::from_str(&env, "TEST"),
     );
-    assert_eq!(
-        result.unwrap_err().unwrap(),
-        TokenError::AlreadyInitialized.into()
+    assert_contract_error(
+        result,
+        TokenError::AlreadyInitialized,
+        "second initialize on an initialized token",
     );
 }
 
@@ -213,9 +244,10 @@ fn transfer_from_consumes_exact_allowance() {
     client.transfer_from(&bob, &alice, &carol, &100i128);
 
     let result = client.try_transfer_from(&bob, &alice, &carol, &1i128);
-    assert_eq!(
-        result.unwrap_err().unwrap(),
-        TokenError::InsufficientAllowance.into()
+    assert_contract_error(
+        result,
+        TokenError::InsufficientAllowance,
+        "transfer_from after the allowance was fully consumed",
     );
 }
 
@@ -272,9 +304,10 @@ fn mint_fails_when_not_initialized() {
     let to = Address::generate(&env);
 
     let result = client.try_mint(&to, &100i128);
-    assert_eq!(
-        result.unwrap_err().unwrap(),
-        TokenError::NotInitialized.into()
+    assert_contract_error(
+        result,
+        TokenError::NotInitialized,
+        "mint on an uninitialized token",
     );
 }
 
@@ -286,9 +319,10 @@ fn transfer_fails_with_insufficient_balance() {
     let client = setup_with_balance(&env, &alice, 50);
 
     let result = client.try_transfer(&alice, &bob, &100i128);
-    assert_eq!(
-        result.unwrap_err().unwrap(),
-        TokenError::InsufficientBalance.into()
+    assert_contract_error(
+        result,
+        TokenError::InsufficientBalance,
+        "transfer of 100 from a balance of 50",
     );
 }
 
@@ -299,9 +333,10 @@ fn burn_fails_with_insufficient_balance() {
     let client = setup_with_balance(&env, &alice, 50);
 
     let result = client.try_burn(&alice, &100i128);
-    assert_eq!(
-        result.unwrap_err().unwrap(),
-        TokenError::InsufficientBalance.into()
+    assert_contract_error(
+        result,
+        TokenError::InsufficientBalance,
+        "burn of 100 from a balance of 50",
     );
 }
 
@@ -316,8 +351,9 @@ fn transfer_from_fails_with_insufficient_allowance() {
     client.approve(&alice, &bob, &50i128, &1_000u32);
 
     let result = client.try_transfer_from(&bob, &alice, &carol, &100i128);
-    assert_eq!(
-        result.unwrap_err().unwrap(),
-        TokenError::InsufficientAllowance.into()
+    assert_contract_error(
+        result,
+        TokenError::InsufficientAllowance,
+        "transfer_from of 100 against an allowance of 50",
     );
 }
