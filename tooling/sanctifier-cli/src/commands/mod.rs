@@ -19,6 +19,7 @@ pub mod pr_comment;
 pub mod reentrancy;
 pub mod report;
 pub mod report_templates;
+pub mod rpc_timeout;
 pub mod sarif;
 pub mod serve;
 pub mod storage;
