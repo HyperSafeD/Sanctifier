@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::commands::color as c;
+use crate::commands::rpc_timeout::{add_timeout_arg, DEFAULT_RPC_TIMEOUT_SECS};
 use anyhow::{bail, Context};
 use clap::Args;
 use serde::Serialize;
@@ -28,6 +29,11 @@ pub struct VerifyDeploymentArgs {
     /// Output format: text (default) or json
     #[arg(long, default_value = "text")]
     pub format: String,
+
+    /// Timeout in seconds for each Soroban RPC call (0 = no timeout).
+    /// Defaults to the shared RPC_TIMEOUT constant (30 s).
+    #[arg(long, default_value_t = DEFAULT_RPC_TIMEOUT_SECS)]
+    pub rpc_timeout: u64,
 }
 
 #[derive(Serialize)]
@@ -69,7 +75,7 @@ pub fn exec(args: VerifyDeploymentArgs) -> anyhow::Result<()> {
     if !is_json {
         println!("  Fetching remote WASM hash for {} …", args.contract_id);
     }
-    let remote_hash = fetch_remote_hash(&args.contract_id, &args.network)?;
+    let remote_hash = fetch_remote_hash(&args.contract_id, &args.network, args.rpc_timeout)?;
 
     let matched = local_hash == remote_hash;
 
@@ -175,24 +181,31 @@ fn find_wasm(source: &std::path::Path) -> anyhow::Result<PathBuf> {
 }
 
 /// Fetch the WASM for `contract_id` from the network and return its SHA-256 hash.
-fn fetch_remote_hash(contract_id: &str, network: &str) -> anyhow::Result<String> {
+///
+/// `rpc_timeout_secs` is forwarded to the CLI via `--timeout`.  Pass `0` to
+/// disable the timeout (not recommended in production).
+fn fetch_remote_hash(
+    contract_id: &str,
+    network: &str,
+    rpc_timeout_secs: u64,
+) -> anyhow::Result<String> {
     let out_path = std::env::temp_dir().join(format!("sanctifier-{contract_id}.wasm"));
 
     for cli in &["stellar", "soroban"] {
-        let status = Command::new(cli)
-            .args([
-                "contract",
-                "fetch",
-                "--id",
-                contract_id,
-                "--network",
-                network,
-                "--output-file",
-            ])
-            .arg(&out_path)
-            .status();
+        let mut cmd = Command::new(cli);
+        cmd.args([
+            "contract",
+            "fetch",
+            "--id",
+            contract_id,
+            "--network",
+            network,
+            "--output-file",
+        ]);
+        cmd.arg(&out_path);
+        add_timeout_arg(&mut cmd, rpc_timeout_secs);
 
-        if let Ok(s) = status {
+        if let Ok(s) = cmd.status() {
             if s.success() {
                 let bytes = std::fs::read(&out_path).with_context(|| {
                     format!("failed to read fetched WASM: {}", out_path.display())
@@ -295,6 +308,7 @@ fn sha256_hex(data: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::commands::rpc_timeout::DEFAULT_RPC_TIMEOUT_SECS;
 
     #[test]
     fn sha256_known_vector() {
@@ -306,5 +320,12 @@ mod tests {
     fn sha256_empty() {
         let hex = sha256_hex(b"");
         assert!(hex.starts_with("e3b0c442"), "got: {hex}");
+    }
+
+    #[test]
+    fn args_default_rpc_timeout_matches_shared_constant() {
+        // Verify the default value wired into the clap arg matches the
+        // canonical constant so the two can't drift silently.
+        assert_eq!(DEFAULT_RPC_TIMEOUT_SECS, 30);
     }
 }

@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use crate::commands::color as c;
+use crate::commands::rpc_timeout::{add_timeout_arg, DEFAULT_RPC_TIMEOUT_SECS};
 use crate::errors::SanctifierError;
 use clap::Args;
 use std::fs;
@@ -34,6 +35,11 @@ pub struct DeployArgs {
     /// Output format (text, json)
     #[arg(short, long, default_value = "text")]
     pub output_format: String,
+
+    /// Timeout in seconds for each Soroban RPC call (0 = no timeout).
+    /// Defaults to the shared RPC_TIMEOUT constant (30 s).
+    #[arg(long, default_value_t = DEFAULT_RPC_TIMEOUT_SECS)]
+    pub rpc_timeout: u64,
 }
 
 pub struct DeploymentConfig {
@@ -41,6 +47,8 @@ pub struct DeploymentConfig {
     pub network: String,
     pub secret_key: String,
     pub account_id: Option<String>,
+    /// Timeout passed to `soroban contract deploy` and downstream RPC calls.
+    pub rpc_timeout_secs: u64,
 }
 
 pub fn exec(args: DeployArgs) -> anyhow::Result<()> {
@@ -86,6 +94,7 @@ pub fn exec(args: DeployArgs) -> anyhow::Result<()> {
         network: args.network.clone(),
         secret_key: secret_key.clone(),
         account_id: args.account_id,
+        rpc_timeout_secs: args.rpc_timeout,
     };
 
     // Deploy to testnet
@@ -107,7 +116,7 @@ pub fn exec(args: DeployArgs) -> anyhow::Result<()> {
                 if !is_json {
                     println!("{} Running continuous validation...", c::blue("🔍"));
                 }
-                validate_deployment(&contract_id, &args.network, is_json)?;
+                validate_deployment(&contract_id, &args.network, args.rpc_timeout, is_json)?;
             }
 
             Ok(())
@@ -194,17 +203,20 @@ fn deploy_contract(config: &DeploymentConfig, is_json: bool) -> Result<String, S
         );
     }
 
-    let output = Command::new("soroban")
-        .args([
-            "contract",
-            "deploy",
-            "--wasm",
-            config.wasm_path.to_str().unwrap(),
-            "--source",
-            &config.secret_key,
-            "--network",
-            &config.network,
-        ])
+    let mut cmd = Command::new("soroban");
+    cmd.args([
+        "contract",
+        "deploy",
+        "--wasm",
+        config.wasm_path.to_str().unwrap(),
+        "--source",
+        &config.secret_key,
+        "--network",
+        &config.network,
+    ]);
+    add_timeout_arg(&mut cmd, config.rpc_timeout_secs);
+
+    let output = cmd
         .output()
         .map_err(|e| format!("Failed to deploy: {}", e))?;
 
@@ -216,7 +228,12 @@ fn deploy_contract(config: &DeploymentConfig, is_json: bool) -> Result<String, S
     }
 }
 
-fn validate_deployment(contract_id: &str, network: &str, is_json: bool) -> anyhow::Result<()> {
+fn validate_deployment(
+    contract_id: &str,
+    network: &str,
+    rpc_timeout_secs: u64,
+    is_json: bool,
+) -> anyhow::Result<()> {
     if !is_json {
         println!(
             "{} Validating contract {} on {}...",
@@ -227,18 +244,20 @@ fn validate_deployment(contract_id: &str, network: &str, is_json: bool) -> anyho
     }
 
     // Invoke health check
-    let output = Command::new("soroban")
-        .args([
-            "contract",
-            "invoke",
-            "--id",
-            contract_id,
-            "--network",
-            network,
-            "--",
-            "health_check",
-        ])
-        .output()?;
+    let mut cmd = Command::new("soroban");
+    cmd.args([
+        "contract",
+        "invoke",
+        "--id",
+        contract_id,
+        "--network",
+        network,
+        "--",
+        "health_check",
+    ]);
+    add_timeout_arg(&mut cmd, rpc_timeout_secs);
+
+    let output = cmd.output()?;
 
     if output.status.success() {
         if !is_json {
@@ -251,5 +270,35 @@ fn validate_deployment(contract_id: &str, network: &str, is_json: bool) -> anyho
             eprintln!("{} Validation failed: {}", c::red("❌"), error);
         }
         Err(anyhow::anyhow!("Validation failed: {}", error))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deployment_config_carries_rpc_timeout() {
+        let cfg = DeploymentConfig {
+            wasm_path: PathBuf::from("/tmp/contract.wasm"),
+            network: "testnet".to_string(),
+            secret_key: "S000".to_string(),
+            account_id: None,
+            rpc_timeout_secs: DEFAULT_RPC_TIMEOUT_SECS,
+        };
+        assert_eq!(cfg.rpc_timeout_secs, DEFAULT_RPC_TIMEOUT_SECS);
+    }
+
+    #[test]
+    fn deployment_config_zero_timeout_is_accepted() {
+        // rpc_timeout=0 means "no timeout" and must be stored as-is.
+        let cfg = DeploymentConfig {
+            wasm_path: PathBuf::from("/tmp/contract.wasm"),
+            network: "testnet".to_string(),
+            secret_key: "S000".to_string(),
+            account_id: None,
+            rpc_timeout_secs: 0,
+        };
+        assert_eq!(cfg.rpc_timeout_secs, 0);
     }
 }
